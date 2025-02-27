@@ -1,0 +1,45 @@
+{
+    # Global options
+    email your-email@example.com # Used for Let's Encrypt notifications
+    admin off # Disable admin interface
+}
+
+# For local development
+localhost:80, localhost:443 {
+    # TLS configuration (for localhost, uses self-signed cert)
+    tls internal
+
+    # Root directory
+    root * /var/www/html/public
+
+    # PHP handling
+    php_fastcgi php:9000
+
+    # Log requests
+    log {
+        output file /var/log/caddy/access.log
+        format console
+    }
+
+    # Enable file browsing
+    file_server
+}
+
+# If you have a real domain, uncomment and modify this section
+# yourdomain.com {
+#     # Caddy will automatically get HTTPS certificates
+#     # root directory
+#     root * /var/www/html/public
+#
+#     # PHP handling
+#     php_fastcgi php:9000
+#
+#     # Log requests
+#     log {
+#         output file /var/log/caddy/access.log
+#         format console
+#     }
+#
+#     # Enable file browsing
+#     file_server
+# }

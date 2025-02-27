@@ -24,15 +24,22 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
 
-  nginx:
-    image: nginx:latest
+  caddy:
+    image: caddy:latest
     ports:
       - "8080:80"
+      - "8443:443"
     volumes:
       - ..:/var/www/html
-      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
     depends_on:
       - php
 
 volumes:
   mariadb_data:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
