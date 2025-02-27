@@ -1,0 +1,38 @@
+services:
+  php:
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/var/www/html
+    environment:
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+    depends_on:
+      - mariadb
+
+  mariadb:
+    image: mariadb:latest
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - ..:/var/www/html
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - php
+
+volumes:
+  mariadb_data:
