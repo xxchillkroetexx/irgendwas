@@ -7,8 +7,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ../public:/var/www/public
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./public:/var/www/public
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -16,14 +16,16 @@ services:
         condition: service_healthy
     networks:
       - web
+    environment:
+      APP_URL: ${APP_URL:-https://localhost}
     restart: unless-stopped
 
   php:
     build:
-      context: ./php
+      context: ./docker/php
       dockerfile: Dockerfile
     volumes:
-      - ../:/var/www
+      - ./:/var/www
     depends_on:
       mariadb:
         condition: service_healthy

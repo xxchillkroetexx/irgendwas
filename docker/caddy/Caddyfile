@@ -1,4 +1,8 @@
-localhost {
+{
+
+}
+
+{$APP_URL} {
     root * /var/www/public
     php_fastcgi php:9000
     encode gzip
