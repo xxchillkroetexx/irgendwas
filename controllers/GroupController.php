@@ -6,6 +6,7 @@ use models\Group;
 use models\User;
 use models\Wishlist;
 use utils\EmailService;
+use core\Database\Projekt_DB;
 
 class GroupController extends Controller {
     // Constructor - require authentication for all methods
@@ -193,14 +194,14 @@ class GroupController extends Controller {
     }
     
     // Process group update
-    public function update($id) {
+    public function update($groupId) {
         $this->validateCSRF();
         
         $user = $this->currentUser();
         
         // Get group
         $groupModel = new Group();
-        $group = $groupModel->findById($id);
+        $group = $groupModel->findById($groupId);
         
         if (!$group) {
             $this->flash('danger', 'Group not found');
@@ -211,68 +212,58 @@ class GroupController extends Controller {
         // Check if user is admin
         if (!$group->isAdmin($user->getId())) {
             $this->flash('danger', 'You do not have permission to edit this group');
-            $this->redirect('/groups/' . $id);
+            $this->redirect('/groups/' . $groupId);
             return;
         }
         
         // Get form data
         $name = $_POST['name'] ?? '';
         $description = $_POST['description'] ?? '';
-        $joinDeadline = $_POST['join_deadline'] ?? null;
-        $drawDate = $_POST['draw_date'] ?? null;
-        $customEmailTemplate = $_POST['custom_email_template'] ?? null;
+        $joinDeadline = $_POST['join_deadline'] ?? '';
+        $drawDate = $_POST['draw_date'] ?? '';
+        $emailTemplate = $_POST['custom_email_template'] ?? '';
         $wishlistVisibility = $_POST['wishlist_visibility'] ?? 'all';
         
-        // Validate input
-        $errors = [];
+        // Convert empty date strings to NULL for database
+        $joinDeadline = ($joinDeadline === '') ? null : $joinDeadline;
+        $drawDate = ($drawDate === '') ? null : $drawDate;
         
-        if (empty($name)) {
-            $errors['name'] = 'Group name is required';
+        try {
+            // Get the DB instance using the singleton pattern
+            $db = \core\Database\Projekt_DB::getInstance();
+            
+            // Use the table method to create a query builder instance
+            $db->table('groups')
+               ->where('id', $groupId)
+               ->update([
+                    'name' => $name,
+                    'description' => $description,
+                    'join_deadline' => $joinDeadline,
+                    'draw_date' => $drawDate,
+                    'custom_email_template' => $emailTemplate,
+                    'wishlist_visibility' => $wishlistVisibility
+               ]);
+            
+            // Redirect after successful update
+            header('Location: /groups/view/' . $groupId);
+            exit();
+        } catch (\Exception $e) {
+            // Log error
+            error_log('Group update error: ' . $e->getMessage());
+            $this->displayError('Database Error', $e->getMessage());
+        }
+    }
+    
+    // Add this helper method to display errors properly
+    private function displayError($title, $message) {
+        // Set the header if headers haven't been sent yet
+        if (!headers_sent()) {
+            header('HTTP/1.1 500 Internal Server Error');
         }
         
-        // Validate dates
-        if (!empty($joinDeadline) && !strtotime($joinDeadline)) {
-            $errors['join_deadline'] = 'Invalid join deadline date';
-        }
-        
-        if (!empty($drawDate) && !strtotime($drawDate)) {
-            $errors['draw_date'] = 'Invalid draw date';
-        }
-        
-        if (!empty($joinDeadline) && !empty($drawDate)) {
-            if (strtotime($joinDeadline) > strtotime($drawDate)) {
-                $errors['draw_date'] = 'Draw date must be after join deadline';
-            }
-        }
-        
-        if (!empty($errors)) {
-            $this->view('groups/edit', [
-                'pageTitle' => 'Edit ' . $group->getName(),
-                'group' => $group,
-                'csrf' => $this->generateCSRF(),
-                'errors' => $errors,
-                'name' => $name,
-                'description' => $description,
-                'join_deadline' => $joinDeadline,
-                'draw_date' => $drawDate,
-                'custom_email_template' => $customEmailTemplate,
-                'wishlist_visibility' => $wishlistVisibility
-            ]);
-            return;
-        }
-        
-        // Update group
-        $group->update([
-            'name' => $name,
-            'description' => $description,
-            'join_deadline' => $joinDeadline,
-            'draw_date' => $drawDate,
-            'custom_email_template' => $customEmailTemplate,
-            'wishlist_visibility' => $wishlistVisibility
-        ]);
-        
-        $this->flash('success', 'Group updated successfully');
-        $this->redirect('/groups/' . $id);
+        // Include error template or render error directly
+        include_once 'views/error.php';
+        exit();
     }
     
     // Delete group
