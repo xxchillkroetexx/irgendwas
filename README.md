@@ -3,10 +3,9 @@
 ## Development with Docker Compose
 
 ```bash
-# move into docker dir
-cd docker
-# copy .env file
+# Copy .env file
 cp .env.template .env
-# start docker compose stack
+
+# Start Docker Compose stack
 docker compose up -d
 ```
