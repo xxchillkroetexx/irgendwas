@@ -97,22 +97,26 @@
     <!-- Flash Messages -->
     <div class="container mt-4">
         <?php
-        // Use the Flash utility class instead of controller instance
+        // Use the Flash utility class
         $flash = \core\Flash::get();
-        foreach ($flash as $type => $message):
-            $alertClass = match($type) {
-                'success' => 'alert-success',
-                'danger' => 'alert-danger',
-                'warning' => 'alert-warning',
-                'info' => 'alert-info',
-                default => 'alert-secondary'
-            };
+        if (!empty($flash)) {
+            foreach ($flash as $type => $message):
+                $alertClass = match($type) {
+                    'success' => 'alert-success',
+                    'danger' => 'alert-danger',
+                    'warning' => 'alert-warning',
+                    'info' => 'alert-info',
+                    default => 'alert-secondary'
+                };
         ?>
         <div class="alert <?= $alertClass ?> alert-dismissible fade show">
             <?= $message ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
-        <?php endforeach; ?>
+        <?php 
+            endforeach;
+        }
+        ?>
     </div>
 
     <!-- Main Content -->
@@ -147,24 +151,22 @@
         // Initialize drag-and-drop for wishlist items
         document.addEventListener('DOMContentLoaded', function() {
             const wishlistContainer = document.getElementById('wishlist-items');
-            if (wishlistContainer) {
-                const sortable = new Sortable(wishlistContainer, {
+            if (wishlistContainer && wishlistContainer.getAttribute('data-editable') === 'true') {
+                new Sortable(wishlistContainer, {
                     animation: 150,
                     handle: '.wishlist-item-handle',
+                    ghostClass: 'wishlist-item-ghost',
                     onEnd: function(evt) {
-                        const itemOrder = Array.from(wishlistContainer.children).map(item => item.dataset.itemId);
-                        
-                        // Send reordering to server
+                        const items = Array.from(wishlistContainer.children).map(item => item.dataset.itemId);
                         const groupId = wishlistContainer.dataset.groupId;
+                        
                         fetch(`/groups/${groupId}/wishlist/reorder`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+                                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content
                             },
-                            body: JSON.stringify({
-                                items: itemOrder
-                            })
+                            body: JSON.stringify({items: items})
                         });
                     }
                 });

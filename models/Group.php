@@ -59,24 +59,33 @@ class Group {
     
     // Create a new group
     public function create($data) {
+        // Handle null dates properly
+        $joinDeadline = !empty($data['join_deadline']) ? $data['join_deadline'] : null;
+        $drawDate = !empty($data['draw_date']) ? $data['draw_date'] : null;
+        
         $groupId = $this->db->table('groups')->insert([
             'name' => $data['name'],
             'description' => $data['description'] ?? null,
             'admin_id' => $data['admin_id'],
-            'join_deadline' => $data['join_deadline'] ?? null,
-            'draw_date' => $data['draw_date'] ?? null,
+            'join_deadline' => $joinDeadline,
+            'draw_date' => $drawDate,
             'custom_email_template' => $data['custom_email_template'] ?? null,
             'wishlist_visibility' => $data['wishlist_visibility'] ?? 'all'
         ]);
         
-        // Add admin as a group member
-        $this->db->table('group_members')->insert([
-            'group_id' => $groupId,
-            'user_id' => $data['admin_id'],
-            'status' => 'active'
-        ]);
+        // Only proceed if we have a valid group ID
+        if ($groupId) {
+            // Add admin as a group member
+            $this->db->table('group_members')->insert([
+                'group_id' => $groupId,
+                'user_id' => $data['admin_id'],
+                'status' => 'active'
+            ]);
+            
+            return $this->findById($groupId);
+        }
         
-        return $this->findById($groupId);
+        return null;
     }
     
     // Update group

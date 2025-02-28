@@ -47,32 +47,32 @@ class GroupController extends Controller {
         // Get form data
         $name = $_POST['name'] ?? '';
         $description = $_POST['description'] ?? '';
-        $joinDeadline = $_POST['join_deadline'] ?? null;
-        $drawDate = $_POST['draw_date'] ?? null;
+        $joinDeadline = !empty($_POST['join_deadline']) ? $_POST['join_deadline'] : null;
+        $drawDate = !empty($_POST['draw_date']) ? $_POST['draw_date'] : null;
         $wishlistVisibility = $_POST['wishlist_visibility'] ?? 'all';
-        
+
         // Validate input
         $errors = [];
-        
+
         if (empty($name)) {
             $errors['name'] = 'Group name is required';
         }
-        
-        // Validate dates
+
+        // Validate dates if provided
         if (!empty($joinDeadline) && !strtotime($joinDeadline)) {
             $errors['join_deadline'] = 'Invalid join deadline date';
         }
-        
+
         if (!empty($drawDate) && !strtotime($drawDate)) {
             $errors['draw_date'] = 'Invalid draw date';
         }
-        
+
         if (!empty($joinDeadline) && !empty($drawDate)) {
             if (strtotime($joinDeadline) > strtotime($drawDate)) {
                 $errors['draw_date'] = 'Draw date must be after join deadline';
             }
         }
-        
+
         if (!empty($errors)) {
             $this->view('groups/create', [
                 'pageTitle' => 'Create Group',
@@ -97,6 +97,12 @@ class GroupController extends Controller {
             'draw_date' => $drawDate,
             'wishlist_visibility' => $wishlistVisibility
         ]);
+        
+        if (!$group) {
+            $this->flash('danger', 'Failed to create group');
+            $this->redirect('/groups');
+            return;
+        }
         
         // Create wishlist for user in this group
         $wishlistModel = new Wishlist();

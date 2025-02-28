@@ -1,7 +1,7 @@
 <?php
 namespace controllers;
 
-use core.Controller;
+use core\Controller;
 use models\User;
 use utils\EmailService;
 

@@ -1,7 +1,9 @@
 <?php
 namespace core;
 
-abstract class Controller {
+use models\User;
+
+class Controller {
     // Render a view with the given data
     protected function view($view, $data = []) {
         // Extract data to make variables available in view
@@ -38,7 +40,7 @@ abstract class Controller {
     // Get current authenticated user
     protected function currentUser() {
         if (isset($_SESSION['user_id'])) {
-            $userModel = new models\User();
+            $userModel = new User();
             return $userModel->findById($_SESSION['user_id']);
         }
         return null;

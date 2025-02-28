@@ -24,6 +24,14 @@
                         <?php endif; ?>
                     </div>
                     
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                            <label class="form-check-label" for="remember">Remember me</label>
+                        </div>
+                        <a href="/forgot-password">Forgot password?</a>
+                    </div>
+                    
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">Login</button>
                     </div>
@@ -31,7 +39,6 @@
             </div>
             <div class="card-footer text-center">
                 <p class="mb-0">Don't have an account? <a href="/register">Register</a></p>
-                <p class="mb-0 mt-2"><a href="/forgot-password">Forgot your password?</a></p>
             </div>
         </div>
     </div>

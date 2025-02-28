@@ -1,5 +1,5 @@
 <?php
-namespace Appmodels;
+namespace models;
 
 use core\Database\Projekt_DB;
 
