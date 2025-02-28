@@ -1,30 +1,52 @@
 <?php
 namespace core\Database;
 
+/**
+ * Main database connection and query handler class
+ */
 class Projekt_DB {
-    private static $instance = null;
-    private $connection = null;
-    private $lastInsertId = null;
-    private $transactionCount = 0;
+    private static ?Projekt_DB $instance = null;
+    private ?\PDO $connection = null;
+    private ?string $lastInsertId = null;
+    private int $transactionCount = 0;
+    private array $queryLog = [];
+    private bool $loggingEnabled = false;
     
-    // Private constructor for singleton pattern
+    /**
+     * Private constructor for singleton pattern
+     */
     private function __construct() {
         $this->connect();
     }
     
-    // Get singleton instance
-    public static function getInstance() {
+    /**
+     * Get singleton instance
+     * @return Projekt_DB Database instance
+     */
+    public static function getInstance(): Projekt_DB {
         if (self::$instance === null) {
             self::$instance = new self();
         }
         return self::$instance;
     }
     
-    // Connect to the database
-    private function connect() {
+    /**
+     * Connect to the database
+     * @param array $overrideConfig Optional array to override default connection settings
+     * @throws \Exception if connection fails
+     */
+    private function connect(array $overrideConfig = []): void {
         try {
+            // Use override config or defaults
+            $host = $overrideConfig['host'] ?? DB_HOST;
+            $port = $overrideConfig['port'] ?? (defined('DB_PORT') ? DB_PORT : 3306);
+            $name = $overrideConfig['name'] ?? DB_NAME;
+            $user = $overrideConfig['user'] ?? DB_USER;
+            $pass = $overrideConfig['pass'] ?? DB_PASS;
+            $charset = $overrideConfig['charset'] ?? DB_CHARSET;
+            
             // Include port number in DSN
-            $dsn = 'mysql:host=' . DB_HOST . ';port=' . (defined('DB_PORT') ? DB_PORT : 3306) . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
+            $dsn = "mysql:host=$host;port=$port;dbname=$name;charset=$charset";
             $options = [
                 \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
                 \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
@@ -33,13 +55,13 @@ class Projekt_DB {
             ];
             
             // Try to create connection
-            $this->connection = new \PDO($dsn, DB_USER, DB_PASS, $options);
+            $this->connection = new \PDO($dsn, $user, $pass, $options);
         } catch (\PDOException $e) {
             // Enhanced error message with more details
             $message = 'Database connection failed: ' . $e->getMessage();
-            $message .= ' (Host: ' . DB_HOST . ', Database: ' . DB_NAME . ')';
+            $message .= ' (Host: ' . $host . ', Database: ' . $name . ')';
             
-            if (DEBUG) {
+            if (defined('DEBUG') && DEBUG) {
                 echo '<div style="background: #f8d7da; color: #721c24; padding: 20px; margin: 20px; border-radius: 5px;">';
                 echo '<h3>Database Connection Error</h3>';
                 echo '<p>' . $message . '</p>';
@@ -47,7 +69,7 @@ class Projekt_DB {
                 echo '<ol>';
                 echo '<li>Check if MySQL/MariaDB server is running</li>';
                 echo '<li>Verify the database credentials in config.php</li>';
-                echo '<li>Make sure the database "' . DB_NAME . '" exists</li>';
+                echo '<li>Make sure the database "' . $name . '" exists</li>';
                 echo '<li>Try using "127.0.0.1" instead of "localhost" or vice versa</li>';
                 echo '</ol>';
                 echo '</div>';
@@ -57,17 +79,32 @@ class Projekt_DB {
         }
     }
     
-    // Get the PDO connection
-    public function getConnection() {
+    /**
+     * Get the PDO connection
+     * @return \PDO The PDO connection instance
+     */
+    public function getConnection(): \PDO {
         return $this->connection;
     }
     
-    // Execute a query with parameters
-    public function execute($sql, $params = []) {
+    /**
+     * Execute a query with parameters
+     * 
+     * @param string $sql The SQL query
+     * @param array $params Parameters for the query
+     * @return \PDOStatement|false Statement object or false on failure
+     */
+    public function execute(string $sql, array $params = []) {
+        $startTime = microtime(true);
         try {
             $statement = $this->connection->prepare($sql);
             $statement->execute($params);
             $this->lastInsertId = $this->connection->lastInsertId();
+            
+            if ($this->loggingEnabled) {
+                $this->logQuery($sql, $params, microtime(true) - $startTime);
+            }
+            
             return $statement;
         } catch (\PDOException $e) {
             $this->handleError($e, $sql, $params);
@@ -75,8 +112,15 @@ class Projekt_DB {
         }
     }
     
-    // Query and fetch all results
-    public function fetchAll($sql, $params = [], $fetchMode = null) {
+    /**
+     * Query and fetch all results
+     * 
+     * @param string $sql The SQL query
+     * @param array $params Parameters for the query
+     * @param int|null $fetchMode PDO fetch mode
+     * @return array Results array
+     */
+    public function fetchAll(string $sql, array $params = [], ?int $fetchMode = null): array {
         $statement = $this->execute($sql, $params);
         if ($statement && $fetchMode) {
             return $statement->fetchAll($fetchMode);
@@ -86,8 +130,15 @@ class Projekt_DB {
         return [];
     }
     
-    // Query and fetch a single row
-    public function fetch($sql, $params = [], $fetchMode = null) {
+    /**
+     * Query and fetch a single row
+     * 
+     * @param string $sql The SQL query
+     * @param array $params Parameters for the query
+     * @param int|null $fetchMode PDO fetch mode
+     * @return array|false Result array or false if no results
+     */
+    public function fetch(string $sql, array $params = [], ?int $fetchMode = null) {
         $statement = $this->execute($sql, $params);
         if ($statement && $fetchMode) {
             return $statement->fetch($fetchMode);
@@ -97,8 +148,15 @@ class Projekt_DB {
         return false;
     }
     
-    // Query and fetch a single column value
-    public function fetchColumn($sql, $params = [], $column = 0) {
+    /**
+     * Query and fetch a single column value
+     * 
+     * @param string $sql The SQL query
+     * @param array $params Parameters for the query
+     * @param int $column Zero-indexed column number
+     * @return mixed Column value or false if no results
+     */
+    public function fetchColumn(string $sql, array $params = [], int $column = 0) {
         $statement = $this->execute($sql, $params);
         if ($statement) {
             return $statement->fetchColumn($column);
@@ -106,42 +164,106 @@ class Projekt_DB {
         return false;
     }
     
-    // Get the last inserted ID
-    public function lastInsertId() {
+    /**
+     * Get the last inserted ID
+     * @return string|null The last insert ID or null
+     */
+    public function lastInsertId(): ?string {
         return $this->lastInsertId;
     }
     
-    // Start a transaction
-    public function beginTransaction() {
+    /**
+     * Start a transaction with optional savepoint
+     * 
+     * @param string|null $savepoint Optional savepoint name
+     * @return bool Success status
+     */
+    public function beginTransaction(?string $savepoint = null): bool {
+        if ($savepoint) {
+            return $this->execute("SAVEPOINT $savepoint") !== false;
+        }
+        
         if ($this->transactionCount === 0) {
-            $this->connection->beginTransaction();
+            $success = $this->connection->beginTransaction();
+        } else {
+            $success = $this->execute("SAVEPOINT trans{$this->transactionCount}") !== false;
         }
-        $this->transactionCount++;
+        
+        if ($success) {
+            $this->transactionCount++;
+        }
+        
+        return $success;
     }
     
-    // Commit a transaction
-    public function commit() {
+    /**
+     * Commit a transaction with optional savepoint
+     * 
+     * @param string|null $savepoint Optional savepoint name
+     * @return bool Success status
+     */
+    public function commit(?string $savepoint = null): bool {
+        if ($savepoint) {
+            return $this->execute("RELEASE SAVEPOINT $savepoint") !== false;
+        }
+        
         if ($this->transactionCount === 1) {
-            $this->connection->commit();
+            $success = $this->connection->commit();
+            if ($success) {
+                $this->transactionCount = 0;
+            }
+            return $success;
+        } elseif ($this->transactionCount > 1) {
+            $this->transactionCount--;
+            return $this->execute("RELEASE SAVEPOINT trans" . ($this->transactionCount - 1)) !== false;
         }
-        $this->transactionCount = max(0, $this->transactionCount - 1);
+        
+        return false;
     }
     
-    // Roll back a transaction
-    public function rollBack() {
+    /**
+     * Roll back a transaction with optional savepoint
+     * 
+     * @param string|null $savepoint Optional savepoint name
+     * @return bool Success status
+     */
+    public function rollBack(?string $savepoint = null): bool {
+        if ($savepoint) {
+            return $this->execute("ROLLBACK TO SAVEPOINT $savepoint") !== false;
+        }
+        
         if ($this->transactionCount === 1) {
-            $this->connection->rollBack();
+            $success = $this->connection->rollBack();
+            if ($success) {
+                $this->transactionCount = 0;
+            }
+            return $success;
+        } elseif ($this->transactionCount > 1) {
+            $this->transactionCount--;
+            return $this->execute("ROLLBACK TO SAVEPOINT trans" . ($this->transactionCount - 1)) !== false;
         }
-        $this->transactionCount = max(0, $this->transactionCount - 1);
+        
+        return false;
     }
     
-    // Create a query builder instance
-    public function table($table) {
+    /**
+     * Create a query builder instance
+     * 
+     * @param string $table Table name
+     * @return DB_Query Query builder object
+     */
+    public function table(string $table): DB_Query {
         return new DB_Query($this, $table);
     }
     
-    // Handle database errors
-    private function handleError(\PDOException $e, $sql, $params) {
+    /**
+     * Handle database errors
+     * 
+     * @param \PDOException $e Exception object
+     * @param string $sql SQL query that failed
+     * @param array $params Query parameters
+     */
+    private function handleError(\PDOException $e, string $sql, array $params): void {
         $message = 'Database query error: ' . $e->getMessage();
         $context = [
             'sql' => $sql,
@@ -150,17 +272,55 @@ class Projekt_DB {
             'trace' => $e->getTraceAsString()
         ];
         
-        if (DEBUG) {
-            echo '<h1>Database Error</h1>';
-            echo '<p>' . $message . '</p>';
-            echo '<h2>Query</h2>';
-            echo '<pre>' . $sql . '</pre>';
-            echo '<h2>Parameters</h2>';
-            echo '<pre>' . print_r($params, true) . '</pre>';
+        if (defined('DEBUG') && DEBUG) {
+            echo '<div style="background: #f8d7da; color: #721c24; padding: 20px; margin: 20px; border-radius: 5px;">';
+            echo '<h3>Database Error</h3>';
+            echo '<p>' . htmlspecialchars($message) . '</p>';
+            echo '<h4>Query</h4>';
+            echo '<pre>' . htmlspecialchars($sql) . '</pre>';
+            echo '<h4>Parameters</h4>';
+            echo '<pre>' . htmlspecialchars(print_r($params, true)) . '</pre>';
+            echo '</div>';
         }
         
         // Log the error
-        error_log($message . ' ' . json_encode($context));
+        error_log($message . ' ' . json_encode($context, JSON_UNESCAPED_SLASHES));
+    }
+    
+    /**
+     * Enable or disable query logging
+     * 
+     * @param bool $enabled Whether to enable logging
+     * @return Projekt_DB Self for chaining
+     */
+    public function enableLogging(bool $enabled = true): Projekt_DB {
+        $this->loggingEnabled = $enabled;
+        return $this;
+    }
+    
+    /**
+     * Get the query log
+     * 
+     * @return array Query log entries
+     */
+    public function getQueryLog(): array {
+        return $this->queryLog;
+    }
+    
+    /**
+     * Log a database query
+     * 
+     * @param string $sql SQL query
+     * @param array $params Query parameters
+     * @param float $duration Query execution time in seconds
+     */
+    private function logQuery(string $sql, array $params, float $duration): void {
+        $this->queryLog[] = [
+            'sql' => $sql,
+            'params' => $params,
+            'duration' => $duration,
+            'time' => date('Y-m-d H:i:s')
+        ];
     }
     
     // Create database tables if they don't exist
