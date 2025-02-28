@@ -11,8 +11,8 @@ class Group {
     private ?string $registration_deadline = null;
     private ?string $draw_date = null;
     private bool $is_drawn = false;
-    private string $created_at;
-    private string $updated_at;
+    private ?string $created_at = null;
+    private ?string $updated_at = null;
     
     // Lazy-loaded relationships
     private ?User $admin = null;
@@ -106,11 +106,11 @@ class Group {
         return $this;
     }
     
-    public function getCreatedAt(): string {
+    public function getCreatedAt(): ?string {
         return $this->created_at;
     }
     
-    public function getUpdatedAt(): string {
+    public function getUpdatedAt(): ?string {
         return $this->updated_at;
     }
     

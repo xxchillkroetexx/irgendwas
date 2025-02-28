@@ -24,6 +24,28 @@ class GroupRepository extends DataMapper {
         return $this->findBy(['admin_id' => $adminId]);
     }
     
+    public function findByUserId(int $userId): array {
+        // This requires a JOIN with the group_members table
+        $sql = "
+            SELECT g.* 
+            FROM {$this->table} g
+            JOIN group_members gm ON g.id = gm.group_id
+            WHERE gm.user_id = :userId
+            ORDER BY g.created_at DESC
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['userId' => $userId]);
+        $results = $stmt->fetchAll();
+        
+        $groups = [];
+        foreach ($results as $data) {
+            $groups[] = $this->mapToEntity($data);
+        }
+        
+        return $groups;
+    }
+    
     public function loadAdmin(Group $group): Group {
         if ($group->getAdminId() === null) {
             return $group;

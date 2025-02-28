@@ -46,20 +46,18 @@ class EmailService {
         return $this->sendEmail($invitee->getEmail(), $subject, $message);
     }
     
-    public function sendDrawNotification(User $user, GiftAssignment $assignment, Group $group): bool {
-        $receiver = $assignment->getReceiver();
-        
-        $subject = "Your Secret Santa Draw Results for {$group->getName()}";
+    public function sendDrawNotification(string $email, string $giverName, string $receiverName, string $groupName, string $groupUrl): bool {
+        $subject = "Your Secret Santa Draw Results for {$groupName}";
         
         $message = "
         <html>
         <body>
             <h1>Secret Santa Draw Results</h1>
-            <p>Hello {$user->getName()},</p>
-            <p>The Secret Santa draw for <strong>{$group->getName()}</strong> has been completed!</p>
-            <p>You have been assigned to give a gift to: <strong>{$receiver->getName()}</strong></p>
+            <p>Hello {$giverName},</p>
+            <p>The Secret Santa draw for <strong>{$groupName}</strong> has been completed!</p>
+            <p>You have been assigned to give a gift to: <strong>{$receiverName}</strong></p>
             <p>To view their wishlist and learn more about what they'd like, please click the link below:</p>
-            <p><a href='" . $this->getBaseUrl() . "/wishlist/view/{$receiver->getId()}/{$group->getId()}'>View {$receiver->getName()}'s Wishlist</a></p>
+            <p><a href='{$groupUrl}'>View Group Details</a></p>
             <p>Remember to keep this a secret! The fun of Secret Santa is in the surprise.</p>
             <p>Happy gift giving!</p>
             <p>- The Secret Santa Team</p>
@@ -67,7 +65,7 @@ class EmailService {
         </html>
         ";
         
-        return $this->sendEmail($user->getEmail(), $subject, $message);
+        return $this->sendEmail($email, $subject, $message);
     }
     
     public function sendPasswordReset(User $user, string $token): bool {

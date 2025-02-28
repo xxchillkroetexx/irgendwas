@@ -94,4 +94,13 @@ class Session {
         $this->start();
         return session_id();
     }
+    
+    public function flash(string $key, $value): void {
+        $this->setFlash($key, $value);
+    }
+    
+    public function getOldInput(string $key, $default = null) {
+        $old = $this->getFlash('old') ?? [];
+        return $old[$key] ?? $default;
+    }
 }

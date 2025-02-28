@@ -48,7 +48,37 @@ class Database {
     }
     
     public function initialize(): void {
-        $schema = file_get_contents(__DIR__ . '/schema.sql');
-        $this->getConnection()->exec($schema);
+        // Get the schema SQL content
+        $schemaPath = __DIR__ . '/schema.sql';
+        
+        if (!file_exists($schemaPath)) {
+            throw new \Exception("Schema file not found at: $schemaPath");
+        }
+        
+        $schema = file_get_contents($schemaPath);
+        
+        if (!$schema) {
+            throw new \Exception("Failed to read schema file");
+        }
+        
+        // Split the SQL by semicolons to execute statements individually
+        $statements = array_filter(
+            array_map('trim', explode(';', $schema)),
+            function($statement) {
+                return !empty($statement);
+            }
+        );
+        
+        try {
+            $connection = $this->getConnection();
+            $connection->setAttribute(\PDO::ATTR_EMULATE_PREPARES, 0);
+            
+            // Execute each statement
+            foreach ($statements as $statement) {
+                $connection->exec($statement);
+            }
+        } catch (\PDOException $e) {
+            throw new \Exception("Error initializing database: " . $e->getMessage());
+        }
     }
 }

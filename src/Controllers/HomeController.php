@@ -2,36 +2,23 @@
 
 namespace SecretSanta\Controllers;
 
-class HomeController {
+class HomeController extends BaseController {
     public function index() {
-        return '<!DOCTYPE html>
-        <html>
-        <head>
-            <title>Secret Santa</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }
-                h1 {
-                    color: #336699;
-                }
-                .success {
-                    color: green;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Secret Santa Web Application</h1>
-            <p class="success">✅ Application is working correctly!</p>
-            <p>This is the home page of the Secret Santa application.</p>
-        </body>
-        </html>';
+        // If user is logged in, redirect to dashboard
+        if ($this->auth->check()) {
+            $this->redirect('/user/dashboard');
+        }
+        
+        return $this->render('home/index');
     }
     
     public function setLanguage($locale) {
-        return "Language set to: " . $locale;
+        // Store the language preference in session
+        // (We'll implement proper language support later)
+        $this->session->set('language', $locale);
+        
+        // Redirect back to referring page or home
+        $referer = $this->request->getServerParam('HTTP_REFERER', '/');
+        $this->redirect($referer);
     }
 }

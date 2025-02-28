@@ -112,7 +112,16 @@ abstract class DataMapper {
     }
     
     protected function insert(array $data) {
-        $columns = array_keys(array_filter($data, function($key) {
+        // Automatically set created_at and updated_at timestamps if they exist in the columns
+        $currentDateTime = date('Y-m-d H:i:s');
+        if (in_array('created_at', $this->columns) && !isset($data['created_at'])) {
+            $data['created_at'] = $currentDateTime;
+        }
+        if (in_array('updated_at', $this->columns) && !isset($data['updated_at'])) {
+            $data['updated_at'] = $currentDateTime;
+        }
+
+        $columns = array_keys(array_filter($data, function($key) use ($data) {
             return $key !== $this->primaryKey || $data[$this->primaryKey] !== null;
         }, ARRAY_FILTER_USE_KEY));
         
@@ -126,7 +135,12 @@ abstract class DataMapper {
         $stmt = $this->db->prepare("INSERT INTO {$this->table} ($columnString) VALUES ($placeholderString)");
         
         foreach ($columns as $column) {
-            $stmt->bindValue(":$column", $data[$column]);
+            // Convert boolean values to integers for MySQL
+            if (is_bool($data[$column])) {
+                $stmt->bindValue(":$column", $data[$column] ? 1 : 0, \PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(":$column", $data[$column]);
+            }
         }
         
         $stmt->execute();
@@ -140,6 +154,12 @@ abstract class DataMapper {
     
     protected function update(array $data) {
         $id = $data[$this->primaryKey];
+        
+        // Automatically set updated_at timestamp if it exists in the columns
+        if (in_array('updated_at', $this->columns) && !isset($data['updated_at'])) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
+        }
+        
         $sets = [];
         
         foreach ($data as $column => $value) {
@@ -155,7 +175,12 @@ abstract class DataMapper {
         
         foreach ($data as $column => $value) {
             if ($column !== $this->primaryKey) {
-                $stmt->bindValue(":$column", $value);
+                // Convert boolean values to integers for MySQL
+                if (is_bool($value)) {
+                    $stmt->bindValue(":$column", $value ? 1 : 0, \PDO::PARAM_INT);
+                } else {
+                    $stmt->bindValue(":$column", $value);
+                }
             }
         }
         

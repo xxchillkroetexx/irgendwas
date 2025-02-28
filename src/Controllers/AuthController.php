@@ -6,6 +6,7 @@ use SecretSanta\Repositories\UserRepository;
 
 class AuthController extends BaseController {
     public function showLogin() {
+        // If already logged in, redirect to dashboard
         if ($this->auth->check()) {
             $this->redirect('/user/dashboard');
         }
@@ -20,18 +21,20 @@ class AuthController extends BaseController {
         if (empty($email) || empty($password)) {
             $this->session->setFlash('error', 'Please enter both email and password');
             $this->redirect('/auth/login');
+            return;
         }
         
         if ($this->auth->login($email, $password)) {
-            $this->session->setFlash('success', $this->translator->translate('success.login_success'));
+            $this->session->setFlash('success', 'You have successfully logged in');
             $this->redirect('/user/dashboard');
         } else {
-            $this->session->setFlash('error', $this->translator->translate('errors.invalid_credentials'));
+            $this->session->setFlash('error', 'Invalid email or password');
             $this->redirect('/auth/login');
         }
     }
     
     public function showRegister() {
+        // If already logged in, redirect to dashboard
         if ($this->auth->check()) {
             $this->redirect('/user/dashboard');
         }
@@ -46,39 +49,64 @@ class AuthController extends BaseController {
         $passwordConfirm = $this->request->getPostParam('password_confirm');
         
         // Validate inputs
-        $errors = $this->request->validate([
-            'email' => 'required|email',
-            'name' => 'required|min:2',
-            'password' => 'required|min:8',
-            'password_confirm' => 'required|same:password'
-        ]);
+        $errors = [];
+        
+        if (empty($email)) {
+            $errors['email'] = 'Email is required';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'Invalid email format';
+        }
+        
+        if (empty($name)) {
+            $errors['name'] = 'Name is required';
+        }
+        
+        if (empty($password)) {
+            $errors['password'] = 'Password is required';
+        } elseif (strlen($password) < 8) {
+            $errors['password'] = 'Password must be at least 8 characters';
+        }
+        
+        if ($password !== $passwordConfirm) {
+            $errors['password_confirm'] = 'Passwords do not match';
+        }
         
         if (!empty($errors)) {
             $this->session->setFlash('errors', $errors);
+            $this->session->setFlash('old_input', [
+                'email' => $email,
+                'name' => $name
+            ]);
             $this->redirect('/auth/register');
+            return;
         }
         
         // Check if email already exists
         $userRepository = new UserRepository();
         if ($userRepository->findByEmail($email)) {
-            $this->session->setFlash('error', $this->translator->translate('errors.email_taken'));
+            $this->session->setFlash('error', 'This email is already registered');
+            $this->session->setFlash('old_input', [
+                'email' => $email,
+                'name' => $name
+            ]);
             $this->redirect('/auth/register');
+            return;
         }
         
         $user = $this->auth->register($email, $name, $password);
         
         if ($user) {
-            $this->session->setFlash('success', $this->translator->translate('success.register_success'));
+            $this->session->setFlash('success', 'You have successfully registered');
             $this->redirect('/user/dashboard');
         } else {
-            $this->session->setFlash('error', 'Registration failed. Please try again');
+            $this->session->setFlash('error', 'Registration failed, please try again');
             $this->redirect('/auth/register');
         }
     }
     
     public function logout() {
         $this->auth->logout();
-        $this->session->setFlash('success', $this->translator->translate('success.logout_success'));
+        $this->session->setFlash('success', 'You have been successfully logged out');
         $this->redirect('/');
     }
     
@@ -92,16 +120,18 @@ class AuthController extends BaseController {
         if (empty($email)) {
             $this->session->setFlash('error', 'Please enter your email address');
             $this->redirect('/auth/forgot-password');
+            return;
         }
         
+        // Try to send password reset email
         $success = $this->auth->requestPasswordReset($email);
         
-        // Always show success message to prevent email enumeration
-        $this->session->setFlash('success', $this->translator->translate('success.password_reset_link_sent'));
+        // Always show the success message (to prevent email enumeration)
+        $this->session->setFlash('success', 'If your email exists in our system, you will receive password reset instructions');
         $this->redirect('/auth/login');
     }
     
-    public function showResetPassword(string $token) {
+    public function showResetPassword($token) {
         return $this->render('auth/reset-password', ['token' => $token]);
     }
     
@@ -114,22 +144,25 @@ class AuthController extends BaseController {
         if (empty($token) || empty($password) || empty($passwordConfirm)) {
             $this->session->setFlash('error', 'All fields are required');
             $this->redirect('/auth/reset-password/' . $token);
+            return;
         }
         
         if ($password !== $passwordConfirm) {
-            $this->session->setFlash('error', $this->translator->translate('errors.passwords_dont_match'));
+            $this->session->setFlash('error', 'Passwords do not match');
             $this->redirect('/auth/reset-password/' . $token);
+            return;
         }
         
         if (strlen($password) < 8) {
-            $this->session->setFlash('error', 'Password must be at least 8 characters long');
+            $this->session->setFlash('error', 'Password must be at least 8 characters');
             $this->redirect('/auth/reset-password/' . $token);
+            return;
         }
         
         $success = $this->auth->resetPassword($token, $password);
         
         if ($success) {
-            $this->session->setFlash('success', $this->translator->translate('success.password_reset_success'));
+            $this->session->setFlash('success', 'Your password has been reset, you can now login');
             $this->redirect('/auth/login');
         } else {
             $this->session->setFlash('error', 'Invalid or expired reset token');

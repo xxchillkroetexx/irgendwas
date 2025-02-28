@@ -62,6 +62,13 @@ class Request {
         return array_merge($this->queryParams, $this->postParams);
     }
     
+    /**
+     * Get a request parameter (post or query)
+     */
+    public function get(string $key, $default = null) {
+        return $this->postParams[$key] ?? $this->queryParams[$key] ?? $default;
+    }
+    
     public function getMethod(): string {
         return $this->serverParams['REQUEST_METHOD'];
     }
