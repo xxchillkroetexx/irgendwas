@@ -1,0 +1,80 @@
+name: irgendwas
+
+services:
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../src:/var/www/html
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      php:
+        condition: service_healthy
+    networks:
+      - web
+    restart: unless-stopped
+
+  php:
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+    volumes:
+      - ../src:/var/www/html
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - web
+      - database
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      DB_USERNAME: ${DB_USERNAME:-irgendjemand}
+      DB_PASSWORD: ${DB_PASSWORD:-irgendeinpasswort}
+    healthcheck:
+      test: ["CMD", "php", "-v"]
+      start_period: 5s
+      start_interval: 1s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb:latest
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-irgendeinrootpasswort}
+      MARIADB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      MARIADB_USER: ${DB_USERNAME:-irgendjemand}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-irgendeinpasswort}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - database
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 1m
+      start_interval: 1s
+      interval: 1m
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  web:
+    name: irgendwas_web_network
+  database:
+    name: irgendwas_database_network
+
+volumes:
+  caddy_data:
+    name: irgendwas_caddy_data
+  caddy_config:
+    name: irgendwas_caddy_config
+  mariadb_data:
+    name: irgendwas_mariadb_data
