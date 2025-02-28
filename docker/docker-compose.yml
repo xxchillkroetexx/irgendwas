@@ -7,7 +7,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ../src:/var/www/html
+      - ../public:/var/www/public
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
@@ -23,7 +23,7 @@ services:
       context: ./php
       dockerfile: Dockerfile
     volumes:
-      - ../src:/var/www/html
+      - ../:/var/www
     depends_on:
       mariadb:
         condition: service_healthy
