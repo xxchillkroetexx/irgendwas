@@ -5,9 +5,14 @@
  * A web application for organizing Secret Santa gift exchanges
  */
 
-// Display all errors for debugging
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+// Set error reporting based on APP_DEBUG environment variable
+if (getenv('APP_DEBUG') === 'true') {
+    ini_set('display_errors', 1);
+    error_reporting(E_ALL);
+} else {
+    ini_set('display_errors', 0);
+    error_reporting(0);
+}
 
 // Define the application root path
 define('APP_ROOT', dirname(__DIR__));

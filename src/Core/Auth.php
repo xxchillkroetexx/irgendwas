@@ -95,11 +95,12 @@ class Auth {
             return false;
         }
         
+        // Generate reset token
         $user = $userRepository->generateResetToken($user);
         
-        // In a real application, send an email with the reset token
-        // For now, we'll just return true
-        return true;
+        // Send email with reset token
+        $emailService = new \SecretSanta\Services\EmailService();
+        return $emailService->sendPasswordReset($user, $user->getResetToken());
     }
     
     public function resetPassword(string $token, string $newPassword): bool {

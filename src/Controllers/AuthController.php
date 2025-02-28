@@ -132,6 +132,19 @@ class AuthController extends BaseController {
     }
     
     public function showResetPassword($token) {
+        // Check if token is valid before showing the form
+        $userRepository = new UserRepository();
+        $user = $userRepository->findByResetToken($token);
+        
+        // If token doesn't exist or is expired, redirect to forgot password page with error
+        if (!$user || 
+            $user->getResetTokenExpires() === null || 
+            strtotime($user->getResetTokenExpires()) < time()) {
+            
+            $this->session->setFlash('error', 'The password reset link has expired or is invalid. Please request a new one.');
+            return $this->redirect('/auth/forgot-password');
+        }
+        
         return $this->render('auth/reset-password', ['token' => $token]);
     }
     

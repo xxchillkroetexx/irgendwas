@@ -83,32 +83,55 @@ class UserRepository extends DataMapper {
     }
     
     public function generateResetToken(User $user): User {
+        // Generate a secure random token
         $token = bin2hex(random_bytes(32));
+        
+        // Set expiration to 24 hours from now
         $expires = date('Y-m-d H:i:s', strtotime('+24 hours'));
         
+        // Update user with token and expiration
         $user->setResetToken($token)
              ->setResetTokenExpires($expires);
         
-        return $this->save($user);
+        try {
+            $savedUser = $this->save($user);
+            
+            // Log success for debugging
+            error_log("Reset token generated for user ID " . $user->getId() . ": " . substr($token, 0, 8) . "...");
+            
+            return $savedUser;
+        } catch (\Exception $e) {
+            error_log("Error generating reset token: " . $e->getMessage());
+            throw $e; // Re-throw to be handled by caller
+        }
     }
     
     public function resetPassword(string $token, string $newPassword): bool {
         $user = $this->findByResetToken($token);
         
         if (!$user) {
+            error_log("Reset password failed: Token not found: " . substr($token, 0, 8) . "...");
             return false;
         }
         
-        if (strtotime($user->getResetTokenExpires()) < time()) {
+        // Check if token has expired
+        if ($user->getResetTokenExpires() === null || strtotime($user->getResetTokenExpires()) < time()) {
+            error_log("Reset password failed: Token expired for user ID " . $user->getId());
             return false;
         }
         
+        // Update user password and clear reset token
         $user->setPassword(password_hash($newPassword, PASSWORD_DEFAULT))
              ->setResetToken(null)
              ->setResetTokenExpires(null);
         
-        $this->save($user);
-        
-        return true;
+        try {
+            $this->save($user);
+            error_log("Password reset successful for user ID " . $user->getId());
+            return true;
+        } catch (\Exception $e) {
+            error_log("Error saving user after password reset: " . $e->getMessage());
+            return false;
+        }
     }
 }
