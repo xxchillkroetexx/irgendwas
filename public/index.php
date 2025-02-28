@@ -1,38 +1,33 @@
 <?php
-$host = getenv('DB_HOST') ?: 'mariadb';
-$port = getenv('DB_PORT') ?: '3306';
-$db   = getenv('DB_DATABASE') ?: 'irgendwas_db';
-$user = getenv('DB_USERNAME') ?: 'irgendjemand';
-$pass = getenv('DB_PASSWORD') ?: 'irgendeinpasswort';
+/**
+ * Secret Santa Web Application
+ * 
+ * A web application for organizing Secret Santa gift exchanges
+ */
 
-echo "<html><head><title>irgendwas</title>";
-echo "<style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-    h1, h2 { color: #336699; }
-    .success { color: green; }
-    .error { color: red; }
-</style>";
-echo "</head><body>";
+// Display all errors for debugging
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
-echo "<h1>irgendwas - PHP Web Application</h1>";
+// Define the application root path
+define('APP_ROOT', dirname(__DIR__));
+
+// Load the autoloader
+require_once APP_ROOT . '/src/Core/Autoloader.php';
 
 try {
-    $pdo = new PDO(
-        "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4",
-        $user,
-        $pass,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-    echo "<p class='success'>✅ Successfully connected to MariaDB!</p>";
-    
-    $version = $pdo->query('SELECT VERSION()')->fetchColumn();
-    echo "<p>Database version: $version</p>";
-    
-} catch (PDOException $e) {
-    echo "<p class='error'>❌ Database connection failed: " . $e->getMessage() . "</p>";
-}
+    // Register the autoloader
+    $autoloader = new \SecretSanta\Core\Autoloader();
+    $autoloader->register();
+    $autoloader->addNamespace('SecretSanta', APP_ROOT . '/src');
 
-echo "<h2>System Information</h2>";
-phpinfo();
-echo "</body></html>";
-?>
+    // Start the application
+    $app = new \SecretSanta\Core\Application();
+    $app->run();
+} catch (Throwable $e) {
+    // Display the error message
+    echo '<h1>Application Error</h1>';
+    echo '<p>' . $e->getMessage() . '</p>';
+    echo '<h2>Stack Trace:</h2>';
+    echo '<pre>' . $e->getTraceAsString() . '</pre>';
+}
