@@ -6,6 +6,8 @@ class Router {
         'GET' => [],
         'POST' => []
     ];
+
+    protected $params = [];
     
     // Register GET route
     public function get($uri, $controller) {
