@@ -58,7 +58,10 @@ class UserRepository extends DataMapper {
     public function authenticateUser(string $email, string $password): ?User {
         $user = $this->findByEmail($email);
         
+        $dummyHash = '$2y$10$nevergonnagiveyouuppppppp$';
         if (!$user) {
+            // Perform dummy verification to mitigate timing attacks
+            password_verify($password, $dummyHash);
             return null;
         }
         
