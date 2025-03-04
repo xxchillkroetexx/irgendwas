@@ -96,8 +96,8 @@ class AuthController extends BaseController {
         $user = $this->auth->register($email, $name, $password);
         
         if ($user) {
-            $this->session->setFlash('success', 'You have successfully registered');
-            $this->redirect('/user/dashboard');
+            $this->session->setFlash('success', 'You can now login with your credentials');
+            $this->redirect('/auth/login');
         } else {
             $this->session->setFlash('error', 'Registration failed, please try again');
             $this->redirect('/auth/register');

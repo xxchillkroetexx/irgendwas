@@ -58,7 +58,6 @@ class Auth {
         }
         
         $this->session->regenerate();
-        $this->session->set('user_id', $user->getId());
         $this->user = $user;
         
         return $user;
