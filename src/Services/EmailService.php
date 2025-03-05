@@ -181,8 +181,7 @@ class EmailService {
         
         // Check if we're in development mode (handling various string values)
         $appDebug = strtolower(trim(getenv('APP_DEBUG') ?: 'false'));
-        $appEnv = strtolower(trim(getenv('APP_ENV') ?: 'production'));
-        $isDevelopment = ($appEnv === 'development' || $appDebug === 'true' || $appDebug === '1');
+        $isDevelopment = ($appDebug === 'true' || $appDebug === '1');
         
         // For Docker environment or any environment, save email to a file for testing purposes
         $emailDir = APP_ROOT . '/storage/emails';
