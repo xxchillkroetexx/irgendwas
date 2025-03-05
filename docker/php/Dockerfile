@@ -1,3 +1,11 @@
+# Build stage for dependencies
+FROM composer:2.0 as composer
+
+WORKDIR /app
+COPY composer.json composer.lock* ./
+RUN composer install --no-scripts --no-autoloader --no-dev
+
+# Final PHP image
 FROM php:8.2-fpm
 
 # Install system dependencies
@@ -16,8 +24,8 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Copy composer binary for potential use in the container
+COPY --from=composer /usr/bin/composer /usr/bin/composer
 
 # Set working directory
 WORKDIR /var/www
@@ -32,18 +40,18 @@ RUN echo "display_errors = On" >> /usr/local/etc/php/conf.d/error-reporting.ini 
     echo "log_errors = On" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
     echo "error_log = /var/log/php-fpm/php-errors.log" >> /usr/local/etc/php/conf.d/error-reporting.ini
 
-# Copy composer files first
-COPY composer.json composer.lock* ./
-
-# Install dependencies
-RUN composer install --no-scripts
-
-# Copy existing application directory permissions
+# Copy application files
 COPY --chown=www-data:www-data . /var/www
 
-# Set more restricted permissions for vendor directory
-RUN find /var/www/vendor -type f -exec chmod 400 {} \; && \
-    find /var/www/vendor -type d -exec chmod 500 {} \;
+# Copy vendor directory from composer stage
+COPY --from=composer --chown=www-data:www-data /app/vendor /var/www/vendor
+
+# Generate optimized autoloader
+RUN composer dump-autoload --optimize
+
+# Set minimal required permissions for vendor directory
+RUN find /var/www/vendor -type f -exec chmod 644 {} \; && \
+    find /var/www/vendor -type d -exec chmod 755 {} \;
 
 # Expose port 9000 and start php-fpm server
 EXPOSE 9000
