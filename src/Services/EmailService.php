@@ -106,6 +106,69 @@ class EmailService {
         
         return $this->sendEmail($user->getEmail(), $subject, $message);
     }
+
+    public function sendExistingAccountNotification(string $email): bool {
+        $subject = "Account Information";
+        
+        $baseUrl = $this->getBaseUrl();
+        $resetLink = $baseUrl . "/auth/forgot-password";
+        
+        $message = "
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;'>
+                <h1 style='color: #0066cc; text-align: center;'>Account Information</h1>
+                <p>Hello,</p>
+                <p>We received a registration request for your email address on our Secret Santa platform.</p>
+                <p>Our records show that an account with this email address already exists.</p>
+                <p>If you forgot your password or need to access your account, please use the password reset option:</p>
+                <p style='text-align: center;'>
+                    <a href='{$resetLink}' style='display: inline-block; background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;'>Reset Password</a>
+                </p>
+                <p>If you didn't attempt to register, you can safely ignore this email.</p>
+                <hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'>
+                <p style='font-size: 12px; color: #777; text-align: center;'>- The Secret Santa Team</p>
+            </div>
+        </body>
+        </html>
+        ";
+        
+        return $this->sendEmail($email, $subject, $message);
+    }
+
+    public function sendWelcomeEmail(string $email, ?string $name = null): bool {
+        $subject = "Welcome to Secret Santa!";
+        
+        $greeting = $name ? "Hello {$name}," : "Hello,";
+        $baseUrl = $this->getBaseUrl();
+        
+        $message = "
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;'>
+                <h1 style='color: #0066cc; text-align: center;'>Welcome to Secret Santa!</h1>
+                <p>{$greeting}</p>
+                <p>Thank you for joining our Secret Santa platform! Your account has been successfully created.</p>
+                <p>With Secret Santa, you can:</p>
+                <ul>
+                    <li>Create or join gift exchange groups</li>
+                    <li>Participate in secret gift draws</li>
+                    <li>Create and share wishlists</li>
+                    <li>Connect with friends and family for holiday fun</li>
+                </ul>
+                <p style='text-align: center;'>
+                    <a href='{$baseUrl}/user/dashboard' style='display: inline-block; background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;'>Go to Dashboard</a>
+                </p>
+                <p>We hope you enjoy using our platform to organize your gift exchanges!</p>
+                <hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'>
+                <p style='font-size: 12px; color: #777; text-align: center;'>- The Secret Santa Team</p>
+            </div>
+        </body>
+        </html>
+        ";
+        
+        return $this->sendEmail($email, $subject, $message);
+    }
     
     private function sendEmail(string $to, string $subject, string $message): bool {
         // Set headers for HTML email
