@@ -5,6 +5,9 @@ namespace SecretSanta\Services;
 use SecretSanta\Models\User;
 use SecretSanta\Models\Group;
 use SecretSanta\Models\GiftAssignment;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
 
 // Define APP_ROOT if not already defined (for accessing storage directory)
 if (!defined('APP_ROOT')) {
@@ -171,31 +174,16 @@ class EmailService {
     }
     
     private function sendEmail(string $to, string $subject, string $message): bool {
-        // Set headers for HTML email
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-type: text/html; charset=UTF-8',
-            'From: ' . $this->fromName . ' <' . $this->fromAddress . '>',
-            'X-Mailer: PHP/' . phpversion()
-        ];
-        
-        // For development, log the email details
+        // Log the email details for development purposes
         error_log("Email would be sent to: {$to}");
         error_log("Subject: {$subject}");
         error_log("Message: " . substr($message, 0, 100) . "...");
         
         // Check if we're in development mode (handling various string values)
         $appDebug = strtolower(trim(getenv('APP_DEBUG') ?: 'false'));
-        $appEnv = strtolower(trim(getenv('APP_ENV') ?: 'production'));
+        $isDevelopment = ($appDebug === 'true' || $appDebug === '1');
         
-        if ($appEnv === 'development' || $appDebug === 'true' || $appDebug === '1') {
-            // In development, just log and return success
-            error_log("Email sending skipped (development mode)");
-            return true;
-        }
-        
-        // For Docker environment or any environment without a mail server, implement a fallback
-        // Save email to a file for testing purposes
+        // For Docker environment or any environment, save email to a file for testing purposes
         $emailDir = APP_ROOT . '/storage/emails';
         if (!is_dir($emailDir)) {
             mkdir($emailDir, 0777, true);
@@ -205,34 +193,78 @@ class EmailService {
         $sanitizedSubject = preg_replace('/[^a-zA-Z0-9]/', '_', $subject);
         $filename = $emailDir . '/' . time() . '_' . $sanitizedSubject . '.html';
         
-        // Create the email content with headers and details
+        // Create the email content with details
         $fileContent = "To: {$to}\n";
         $fileContent .= "Subject: {$subject}\n";
-        $fileContent .= "Headers: " . print_r($headers, true) . "\n\n";
+        $fileContent .= "From: {$this->fromName} <{$this->fromAddress}>\n\n";
         $fileContent .= $message;
         
-        // Save to file
+        // Save to file (always do this as a backup)
         file_put_contents($filename, $fileContent);
         error_log("Email saved to file for testing: {$filename}");
         
-        // Try to send through mail() as well in case it might work
+        // In development mode, just log and return success
+        if ($isDevelopment) {
+            error_log("Email sending skipped (development mode)");
+            return true;
+        }
+        
+        // Try to send through PHPMailer
         try {
-            $headerString = implode("\r\n", $headers);
-            $mailSent = mail($to, $subject, $message, $headerString);
+            // Create a new PHPMailer instance
+            $mail = new PHPMailer(true);
             
-            if ($mailSent) {
-                error_log("Email successfully sent to {$to} via mail()");
+            // Debugging
+            $mail->SMTPDebug = SMTP::DEBUG_SERVER; // Output debug info
+            $mail->Debugoutput = function($str, $level) {
+                error_log("PHPMailer [$level]: $str");
+            };
+            
+            // Check if SMTP is properly configured
+            if (!empty($this->host) && $this->host !== 'smtp.example.com') {
+                // Server settings for SMTP
+                $mail->isSMTP();
+                $mail->Host = $this->host;
+                $mail->SMTPAuth = true;
+                $mail->Username = $this->username;
+                $mail->Password = $this->password;
+                $mail->Port = $this->port;
+                
+                // Set longer timeout for slow connections
+                $mail->Timeout = 30; // 30 seconds
+                
+                // Set encryption type if specified
+                if ($this->encryption === 'tls') {
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                } elseif ($this->encryption === 'ssl') {
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                }
             } else {
-                $lastError = error_get_last();
-                $errorMessage = $lastError ? $lastError['message'] : 'Unknown error';
-                error_log("mail() failed but email was saved to file. Error: {$errorMessage}");
+                // If SMTP not configured, use PHP's mail function
+                $mail->isMail();
             }
             
-            // Always return true since we saved the email to a file
+            // Recipients
+            $mail->setFrom($this->fromAddress, $this->fromName);
+            $mail->addAddress($to);
+            
+            // Content
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = $message;
+            $mail->CharSet = 'UTF-8';
+            
+            // Send the email
+            $sent = $mail->send();
+            if ($sent) {
+                error_log("Email successfully sent to {$to} via PHPMailer");
+            }
             return true;
-        } catch (\Exception $e) {
-            error_log("Exception with mail(): " . $e->getMessage() . " - but email was saved to file");
-            return true; // Still return true since we have the fallback
+            
+        } catch (Exception $e) {
+            error_log("PHPMailer error: " . $e->getMessage());
+            // Return true anyway since we already saved the email to file as fallback
+            return true;
         }
     }
     
