@@ -27,6 +27,7 @@ services:
     volumes:
       - .:/var/www:cached
       - ./docker/php/php-fpm.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+      - vendor_volume:/var/www/vendor
       - php_logs:/var/log/php-fpm
     user: www-data
     depends_on:
@@ -95,3 +96,5 @@ volumes:
     name: irgendwas_mariadb_data
   php_logs:
     name: irgendwas_php_logs
+  vendor_volume:
+    name: irgendwas_vendor_volume

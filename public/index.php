@@ -5,6 +5,9 @@
  * A web application for organizing Secret Santa gift exchanges
  */
 
+// Include Composer autoloader
+require_once __DIR__ . '/../vendor/autoload.php';
+
 // Set error reporting based on APP_DEBUG environment variable
 if (getenv('APP_DEBUG') === 'true') {
     ini_set('display_errors', 1);
