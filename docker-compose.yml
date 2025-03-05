@@ -7,8 +7,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./public:/var/www/public
-      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./public:/var/www/public:ro
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -22,12 +22,12 @@ services:
 
   php:
     build:
-      context: ./docker/php
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./docker/php/Dockerfile
     volumes:
-      - .:/var/www:cached
+      - ./public:/var/www/public:ro
+      - ./src:/var/www/src:ro
       - ./docker/php/php-fpm.conf:/usr/local/etc/php-fpm.d/www.conf:ro
-      - vendor_volume:/var/www/vendor
       - php_logs:/var/log/php-fpm
     user: www-data
     depends_on:
@@ -96,5 +96,3 @@ volumes:
     name: irgendwas_mariadb_data
   php_logs:
     name: irgendwas_php_logs
-  vendor_volume:
-    name: irgendwas_vendor_volume
