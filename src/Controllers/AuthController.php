@@ -3,6 +3,7 @@
 namespace SecretSanta\Controllers;
 
 use SecretSanta\Repositories\UserRepository;
+use SecretSanta\Services\EmailService;
 
 class AuthController extends BaseController {
     public function showLogin() {
@@ -47,6 +48,7 @@ class AuthController extends BaseController {
         $name = $this->request->getPostParam('name');
         $password = $this->request->getPostParam('password');
         $passwordConfirm = $this->request->getPostParam('password_confirm');
+        $mailer = new EmailService();
         
         // Validate inputs
         $errors = [];
@@ -82,26 +84,25 @@ class AuthController extends BaseController {
         }
         
         // Check if email already exists
+        // To mitigate timing attacks, perform the same operations regardless of user existence
         $userRepository = new UserRepository();
-        if ($userRepository->findByEmail($email)) {
-            $this->session->setFlash('error', 'This email is already registered');
-            $this->session->setFlash('old_input', [
-                'email' => $email,
-                'name' => $name
-            ]);
-            $this->redirect('/auth/register');
-            return;
-        }
+        $userExists = $userRepository->findByEmail($email);
         
-        $user = $this->auth->register($email, $name, $password);
-        
-        if ($user) {
-            $this->session->setFlash('success', 'You can now login with your credentials');
-            $this->redirect('/auth/login');
+        if ($userExists) {
+            $mailer->sendExistingAccountNotification($email);
         } else {
-            $this->session->setFlash('error', 'Registration failed, please try again');
-            $this->redirect('/auth/register');
+            // Create new user
+            $this->auth->register($email, $name, $password);
+            $mailer->sendWelcomeEmail($email);
         }
+        
+        // Use the same response for both outcomes
+        $this->session->setFlash('success', 'If your registration was successful, you will receive an email with instructions');
+        
+        // Add a small random delay to make timing analysis more difficult
+        usleep(random_int(100000, 200000)); // 0.1-0.2 second delay
+        
+        $this->redirect('/auth/login');
     }
     
     public function logout() {
