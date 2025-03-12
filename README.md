@@ -19,14 +19,16 @@ A web application for organizing Secret Santa gift exchanges. This application a
 - SMTP server for sending emails
 - Composer (for development)
 
+Or just docker with docker compose.
+
 ## Development with Docker Compose
 
 The easiest way to get started is to use the included Docker setup:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/secret-santa.git
-cd secret-santa
+git clone https://git.scheissndreck.de/irgendwas/irgendwas.git
+cd irgendwas
 
 # Copy environment configuration and modify as needed
 cp .env.template .env
@@ -37,22 +39,42 @@ docker compose up -d
 
 After starting the Docker Compose stack, the application will be available at http://localhost or the URL configured in your .env file.
 
-## Database Initialization
-
-The database schema will be automatically initialized on first run. If you need to reinitialize the database, uncomment the initialization line in `src/Core/Application.php`:
-
-```php
-// Uncomment to initialize database schema
-$db->initialize();
-```
-
 ## Configuration
 
-All configuration is handled through environment variables in the `.env` file:
+All configuration is handled through environment variables in the `.env` file.
 
-- Database connection details
-- SMTP server settings for email notifications
-- Application settings and security keys
+Make sure to review and adjust these settings before deployment:
+
+### Database Settings
+
+- `DB_HOST` - Database host (default: localhost)
+- `DB_PORT` - Database port (default: 3306)
+- `DB_DATABASE` - Database name (default: irgendwas_db)
+- `DB_USERNAME` - Database username (default: irgendjemand)
+- `DB_PASSWORD` - Database password (default: irgendeinpasswort)
+
+### Email Settings
+
+- `MAIL_HOST` - SMTP server host (default: smtp.example.com)
+- `MAIL_PORT` - SMTP server port (default: 587)
+- `MAIL_USERNAME` - SMTP username
+- `MAIL_PASSWORD` - SMTP password
+- `MAIL_ENCRYPTION` - SMTP encryption (tls, ssl) (default: tls)
+- `MAIL_FROM_ADDRESS` - Sender email address (default: noreply@example.com)
+- `MAIL_FROM_NAME` - Sender name (default: Secret Santa)
+
+### Application Settings
+
+- `APP_URL` - Base URL of the application (default: https://localhost)
+- `APP_DEBUG` - Enable debugging mode (true/false) (default: false)
+
+## Database Initialization
+
+After configuring your environment variables, initialize the database by visiting:
+
+```
+https://localhost/setup.php
+```
 
 ## Directory Structure
 
@@ -65,13 +87,12 @@ All configuration is handled through environment variables in the `.env` file:
 ├── src/                # Application source code
 │   ├── Config/         # Configuration files
 │   ├── Core/           # Core application functionality
+│   ├── Controllers/    # Request handlers
 │   ├── Database/       # Database and ORM implementation
+│   ├── Localization/   # Internationalization
 │   ├── Models/         # Domain models/entities
 │   ├── Repositories/   # Data access layer
-│   ├── Controllers/    # Request handlers
 │   ├── Services/       # Business logic
-│   ├── Helpers/        # Utility functions
-│   ├── Localization/   # Internationalization
 │   └── Views/          # Templates/views
 ├── .env.template       # Environment variables template
 └── docker-compose.yml  # Docker Compose configuration
