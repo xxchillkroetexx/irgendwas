@@ -2,6 +2,7 @@
 
 namespace SecretSanta\Services;
 
+
 use SecretSanta\Models\User;
 use SecretSanta\Models\Group;
 use SecretSanta\Models\GiftAssignment;
@@ -14,7 +15,8 @@ if (!defined('APP_ROOT')) {
     define('APP_ROOT', dirname(dirname(__DIR__)));
 }
 
-class EmailService {
+class EmailService
+{
     private string $host;
     private int $port;
     private string $username;
@@ -22,8 +24,9 @@ class EmailService {
     private string $encryption;
     private string $fromAddress;
     private string $fromName;
-    
-    public function __construct() {
+
+    public function __construct()
+    {
         $this->host = getenv('MAIL_HOST') ?: 'smtp.example.com';
         $this->port = (int) (getenv('MAIL_PORT') ?: 587);
         $this->username = getenv('MAIL_USERNAME') ?: 'your_username';
@@ -32,10 +35,11 @@ class EmailService {
         $this->fromAddress = getenv('MAIL_FROM_ADDRESS') ?: 'noreply@example.com';
         $this->fromName = getenv('MAIL_FROM_NAME') ?: 'Secret Santa';
     }
-    
-    public function sendInvitation(User $invitee, Group $group, User $inviter): bool {
+
+    public function sendInvitation(User $invitee, Group $group, User $inviter): bool
+    {
         $subject = "You've been invited to join a Secret Santa group";
-        
+
         $message = "
         <html>
         <body>
@@ -50,13 +54,14 @@ class EmailService {
         </body>
         </html>
         ";
-        
+
         return $this->sendEmail($invitee->getEmail(), $subject, $message);
     }
-    
-    public function sendDrawNotification(string $email, string $giverName, string $receiverName, string $groupName, string $groupUrl): bool {
+
+    public function sendDrawNotification(string $email, string $giverName, string $receiverName, string $groupName, string $groupUrl): bool
+    {
         $subject = "Your Secret Santa Draw Results for {$groupName}";
-        
+
         $message = "
         <html>
         <body>
@@ -72,17 +77,18 @@ class EmailService {
         </body>
         </html>
         ";
-        
+
         return $this->sendEmail($email, $subject, $message);
     }
-    
-    public function sendPasswordReset(User $user, string $token): bool {
+
+    public function sendPasswordReset(User $user, string $token): bool
+    {
         $subject = "Password Reset Request";
-        
+
         // Get base URL from environment or use default
         $baseUrl = $this->getBaseUrl();
         $resetLink = $baseUrl . "/auth/reset-password/{$token}";
-        
+
         $message = "
         <html>
         <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
@@ -103,19 +109,20 @@ class EmailService {
         </body>
         </html>
         ";
-        
+
         // Log the reset link for debugging purposes
         error_log("Password reset link for {$user->getEmail()}: {$resetLink}");
-        
+
         return $this->sendEmail($user->getEmail(), $subject, $message);
     }
 
-    public function sendExistingAccountNotification(string $email): bool {
+    public function sendExistingAccountNotification(string $email): bool
+    {
         $subject = "Account Information";
-        
+
         $baseUrl = $this->getBaseUrl();
         $resetLink = $baseUrl . "/auth/forgot-password";
-        
+
         $message = "
         <html>
         <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
@@ -135,16 +142,17 @@ class EmailService {
         </body>
         </html>
         ";
-        
+
         return $this->sendEmail($email, $subject, $message);
     }
 
-    public function sendWelcomeEmail(string $email, ?string $name = null): bool {
+    public function sendWelcomeEmail(string $email, ?string $name = null): bool
+    {
         $subject = "Welcome to Secret Santa!";
-        
+
         $greeting = $name ? "Hello {$name}," : "Hello,";
         $baseUrl = $this->getBaseUrl();
-        
+
         $message = "
         <html>
         <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
@@ -169,57 +177,71 @@ class EmailService {
         </body>
         </html>
         ";
-        
+
         return $this->sendEmail($email, $subject, $message);
     }
-    
-    private function sendEmail(string $to, string $subject, string $message): bool {
+
+    private function sendEmail(string $to, string $subject, string $message): bool
+    {
         // Log the email details for development purposes
         error_log("Email would be sent to: {$to}");
         error_log("Subject: {$subject}");
         error_log("Message: " . substr($message, 0, 100) . "...");
-        
-        // Check if we're in development mode (handling various string values)
-        $appDebug = strtolower(trim(getenv('APP_DEBUG') ?: 'false'));
-        $isDevelopment = ($appDebug === 'true' || $appDebug === '1');
-        
-        // For Docker environment or any environment, save email to a file for testing purposes
-        $emailDir = APP_ROOT . '/storage/emails';
-        if (!is_dir($emailDir)) {
-            mkdir($emailDir, 0777, true);
-        }
 
-        // Sanitize the subject for use in the filename
-        $sanitizedSubject = preg_replace('/[^a-zA-Z0-9]/', '_', $subject);
-        $filename = $emailDir . '/' . time() . '_' . $sanitizedSubject . '.html';
-        
         // Create the email content with details
-        $fileContent = "To: {$to}\n";
+        $fileContent  = "To: {$to}\n";
         $fileContent .= "Subject: {$subject}\n";
         $fileContent .= "From: {$this->fromName} <{$this->fromAddress}>\n\n";
         $fileContent .= $message;
-        
-        // Save to file (always do this as a backup)
-        file_put_contents($filename, $fileContent);
-        error_log("Email saved to file for testing: {$filename}");
-        
-        // In development mode, just log and return success
-        if ($isDevelopment) {
+
+        // Save to file if in development mode
+        if (getenv('APP_DEBUG') === 'true') {
+            // Ensure the directory exists
+            $emailDir = APP_ROOT . '/storage/emails';
+            if (!is_dir($emailDir)) {
+                try {
+                    if (!mkdir($emailDir, 0777, true) && !is_dir($emailDir)) {
+                        error_log("Unable to create email directory: $emailDir");
+                    } else {
+                        // Ensure correct permissions after creation
+                        chmod($emailDir, 0777);
+                    }
+                } catch (\Exception $e) {
+                    error_log("Exception creating email directory: " . $e->getMessage());
+                }
+            }
+
+            // Sanitize the subject for use in the filename
+            $sanitizedSubject = preg_replace('/[^a-zA-Z0-9]/', '_', $subject);
+            $filename = $emailDir . '/' . time() . '_' . $sanitizedSubject . '.html';
+
+            // Save email to a file for testing purposes
+            try {
+                if (is_dir($emailDir) && is_writable($emailDir)) {
+                    file_put_contents($filename, $fileContent);
+                    error_log("Email saved to file for testing: {$filename}");
+                } else {
+                    error_log("Cannot write to email directory: $emailDir");
+                }
+            } catch (\Exception $e) {
+                error_log("Exception saving email to file: " . $e->getMessage());
+            }
+            // Skip sending the email in development mode
             error_log("Email sending skipped (development mode)");
             return true;
         }
-        
+
         // Try to send through PHPMailer
         try {
             // Create a new PHPMailer instance
             $mail = new PHPMailer(true);
-            
+
             // Debugging
             $mail->SMTPDebug = SMTP::DEBUG_SERVER; // Output debug info
-            $mail->Debugoutput = function($str, $level) {
+            $mail->Debugoutput = function ($str, $level) {
                 error_log("PHPMailer [$level]: $str");
             };
-            
+
             // Check if SMTP is properly configured
             if (!empty($this->host) && $this->host !== 'smtp.example.com') {
                 // Server settings for SMTP
@@ -229,10 +251,10 @@ class EmailService {
                 $mail->Username = $this->username;
                 $mail->Password = $this->password;
                 $mail->Port = $this->port;
-                
+
                 // Set longer timeout for slow connections
                 $mail->Timeout = 30; // 30 seconds
-                
+
                 // Set encryption type if specified
                 if ($this->encryption === 'tls') {
                     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
@@ -243,32 +265,32 @@ class EmailService {
                 // If SMTP not configured, use PHP's mail function
                 $mail->isMail();
             }
-            
+
             // Recipients
             $mail->setFrom($this->fromAddress, $this->fromName);
             $mail->addAddress($to);
-            
+
             // Content
             $mail->isHTML(true);
             $mail->Subject = $subject;
             $mail->Body = $message;
             $mail->CharSet = 'UTF-8';
-            
+
             // Send the email
             $sent = $mail->send();
             if ($sent) {
                 error_log("Email successfully sent to {$to} via PHPMailer");
             }
             return true;
-            
         } catch (Exception $e) {
             error_log("PHPMailer error: " . $e->getMessage());
             // Return true anyway since we already saved the email to file as fallback
             return true;
         }
     }
-    
-    private function getBaseUrl(): string {
+
+    private function getBaseUrl(): string
+    {
         return getenv('APP_URL') ?: 'https://localhost';
     }
 }
