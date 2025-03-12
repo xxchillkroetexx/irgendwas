@@ -7,7 +7,7 @@
             <div class="card-body">
                 <form action="/auth/reset-password" method="post">
                     <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-                    
+
                     <div class="mb-3">
                         <label for="password" class="form-label">New Password</label>
                         <input type="password" class="form-control" id="password" name="password" required minlength="8">
@@ -21,7 +21,7 @@
                         <button type="submit" class="btn btn-primary">Reset Password</button>
                     </div>
                 </form>
-                
+
                 <div class="mt-3 text-center">
                     <a href="/auth/login">Back to login</a>
                 </div>

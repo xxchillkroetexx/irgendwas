@@ -35,29 +35,29 @@
         <form action="/wishlist/<?= $group->getId() ?>/item/add" method="post">
             <div class="mb-3">
                 <label for="title" class="form-label">Item Title *</label>
-                <input type="text" class="form-control" id="title" name="title" required 
+                <input type="text" class="form-control" id="title" name="title" required
                     value="<?= isset($old['title']) ? htmlspecialchars($old['title']) : '' ?>">
                 <?php if (isset($errors['title'])): ?>
                     <div class="text-danger"><?= htmlspecialchars($errors['title']) ?></div>
                 <?php endif; ?>
             </div>
-            
+
             <div class="mb-3">
                 <label for="description" class="form-label">Description</label>
                 <textarea class="form-control" id="description" name="description" rows="3"><?= isset($old['description']) ? htmlspecialchars($old['description']) : '' ?></textarea>
                 <div class="form-text">Optional. Add details like size, color, or model.</div>
             </div>
-            
+
             <div class="mb-3">
                 <label for="link" class="form-label">Link</label>
-                <input type="url" class="form-control" id="link" name="link" 
+                <input type="url" class="form-control" id="link" name="link"
                     value="<?= isset($old['link']) ? htmlspecialchars($old['link']) : '' ?>">
                 <div class="form-text">Optional. Add a link to the item online.</div>
                 <?php if (isset($errors['link'])): ?>
                     <div class="text-danger"><?= htmlspecialchars($errors['link']) ?></div>
                 <?php endif; ?>
             </div>
-            
+
             <button type="submit" class="btn btn-success">Add Item</button>
         </form>
     </div>
@@ -110,15 +110,15 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <button type="button" class="btn btn-outline-primary edit-item-btn" 
-                                                data-id="<?= $item->getId() ?>"
-                                                data-title="<?= htmlspecialchars($item->getTitle()) ?>"
-                                                data-description="<?= htmlspecialchars($item->getDescription() ?? '') ?>"
-                                                data-link="<?= htmlspecialchars($item->getLink() ?? '') ?>">
+                                        <button type="button" class="btn btn-outline-primary edit-item-btn"
+                                            data-id="<?= $item->getId() ?>"
+                                            data-title="<?= htmlspecialchars($item->getTitle()) ?>"
+                                            data-description="<?= htmlspecialchars($item->getDescription() ?? '') ?>"
+                                            data-link="<?= htmlspecialchars($item->getLink() ?? '') ?>">
                                             Edit
                                         </button>
                                         <a href="/wishlist/item/<?= $item->getId() ?>/delete" class="btn btn-outline-danger"
-                                           onclick="return confirm('Are you sure you want to delete this item?')">
+                                            onclick="return confirm('Are you sure you want to delete this item?')">
                                             Delete
                                         </a>
                                     </div>
@@ -146,13 +146,13 @@
                         <label for="editTitle" class="form-label">Item Title *</label>
                         <input type="text" class="form-control" id="editTitle" name="title" required>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="editDescription" class="form-label">Description</label>
                         <textarea class="form-control" id="editDescription" name="description" rows="3"></textarea>
                         <div class="form-text">Optional. Add details like size, color, or model.</div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="editLink" class="form-label">Link</label>
                         <input type="url" class="form-control" id="editLink" name="link">
@@ -179,7 +179,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="text-muted">Drag and drop items to set your priority order. Items at the top have higher priority.</p>
-                    
+
                     <ul class="list-group" id="sortableItems">
                         <?php foreach ($wishlist->getItems() as $item): ?>
                             <li class="list-group-item d-flex justify-content-between align-items-center" data-item-id="<?= $item->getId() ?>">
@@ -205,42 +205,42 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Edit item modal functionality
-    const editButtons = document.querySelectorAll('.edit-item-btn');
-    const editForm = document.getElementById('editItemForm');
-    const editTitle = document.getElementById('editTitle');
-    const editDescription = document.getElementById('editDescription');
-    const editLink = document.getElementById('editLink');
-    
-    editButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const id = this.dataset.id;
-            const title = this.dataset.title;
-            const description = this.dataset.description;
-            const link = this.dataset.link;
-            
-            editForm.action = `/wishlist/item/${id}/update`;
-            editTitle.value = title;
-            editDescription.value = description;
-            editLink.value = link;
-            
-            const modal = new bootstrap.Modal(document.getElementById('editItemModal'));
-            modal.show();
+    document.addEventListener('DOMContentLoaded', function() {
+        // Edit item modal functionality
+        const editButtons = document.querySelectorAll('.edit-item-btn');
+        const editForm = document.getElementById('editItemForm');
+        const editTitle = document.getElementById('editTitle');
+        const editDescription = document.getElementById('editDescription');
+        const editLink = document.getElementById('editLink');
+
+        editButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const title = this.dataset.title;
+                const description = this.dataset.description;
+                const link = this.dataset.link;
+
+                editForm.action = `/wishlist/item/${id}/update`;
+                editTitle.value = title;
+                editDescription.value = description;
+                editLink.value = link;
+
+                const modal = new bootstrap.Modal(document.getElementById('editItemModal'));
+                modal.show();
+            });
         });
+
+        // Priority order modal
+        const editPriorityBtn = document.getElementById('editPriorityBtn');
+        if (editPriorityBtn) {
+            editPriorityBtn.addEventListener('click', function() {
+                const modal = new bootstrap.Modal(document.getElementById('priorityOrderModal'));
+                modal.show();
+            });
+        }
+
+        // TODO: Implement drag and drop sorting functionality
+        // This would require a JavaScript library like Sortable.js
+        // For now, this is a placeholder for future enhancement
     });
-    
-    // Priority order modal
-    const editPriorityBtn = document.getElementById('editPriorityBtn');
-    if (editPriorityBtn) {
-        editPriorityBtn.addEventListener('click', function() {
-            const modal = new bootstrap.Modal(document.getElementById('priorityOrderModal'));
-            modal.show();
-        });
-    }
-    
-    // TODO: Implement drag and drop sorting functionality
-    // This would require a JavaScript library like Sortable.js
-    // For now, this is a placeholder for future enhancement
-});
 </script>

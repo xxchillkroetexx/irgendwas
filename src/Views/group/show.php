@@ -17,7 +17,9 @@
                     <?php if (!$group->isDrawn()): ?>
                         <li><a class="dropdown-item" href="/groups/<?= $group->getId() ?>/draw" onclick="return confirm('Are you sure you want to perform the draw? This cannot be undone.')">Perform Draw</a></li>
                     <?php endif; ?>
-                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
                     <li><a class="dropdown-item text-danger" href="/groups/<?= $group->getId() ?>/delete" onclick="return confirm('Are you sure you want to delete this group? This action cannot be undone.')">Delete Group</a></li>
                 </ul>
             </div>
@@ -34,8 +36,8 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Group Details</h5>
                 <?php if ($is_admin && !$group->isDrawn() && !empty($group->getMembers()) && count($group->getMembers()) >= 3): ?>
-                    <a href="/groups/<?= $group->getId() ?>/draw" class="btn btn-sm btn-success" 
-                       onclick="return confirm('Are you sure you want to perform the draw? This cannot be undone.')">
+                    <a href="/groups/<?= $group->getId() ?>/draw" class="btn btn-sm btn-success"
+                        onclick="return confirm('Are you sure you want to perform the draw? This cannot be undone.')">
                         Perform Draw
                     </a>
                 <?php endif; ?>
@@ -67,63 +69,63 @@
                         </li>
                     <?php endif; ?>
                     <?php if ($group->getCreatedAt()): ?>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <span>Created On:</span>
-                        <span><?= date('F j, Y', strtotime($group->getCreatedAt())) ?></span>
-                    </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>Created On:</span>
+                            <span><?= date('F j, Y', strtotime($group->getCreatedAt())) ?></span>
+                        </li>
                     <?php endif; ?>
                 </ul>
             </div>
         </div>
     </div>
-    
+
     <?php if ($is_admin): ?>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Invitation Code</h5>
-            </div>
-            <div class="card-body">
-                <p class="card-text">Share this code with others to invite them to your group:</p>
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control" value="<?= htmlspecialchars($group->getInvitationCode()) ?>" readonly id="invitation-code">
-                    <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('invitation-code')">Copy</button>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title">Invitation Code</h5>
                 </div>
-                <p class="card-text">
-                    <small class="text-muted">
-                        Or share this link:
-                        <?php
-                        $baseUrl = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'];
-                        $joinUrl = $baseUrl . '/groups/join?code=' . $group->getInvitationCode();
-                        ?>
-                        <a href="<?= $joinUrl ?>" target="_blank"><?= $joinUrl ?></a>
-                    </small>
-                </p>
+                <div class="card-body">
+                    <p class="card-text">Share this code with others to invite them to your group:</p>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" value="<?= htmlspecialchars($group->getInvitationCode()) ?>" readonly id="invitation-code">
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('invitation-code')">Copy</button>
+                    </div>
+                    <p class="card-text">
+                        <small class="text-muted">
+                            Or share this link:
+                            <?php
+                            $baseUrl = $_SERVER['REQUEST_SCHEME'] . '://' . $_SERVER['HTTP_HOST'];
+                            $joinUrl = $baseUrl . '/groups/join?code=' . $group->getInvitationCode();
+                            ?>
+                            <a href="<?= $joinUrl ?>" target="_blank"><?= $joinUrl ?></a>
+                        </small>
+                    </p>
+                </div>
             </div>
         </div>
-    </div>
     <?php endif; ?>
 </div>
 
 <!-- Assignment result (if drawn) -->
 <?php if ($group->isDrawn() && $assignment): ?>
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card border-success">
-            <div class="card-header bg-success text-white">
-                <h5 class="card-title mb-0">Your Secret Santa Assignment</h5>
-            </div>
-            <div class="card-body">
-                <p class="card-text">You have been assigned to give a gift to:</p>
-                <h3 class="text-center mb-4"><?= htmlspecialchars($assignment->getReceiver()->getName()) ?></h3>
-                
-                <div class="d-grid gap-2 col-md-6 mx-auto">
-                    <a href="/wishlist/view/<?= $assignment->getReceiverId() ?>/<?= $group->getId() ?>" class="btn btn-primary">View Their Wishlist</a>
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="card-title mb-0">Your Secret Santa Assignment</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">You have been assigned to give a gift to:</p>
+                    <h3 class="text-center mb-4"><?= htmlspecialchars($assignment->getReceiver()->getName()) ?></h3>
+
+                    <div class="d-grid gap-2 col-md-6 mx-auto">
+                        <a href="/wishlist/view/<?= $assignment->getReceiverId() ?>/<?= $group->getId() ?>" class="btn btn-primary">View Their Wishlist</a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 <?php endif; ?>
 
 <!-- Group members -->
@@ -187,13 +189,13 @@
 </div>
 
 <script>
-function copyToClipboard(elementId) {
-    var input = document.getElementById(elementId);
-    input.select();
-    input.setSelectionRange(0, 99999);
-    document.execCommand("copy");
-    
-    // Show toast or alert that copying was successful
-    alert("Copied to clipboard!");
-}
+    function copyToClipboard(elementId) {
+        var input = document.getElementById(elementId);
+        input.select();
+        input.setSelectionRange(0, 99999);
+        document.execCommand("copy");
+
+        // Show toast or alert that copying was successful
+        alert("Copied to clipboard!");
+    }
 </script>

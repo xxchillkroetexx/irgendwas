@@ -30,7 +30,7 @@
                         <?php else: ?>
                             <p class="card-text text-muted"><em>No description</em></p>
                         <?php endif; ?>
-                        
+
                         <div class="d-flex justify-content-between align-items-center mt-3">
                             <small class="text-muted">
                                 <?php if ($group->isDrawn()): ?>
