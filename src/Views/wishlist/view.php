@@ -19,25 +19,25 @@
                     This wishlist is priority ordered. Items at the top are higher priority.
                 </div>
             <?php endif; ?>
-            
+
             <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
                 <?php foreach ($wishlist->getItems() as $item): ?>
                     <div class="col">
                         <div class="card h-100">
                             <div class="card-body">
                                 <h5 class="card-title"><?= htmlspecialchars($item->getTitle()) ?></h5>
-                                
+
                                 <?php if ($item->getDescription()): ?>
                                     <p class="card-text"><?= nl2br(htmlspecialchars($item->getDescription())) ?></p>
                                 <?php endif; ?>
-                                
+
                                 <?php if ($item->getLink()): ?>
                                     <a href="<?= htmlspecialchars($item->getLink()) ?>" class="btn btn-sm btn-outline-primary mt-2" target="_blank">
                                         View Item <i class="bi bi-box-arrow-up-right ms-1"></i>
                                     </a>
                                 <?php endif; ?>
                             </div>
-                            
+
                             <?php if ($wishlist->isPriorityOrdered()): ?>
                                 <div class="card-footer text-muted">
                                     <small>Priority: <?= $item->getPosition() ?></small>
@@ -50,7 +50,7 @@
         <?php else: ?>
             <div class="text-center py-5">
                 <h4 class="text-muted mb-4">No items in this wishlist yet</h4>
-                
+
                 <?php if ($is_own_wishlist): ?>
                     <p>Add some items to help your Secret Santa know what you'd like!</p>
                     <a href="/wishlist/edit/<?= $group->getId() ?>" class="btn btn-primary">Add Items Now</a>

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Secret Santa Web Application
  * 

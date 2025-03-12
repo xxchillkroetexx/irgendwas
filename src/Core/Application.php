@@ -9,22 +9,25 @@ use SecretSanta\Controllers\GroupController;
 use SecretSanta\Controllers\WishlistController;
 use SecretSanta\Controllers\ExclusionController;
 
-class Application {
+class Application
+{
     private Router $router;
-    
-    public function __construct() {
+
+    public function __construct()
+    {
         $this->router = Router::getInstance();
         $this->setupRoutes();
     }
-    
-    public function run(): void {
+
+    public function run(): void
+    {
         try {
             // Handle the current request
             $this->router->handle();
         } catch (\Exception $e) {
             // Log the error
             error_log("Application error: " . $e->getMessage());
-            
+
             // Display error in development mode
             if (getenv('APP_DEBUG') === 'true') {
                 echo '<h1>Application Error</h1>';
@@ -38,12 +41,13 @@ class Application {
             }
         }
     }
-    
-    private function setupRoutes(): void {
+
+    private function setupRoutes(): void
+    {
         // Home routes
         $this->router->get('/', [HomeController::class, 'index']);
         $this->router->get('/language/:locale', [HomeController::class, 'setLanguage']);
-        
+
         // Authentication routes
         $this->router->get('/auth/login', [AuthController::class, 'showLogin']);
         $this->router->post('/auth/login', [AuthController::class, 'login']);
@@ -54,15 +58,15 @@ class Application {
         $this->router->post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
         $this->router->get('/auth/reset-password/:token', [AuthController::class, 'showResetPassword']);
         $this->router->post('/auth/reset-password', [AuthController::class, 'resetPassword']);
-        
+
         // User routes
         $this->router->get('/user/dashboard', [UserController::class, 'dashboard']);
         $this->router->get('/user/profile', [UserController::class, 'showProfile']);
         $this->router->post('/user/profile', [UserController::class, 'updateProfile']);
-        
+
         // API routes
         $this->router->get('/api/user/:id', [UserController::class, 'apiGetUser']);
-        
+
         // Group routes
         $this->router->get('/groups', [GroupController::class, 'index']);
         $this->router->get('/groups/create', [GroupController::class, 'create']);
@@ -76,7 +80,7 @@ class Application {
         $this->router->get('/groups/:id/leave', [GroupController::class, 'leave']);
         $this->router->get('/groups/:id/draw', [GroupController::class, 'draw']);
         $this->router->get('/groups/:id/regenerate-invitation', [GroupController::class, 'generateInvitationLink']);
-        
+
         // Wishlist routes
         $this->router->get('/wishlist/view/:userId/:groupId', [WishlistController::class, 'view']);
         $this->router->get('/wishlist/edit/:groupId', [WishlistController::class, 'edit']);
@@ -85,7 +89,7 @@ class Application {
         $this->router->post('/wishlist/item/:itemId/update', [WishlistController::class, 'updateItem']);
         $this->router->get('/wishlist/item/:itemId/delete', [WishlistController::class, 'deleteItem']);
         $this->router->post('/wishlist/:groupId/priority', [WishlistController::class, 'updatePriority']);
-        
+
         // Exclusion routes
         $this->router->get('/exclusions/:groupId', [ExclusionController::class, 'index']);
         $this->router->post('/exclusions/:groupId/add', [ExclusionController::class, 'add']);

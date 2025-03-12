@@ -2,21 +2,23 @@
 
 namespace SecretSanta\Core;
 
-class Request {
+class Request
+{
     private static ?self $instance = null;
     private array $queryParams;
     private array $postParams;
     private array $serverParams;
     private array $cookieParams;
     private array $files;
-    
-    private function __construct() {
+
+    private function __construct()
+    {
         $this->queryParams = $_GET;
         $this->postParams = $_POST;
         $this->serverParams = $_SERVER;
         $this->cookieParams = $_COOKIE;
         $this->files = $_FILES;
-        
+
         // Check for JSON input in the request body
         $contentType = $this->getHeader('Content-Type');
         if ($contentType && strpos($contentType, 'application/json') !== false) {
@@ -29,75 +31,89 @@ class Request {
             }
         }
     }
-    
-    public static function getInstance(): self {
+
+    public static function getInstance(): self
+    {
         if (self::$instance === null) {
             self::$instance = new self();
         }
-        
+
         return self::$instance;
     }
-    
-    public function getQueryParam(string $key, $default = null) {
+
+    public function getQueryParam(string $key, $default = null)
+    {
         return $this->queryParams[$key] ?? $default;
     }
-    
-    public function getPostParam(string $key, $default = null) {
+
+    public function getPostParam(string $key, $default = null)
+    {
         return $this->postParams[$key] ?? $default;
     }
-    
-    public function getServerParam(string $key, $default = null) {
+
+    public function getServerParam(string $key, $default = null)
+    {
         return $this->serverParams[$key] ?? $default;
     }
-    
-    public function getCookieParam(string $key, $default = null) {
+
+    public function getCookieParam(string $key, $default = null)
+    {
         return $this->cookieParams[$key] ?? $default;
     }
-    
-    public function getFile(string $key) {
+
+    public function getFile(string $key)
+    {
         return $this->files[$key] ?? null;
     }
-    
-    public function all(): array {
+
+    public function all(): array
+    {
         return array_merge($this->queryParams, $this->postParams);
     }
-    
+
     /**
      * Get a request parameter (post or query)
      */
-    public function get(string $key, $default = null) {
+    public function get(string $key, $default = null)
+    {
         return $this->postParams[$key] ?? $this->queryParams[$key] ?? $default;
     }
-    
-    public function getMethod(): string {
+
+    public function getMethod(): string
+    {
         return $this->serverParams['REQUEST_METHOD'];
     }
-    
-    public function isMethod(string $method): bool {
+
+    public function isMethod(string $method): bool
+    {
         return $this->getMethod() === strtoupper($method);
     }
-    
-    public function getUri(): string {
+
+    public function getUri(): string
+    {
         return $this->serverParams['REQUEST_URI'];
     }
-    
-    public function getHeader(string $name, $default = null) {
+
+    public function getHeader(string $name, $default = null)
+    {
         $headerName = 'HTTP_' . strtoupper(str_replace('-', '_', $name));
         return $this->serverParams[$headerName] ?? $this->serverParams[$name] ?? $default;
     }
-    
-    public function isAjax(): bool {
+
+    public function isAjax(): bool
+    {
         return $this->getHeader('X-Requested-With') === 'XMLHttpRequest';
     }
-    
-    public function validate(array $rules): array {
+
+    public function validate(array $rules): array
+    {
         $errors = [];
         $data = $this->all();
-        
+
         foreach ($rules as $field => $rule) {
             // Split rule into parts
             $ruleParts = explode('|', $rule);
-            
+
             foreach ($ruleParts as $rulePart) {
                 if ($rulePart === 'required') {
                     if (!isset($data[$field]) || $data[$field] === '') {
@@ -129,7 +145,7 @@ class Request {
                 }
             }
         }
-        
+
         return $errors;
     }
 }

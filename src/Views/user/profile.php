@@ -21,7 +21,7 @@
                 </form>
             </div>
         </div>
-        
+
         <div class="card">
             <div class="card-header bg-secondary text-white">
                 <h4 class="mb-0">Change Password</h4>
@@ -46,7 +46,7 @@
                 </form>
             </div>
         </div>
-        
+
         <div class="mt-3 text-center">
             <a href="/user/dashboard" class="btn btn-outline-primary">Back to Dashboard</a>
         </div>

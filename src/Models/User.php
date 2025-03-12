@@ -2,7 +2,8 @@
 
 namespace SecretSanta\Models;
 
-class User {
+class User
+{
     private ?int $id = null;
     private string $email;
     private string $password;
@@ -12,18 +13,20 @@ class User {
     private ?string $last_login = null;
     private ?string $reset_token = null;
     private ?string $reset_token_expires = null;
-    
+
     // Lazy-loaded relationships
     private array $groups = [];
     private array $wishlists = [];
-    
-    public function __construct(array $data = []) {
+
+    public function __construct(array $data = [])
+    {
         if (!empty($data)) {
             $this->hydrate($data);
         }
     }
-    
-    public function hydrate(array $data): void {
+
+    public function hydrate(array $data): void
+    {
         if (isset($data['id'])) $this->id = (int) $data['id'];
         if (isset($data['email'])) $this->email = $data['email'];
         if (isset($data['password'])) $this->password = $data['password'];
@@ -34,92 +37,112 @@ class User {
         if (isset($data['reset_token'])) $this->reset_token = $data['reset_token'];
         if (isset($data['reset_token_expires'])) $this->reset_token_expires = $data['reset_token_expires'];
     }
-    
-    public function getId(): ?int {
+
+    public function getId(): ?int
+    {
         return $this->id;
     }
-    
-    public function getEmail(): string {
+
+    public function getEmail(): string
+    {
         return $this->email;
     }
-    
-    public function setEmail(string $email): self {
+
+    public function setEmail(string $email): self
+    {
         $this->email = $email;
         return $this;
     }
-    
-    public function getPassword(): string {
+
+    public function getPassword(): string
+    {
         return $this->password;
     }
-    
-    public function setPassword(string $password): self {
+
+    public function setPassword(string $password): self
+    {
         $this->password = $password;
         return $this;
     }
-    
-    public function getName(): string {
+
+    public function getName(): string
+    {
         return $this->name;
     }
-    
-    public function setName(string $name): self {
+
+    public function setName(string $name): self
+    {
         $this->name = $name;
         return $this;
     }
-    
-    public function getCreatedAt(): string {
+
+    public function getCreatedAt(): string
+    {
         return $this->created_at;
     }
-    
-    public function getUpdatedAt(): string {
+
+    public function getUpdatedAt(): string
+    {
         return $this->updated_at;
     }
-    
-    public function getLastLogin(): ?string {
+
+    public function getLastLogin(): ?string
+    {
         return $this->last_login;
     }
-    
-    public function setLastLogin(?string $last_login): self {
+
+    public function setLastLogin(?string $last_login): self
+    {
         $this->last_login = $last_login;
         return $this;
     }
-    
-    public function getResetToken(): ?string {
+
+    public function getResetToken(): ?string
+    {
         return $this->reset_token;
     }
-    
-    public function setResetToken(?string $reset_token): self {
+
+    public function setResetToken(?string $reset_token): self
+    {
         $this->reset_token = $reset_token;
         return $this;
     }
-    
-    public function getResetTokenExpires(): ?string {
+
+    public function getResetTokenExpires(): ?string
+    {
         return $this->reset_token_expires;
     }
-    
-    public function setResetTokenExpires(?string $reset_token_expires): self {
+
+    public function setResetTokenExpires(?string $reset_token_expires): self
+    {
         $this->reset_token_expires = $reset_token_expires;
         return $this;
     }
-    
-    public function setGroups(array $groups): self {
+
+    public function setGroups(array $groups): self
+    {
         $this->groups = $groups;
         return $this;
     }
-    
-    public function getGroups(): array {
+
+    public function getGroups(): array
+    {
         return $this->groups;
     }
-    
-    public function setWishlists(array $wishlists): self {
+
+    public function setWishlists(array $wishlists): self
+    {
         $this->wishlists = $wishlists;
         return $this;
     }
-    
-    public function getWishlists(): array {
+
+    public function getWishlists(): array
+    {
         return $this->wishlists;
     }
-    
-    public function toArray(): array {
+
+    public function toArray(): array
+    {
         return [
             'id' => $this->id,
             'email' => $this->email,

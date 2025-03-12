@@ -6,7 +6,7 @@
             </div>
             <div class="card-body">
                 <p class="mb-3">Enter your email address and we'll send you a link to reset your password.</p>
-                
+
                 <form action="/auth/forgot-password" method="post">
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
@@ -16,7 +16,7 @@
                         <button type="submit" class="btn btn-primary">Send Reset Link</button>
                     </div>
                 </form>
-                
+
                 <div class="mt-3 text-center">
                     <a href="/auth/login">Back to login</a>
                 </div>

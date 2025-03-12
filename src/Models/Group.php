@@ -2,7 +2,8 @@
 
 namespace SecretSanta\Models;
 
-class Group {
+class Group
+{
     private ?int $id = null;
     private string $name;
     private ?string $description = null;
@@ -13,20 +14,22 @@ class Group {
     private bool $is_drawn = false;
     private ?string $created_at = null;
     private ?string $updated_at = null;
-    
+
     // Lazy-loaded relationships
     private ?User $admin = null;
     private array $members = [];
     private array $assignments = [];
     private array $exclusionRules = [];
-    
-    public function __construct(array $data = []) {
+
+    public function __construct(array $data = [])
+    {
         if (!empty($data)) {
             $this->hydrate($data);
         }
     }
-    
-    public function hydrate(array $data): void {
+
+    public function hydrate(array $data): void
+    {
         if (isset($data['id'])) $this->id = (int) $data['id'];
         if (isset($data['name'])) $this->name = $data['name'];
         if (isset($data['description'])) $this->description = $data['description'];
@@ -38,122 +41,148 @@ class Group {
         if (isset($data['created_at'])) $this->created_at = $data['created_at'];
         if (isset($data['updated_at'])) $this->updated_at = $data['updated_at'];
     }
-    
-    public function getId(): ?int {
+
+    public function getId(): ?int
+    {
         return $this->id;
     }
-    
-    public function getName(): string {
+
+    public function getName(): string
+    {
         return $this->name;
     }
-    
-    public function setName(string $name): self {
+
+    public function setName(string $name): self
+    {
         $this->name = $name;
         return $this;
     }
-    
-    public function getDescription(): ?string {
+
+    public function getDescription(): ?string
+    {
         return $this->description;
     }
-    
-    public function setDescription(?string $description): self {
+
+    public function setDescription(?string $description): self
+    {
         $this->description = $description;
         return $this;
     }
-    
-    public function getAdminId(): int {
+
+    public function getAdminId(): int
+    {
         return $this->admin_id;
     }
-    
-    public function setAdminId(int $admin_id): self {
+
+    public function setAdminId(int $admin_id): self
+    {
         $this->admin_id = $admin_id;
         return $this;
     }
-    
-    public function getInvitationCode(): string {
+
+    public function getInvitationCode(): string
+    {
         return $this->invitation_code;
     }
-    
-    public function setInvitationCode(string $invitation_code): self {
+
+    public function setInvitationCode(string $invitation_code): self
+    {
         $this->invitation_code = $invitation_code;
         return $this;
     }
-    
-    public function getRegistrationDeadline(): ?string {
+
+    public function getRegistrationDeadline(): ?string
+    {
         return $this->registration_deadline;
     }
-    
-    public function setRegistrationDeadline(?string $registration_deadline): self {
+
+    public function setRegistrationDeadline(?string $registration_deadline): self
+    {
         $this->registration_deadline = $registration_deadline;
         return $this;
     }
-    
-    public function getDrawDate(): ?string {
+
+    public function getDrawDate(): ?string
+    {
         return $this->draw_date;
     }
-    
-    public function setDrawDate(?string $draw_date): self {
+
+    public function setDrawDate(?string $draw_date): self
+    {
         $this->draw_date = $draw_date;
         return $this;
     }
-    
-    public function isDrawn(): bool {
+
+    public function isDrawn(): bool
+    {
         return $this->is_drawn;
     }
-    
-    public function setIsDrawn(bool $is_drawn): self {
+
+    public function setIsDrawn(bool $is_drawn): self
+    {
         $this->is_drawn = $is_drawn;
         return $this;
     }
-    
-    public function getCreatedAt(): ?string {
+
+    public function getCreatedAt(): ?string
+    {
         return $this->created_at;
     }
-    
-    public function getUpdatedAt(): ?string {
+
+    public function getUpdatedAt(): ?string
+    {
         return $this->updated_at;
     }
-    
-    public function getAdmin(): ?User {
+
+    public function getAdmin(): ?User
+    {
         return $this->admin;
     }
-    
-    public function setAdmin(?User $admin): self {
+
+    public function setAdmin(?User $admin): self
+    {
         $this->admin = $admin;
         if ($admin) {
             $this->admin_id = $admin->getId();
         }
         return $this;
     }
-    
-    public function getMembers(): array {
+
+    public function getMembers(): array
+    {
         return $this->members;
     }
-    
-    public function setMembers(array $members): self {
+
+    public function setMembers(array $members): self
+    {
         $this->members = $members;
         return $this;
     }
-    
-    public function getAssignments(): array {
+
+    public function getAssignments(): array
+    {
         return $this->assignments;
     }
-    
-    public function setAssignments(array $assignments): self {
+
+    public function setAssignments(array $assignments): self
+    {
         $this->assignments = $assignments;
         return $this;
     }
-    
-    public function getExclusionRules(): array {
+
+    public function getExclusionRules(): array
+    {
         return $this->exclusionRules;
     }
-    
-    public function setExclusionRules(array $exclusionRules): self {
+
+    public function setExclusionRules(array $exclusionRules): self
+    {
         $this->exclusionRules = $exclusionRules;
         return $this;
     }
-    
-    public function toArray(): array {
+
+    public function toArray(): array
+    {
         return [
             'id' => $this->id,
             'name' => $this->name,

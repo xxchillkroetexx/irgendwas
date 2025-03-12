@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Secret Santa Web Application - Setup Script
  * 
@@ -59,7 +60,7 @@ try {
     if (!file_exists($autoloaderPath)) {
         throw new Exception("Autoloader file not found at: $autoloaderPath");
     }
-    
+
     require_once $autoloaderPath;
     echo '<p>Autoloader found and loaded.</p>';
 
@@ -77,19 +78,19 @@ try {
         throw new Exception("Schema file not found at: $schemaPath");
     }
     echo '<p>Schema file found.</p>';
-    
+
     // Connect to database
     echo '<h2>Connecting to database...</h2>';
     $db = \SecretSanta\Config\Database::getInstance();
     $connection = $db->getConnection();
     echo '<p>Successfully connected to database.</p>';
-    
+
     // Initialize the database
     echo '<h2>Initializing database schema...</h2>';
     $db->initialize();
-    
+
     echo '<div class="success">Database schema created successfully!</div>';
-    
+
     echo '<p>You can now <a href="/">return to the homepage</a> and register an account.</p>';
 } catch (Exception $e) {
     echo '<div class="error">Error: ' . $e->getMessage() . '</div>';

@@ -8,13 +8,13 @@
                 <form action="/auth/register" method="post">
                     <div class="mb-3">
                         <label for="name" class="form-label">Full Name</label>
-                        <input type="text" class="form-control" id="name" name="name" required 
-                               value="<?= htmlspecialchars($session->getFlash('old_input')['name'] ?? '') ?>">
+                        <input type="text" class="form-control" id="name" name="name" required
+                            value="<?= htmlspecialchars($session->getFlash('old_input')['name'] ?? '') ?>">
                     </div>
                     <div class="mb-3">
                         <label for="email" class="form-label">Email</label>
                         <input type="email" class="form-control" id="email" name="email" required
-                               value="<?= htmlspecialchars($session->getFlash('old_input')['email'] ?? '') ?>">
+                            value="<?= htmlspecialchars($session->getFlash('old_input')['email'] ?? '') ?>">
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
@@ -29,9 +29,9 @@
                         <button type="submit" class="btn btn-success">Register</button>
                     </div>
                 </form>
-                
+
                 <hr>
-                
+
                 <div class="text-center">
                     <p>Already have an account?</p>
                     <a href="/auth/login" class="btn btn-outline-primary">Login</a>
