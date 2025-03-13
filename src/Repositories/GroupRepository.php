@@ -38,6 +38,7 @@ class GroupRepository extends DataMapper
     public function findByUserId(int $userId): array
     {
         // This requires a JOIN with the group_members table
+        // Eager Load
         $sql = "
             SELECT g.* 
             FROM {$this->table} g

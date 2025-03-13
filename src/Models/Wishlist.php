@@ -120,6 +120,12 @@ class Wishlist
         return $this;
     }
 
+    public function addItem(WishlistItem $item): self
+    {
+        $this->items[] = $item;
+        return $this;
+    }
+
     public function toArray(): array
     {
         return [

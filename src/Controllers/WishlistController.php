@@ -67,13 +67,9 @@ class WishlistController extends BaseController
         }
 
         // Get the wishlist
-        $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
+        $wishlist = $this->wishlistRepository->findWithItemsByUserAndGroup($userId, $groupId);
         $user = $this->userRepository->find($userId);
         $group = $this->groupRepository->find($groupId);
-
-        if ($wishlist) {
-            $this->wishlistRepository->loadItems($wishlist);
-        }
 
         return $this->render('wishlist/view', [
             'wishlist' => $wishlist,
@@ -185,11 +181,11 @@ class WishlistController extends BaseController
         }
 
         // Get or create wishlist
-        $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
+        $wishlist = $this->wishlistRepository->findWithItemsByUserAndGroup($userId, $groupId);
         if (!$wishlist) {
             $wishlist = $this->wishlistRepository->createOrUpdateWishlist($userId, $groupId);
         }
-
+        
         // Add the item
         $this->itemRepository->createItem($wishlist, $title, $description, $link);
 
