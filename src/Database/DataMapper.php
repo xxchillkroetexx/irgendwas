@@ -6,7 +6,7 @@ use SecretSanta\Config\Database;
 
 abstract class DataMapper
 {
-    protected \PDO $db;
+    protected \mysqli $db;
     protected string $table;
     protected string $entityClass;
     protected array $columns = [];
@@ -19,9 +19,13 @@ abstract class DataMapper
 
     public function find(int $id)
     {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->table} WHERE {$this->primaryKey} = :id LIMIT 1");
-        $stmt->execute(['id' => $id]);
-        $data = $stmt->fetch();
+        $query = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ? LIMIT 1";
+        $stmt = $this->db->prepare($query);
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $data = $result->fetch_assoc();
+        $stmt->close();
 
         if (!$data) {
             return null;
@@ -33,11 +37,27 @@ abstract class DataMapper
     public function findBy(array $criteria, array $orderBy = [], ?int $limit = null, ?int $offset = null)
     {
         $query = "SELECT * FROM {$this->table}";
+        $params = [];
+        $types = '';
 
         if (!empty($criteria)) {
             $conditions = [];
             foreach (array_keys($criteria) as $key) {
-                $conditions[] = "$key = :$key";
+                $conditions[] = "$key = ?";
+                $params[] = $criteria[$key];
+                
+                // Add parameter type
+                if (is_int($criteria[$key])) {
+                    $types .= 'i';
+                } elseif (is_float($criteria[$key])) {
+                    $types .= 'd';
+                } elseif (is_bool($criteria[$key])) {
+                    $types .= 'i';
+                    // Convert boolean to int
+                    $params[count($params) - 1] = (int)$criteria[$key];
+                } else {
+                    $types .= 's';
+                }
             }
             $query .= " WHERE " . implode(' AND ', $conditions);
         }
@@ -51,33 +71,38 @@ abstract class DataMapper
         }
 
         if ($limit !== null) {
-            $query .= " LIMIT :limit";
+            $query .= " LIMIT ?";
+            $params[] = $limit;
+            $types .= 'i';
+            
             if ($offset !== null) {
-                $query .= " OFFSET :offset";
+                $query .= " OFFSET ?";
+                $params[] = $offset;
+                $types .= 'i';
             }
         }
 
         $stmt = $this->db->prepare($query);
-
-        foreach ($criteria as $key => $value) {
-            $stmt->bindValue(":$key", $value);
-        }
-
-        if ($limit !== null) {
-            $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-            if ($offset !== null) {
-                $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
+        
+        // Bind parameters if we have any
+        if (!empty($params)) {
+            // Using reference binding for mysqli
+            $bindParams = array($types);
+            foreach ($params as $key => $value) {
+                $bindParams[] = &$params[$key];
             }
+            call_user_func_array([$stmt, 'bind_param'], $bindParams);
         }
-
+        
         $stmt->execute();
-        $results = $stmt->fetchAll();
-
+        $result = $stmt->get_result();
+        
         $entities = [];
-        foreach ($results as $data) {
+        while ($data = $result->fetch_assoc()) {
             $entities[] = $this->mapToEntity($data);
         }
-
+        
+        $stmt->close();
         return $entities;
     }
 
@@ -105,18 +130,25 @@ abstract class DataMapper
             return false;
         }
 
-        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE {$this->primaryKey} = :id");
-        $stmt->execute(['id' => $data[$this->primaryKey]]);
+        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?");
+        $id = $data[$this->primaryKey];
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $affectedRows = $stmt->affected_rows;
+        $stmt->close();
 
-        return $stmt->rowCount() > 0;
+        return $affectedRows > 0;
     }
 
     public function deleteById(int $id): bool
     {
-        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE {$this->primaryKey} = :id");
-        $stmt->execute(['id' => $id]);
+        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?");
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $affectedRows = $stmt->affected_rows;
+        $stmt->close();
 
-        return $stmt->rowCount() > 0;
+        return $affectedRows > 0;
     }
 
     protected function insert(array $data)
@@ -134,29 +166,50 @@ abstract class DataMapper
             return $key !== $this->primaryKey || $data[$this->primaryKey] !== null;
         }, ARRAY_FILTER_USE_KEY));
 
-        $placeholders = array_map(function ($col) {
-            return ":$col";
-        }, $columns);
+        $placeholders = array_fill(0, count($columns), '?');
 
         $columnString = implode(', ', $columns);
         $placeholderString = implode(', ', $placeholders);
 
-        $stmt = $this->db->prepare("INSERT INTO {$this->table} ($columnString) VALUES ($placeholderString)");
+        $query = "INSERT INTO {$this->table} ($columnString) VALUES ($placeholderString)";
+        $stmt = $this->db->prepare($query);
 
+        // Build types string and values array
+        $types = '';
+        $values = [];
+        
         foreach ($columns as $column) {
-            // Convert boolean values to integers for MySQL
-            if (is_bool($data[$column])) {
-                $stmt->bindValue(":$column", $data[$column] ? 1 : 0, \PDO::PARAM_INT);
+            $value = $data[$column];
+            
+            // Determine parameter type
+            if (is_int($value)) {
+                $types .= 'i';
+            } elseif (is_float($value)) {
+                $types .= 'd';
+            } elseif (is_bool($value)) {
+                $types .= 'i';
+                $value = $value ? 1 : 0;
             } else {
-                $stmt->bindValue(":$column", $data[$column]);
+                $types .= 's';
             }
+            
+            $values[] = $value;
         }
+        
+        // Using reference binding for mysqli
+        $bindParams = array($types);
+        foreach ($values as $key => $value) {
+            $bindParams[] = &$values[$key];
+        }
+        call_user_func_array([$stmt, 'bind_param'], $bindParams);
 
         $stmt->execute();
-
+        
         if (!isset($data[$this->primaryKey])) {
-            $data[$this->primaryKey] = (int) $this->db->lastInsertId();
+            $data[$this->primaryKey] = (int) $this->db->insert_id;
         }
+        
+        $stmt->close();
 
         return $this->mapToEntity($data);
     }
@@ -171,37 +224,57 @@ abstract class DataMapper
         }
 
         $sets = [];
+        $columns = [];
+        $values = [];
+        $types = '';
 
         foreach ($data as $column => $value) {
             if ($column !== $this->primaryKey) {
-                $sets[] = "$column = :$column";
-            }
-        }
-
-        $setString = implode(', ', $sets);
-
-        $stmt = $this->db->prepare("UPDATE {$this->table} SET $setString WHERE {$this->primaryKey} = :id");
-        $stmt->bindValue(':id', $id);
-
-        foreach ($data as $column => $value) {
-            if ($column !== $this->primaryKey) {
-                // Convert boolean values to integers for MySQL
-                if (is_bool($value)) {
-                    $stmt->bindValue(":$column", $value ? 1 : 0, \PDO::PARAM_INT);
+                $sets[] = "$column = ?";
+                $columns[] = $column;
+                
+                // Determine parameter type and adjust value if needed
+                if (is_int($value)) {
+                    $types .= 'i';
+                    $values[] = $value;
+                } elseif (is_float($value)) {
+                    $types .= 'd';
+                    $values[] = $value;
+                } elseif (is_bool($value)) {
+                    $types .= 'i';
+                    $values[] = $value ? 1 : 0;
                 } else {
-                    $stmt->bindValue(":$column", $value);
+                    $types .= 's';
+                    $values[] = $value;
                 }
             }
         }
 
+        $setString = implode(', ', $sets);
+        $query = "UPDATE {$this->table} SET $setString WHERE {$this->primaryKey} = ?";
+        
+        // Add the ID parameter type and value
+        $types .= 'i';
+        $values[] = $id;
+
+        $stmt = $this->db->prepare($query);
+        
+        // Using reference binding for mysqli
+        $bindParams = array($types);
+        foreach ($values as $key => $value) {
+            $bindParams[] = &$values[$key];
+        }
+        call_user_func_array([$stmt, 'bind_param'], $bindParams);
+        
         $stmt->execute();
+        $stmt->close();
 
         return $this->find($id);
     }
 
     public function beginTransaction()
     {
-        $this->db->beginTransaction();
+        $this->db->begin_transaction();
     }
 
     public function commit()
@@ -211,7 +284,7 @@ abstract class DataMapper
 
     public function rollback()
     {
-        $this->db->rollBack();
+        $this->db->rollback();
     }
 
     protected function mapToEntity(array $data)

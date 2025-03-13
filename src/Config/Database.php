@@ -5,7 +5,7 @@ namespace SecretSanta\Config;
 class Database
 {
     private static ?self $instance = null;
-    private ?\PDO $connection = null;
+    private ?\mysqli $connection = null;
 
     private string $host;
     private string $port;
@@ -31,19 +31,30 @@ class Database
         return self::$instance;
     }
 
-    public function getConnection(): \PDO
+    public function getConnection(): \mysqli
     {
         if ($this->connection === null) {
             try {
-                $dsn = "mysql:host={$this->host};port={$this->port};dbname={$this->database};charset=utf8mb4";
-                $options = [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-                    \PDO::ATTR_EMULATE_PREPARES => false,
-                ];
+                // Create mysqli connection
+                $this->connection = new \mysqli(
+                    $this->host,
+                    $this->username,
+                    $this->password,
+                    $this->database,
+                    (int)$this->port
+                );
 
-                $this->connection = new \PDO($dsn, $this->username, $this->password, $options);
-            } catch (\PDOException $e) {
+                // Check for connection errors
+                if ($this->connection->connect_error) {
+                    throw new \Exception("Database connection failed: " . $this->connection->connect_error);
+                }
+
+                // Set charset
+                $this->connection->set_charset('utf8mb4');
+                
+                // Set error reporting mode
+                mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+            } catch (\Exception $e) {
                 throw new \Exception("Database connection failed: " . $e->getMessage());
             }
         }
@@ -76,13 +87,14 @@ class Database
 
         try {
             $connection = $this->getConnection();
-            $connection->setAttribute(\PDO::ATTR_EMULATE_PREPARES, 0);
 
             // Execute each statement
             foreach ($statements as $statement) {
-                $connection->exec($statement);
+                if (!$connection->query($statement)) {
+                    throw new \Exception("Error executing statement: " . $connection->error);
+                }
             }
-        } catch (\PDOException $e) {
+        } catch (\Exception $e) {
             throw new \Exception("Error initializing database: " . $e->getMessage());
         }
     }

@@ -42,19 +42,21 @@ class GroupRepository extends DataMapper
             SELECT g.* 
             FROM {$this->table} g
             JOIN group_members gm ON g.id = gm.group_id
-            WHERE gm.user_id = :userId
+            WHERE gm.user_id = ? 
             ORDER BY g.created_at DESC
         ";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(['userId' => $userId]);
-        $results = $stmt->fetchAll();
-
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
         $groups = [];
-        foreach ($results as $data) {
-            $groups[] = $this->mapToEntity($data);
+        while ($row = $result->fetch_assoc()) {
+            $groups[] = $this->mapToEntity($row);
         }
-
+        $stmt->close();
+        
         return $groups;
     }
 
