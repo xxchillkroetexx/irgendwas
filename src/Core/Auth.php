@@ -71,7 +71,11 @@ class Auth
 
     public function check(): bool
     {
-        return $this->session->has('user_id');
+        if ($this->session->has('user_id')) {
+            $this->session->set('last_activity', time());
+            return true;
+        }
+        return false;
     }
 
     public function user(): ?User

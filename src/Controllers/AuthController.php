@@ -7,6 +7,9 @@ use SecretSanta\Services\EmailService;
 
 class AuthController extends BaseController
 {
+    // Die Konstante sollte mit der aus Session.php übereinstimmen
+    private const MAX_LOGIN_ATTEMPTS = 5;
+
     public function showLogin()
     {
         // If already logged in, redirect to dashboard
@@ -19,20 +22,64 @@ class AuthController extends BaseController
 
     public function login()
     {
-        $email = $this->request->getPostParam('email');
-        $password = $this->request->getPostParam('password');
-
-        if (empty($email) || empty($password)) {
-            $this->session->setFlash('error', 'Please enter both email and password');
+        // Get client IP for rate limiting
+        $clientIp = $this->getClientIp();
+        
+        // Check if IP is on lockout
+        if ($this->session->isLoginLocked($clientIp)) {
+            $remainingTime = $this->session->getRemainingLockoutTime($clientIp);
+            $minutes = ceil($remainingTime / 60);
+            $this->session->setFlash('error', "Zu viele fehlgeschlagene Login-Versuche von dieser IP-Adresse. Bitte versuchen Sie es nach $minutes Minuten erneut.");
             $this->redirect('/auth/login');
             return;
         }
-
+        
+        $email = $this->request->getPostParam('email');
+        $password = $this->request->getPostParam('password');
+        
+        if (empty($email) || empty($password)) {
+            $this->session->setFlash('error', 'Bitte geben Sie sowohl E-Mail als auch Passwort ein');
+            $this->redirect('/auth/login');
+            return;
+        }
+        
+        // Check if specific email is on lockout
+        if ($email && $this->session->isLoginLocked($email)) {
+            $remainingTime = $this->session->getRemainingLockoutTime($email);
+            $minutes = ceil($remainingTime / 60);
+            
+            // Don't expose that the email exists, just state that too many attempts were made
+            $this->session->setFlash('error', "Zu viele fehlgeschlagene Login-Versuche. Bitte versuchen Sie es nach $minutes Minuten erneut.");
+            $this->redirect('/auth/login');
+            return;
+        }
+        
         if ($this->auth->login($email, $password)) {
-            $this->session->setFlash('success', 'You have successfully logged in');
+            // Successful login - reset login attempts for both IP and email
+            $this->session->resetLoginAttempts($email);
+            $this->session->resetLoginAttempts($clientIp);
+            
+            $this->session->setFlash('success', 'Sie haben sich erfolgreich angemeldet');
             $this->redirect('/user/dashboard');
         } else {
-            $this->session->setFlash('error', 'Invalid email or password');
+            // Failed login - increment attempts for both IP and email
+            $this->session->incrementLoginAttempts($clientIp);
+            
+            if (!empty($email)) {
+                $emailAttempts = $this->session->incrementLoginAttempts($email);
+                $remaining = self::MAX_LOGIN_ATTEMPTS - $emailAttempts;
+                
+                if ($remaining > 0) {
+                    $this->session->setFlash('error', "Ungültige E-Mail oder Passwort. Verbleibende Versuche: $remaining");
+                } else {
+                    $lockoutTime = $this->session->getRemainingLockoutTime($email);
+                    $minutes = ceil($lockoutTime / 60);
+                    $this->session->setFlash('error', "Zu viele fehlgeschlagene Login-Versuche. Ihr Konto ist für $minutes Minuten gesperrt.");
+                }
+            } else {
+                $this->session->setFlash('error', 'Ungültige E-Mail oder Passwort.');
+            }
+            
             $this->redirect('/auth/login');
         }
     }
@@ -194,5 +241,39 @@ class AuthController extends BaseController
             $this->session->setFlash('error', 'Invalid or expired reset token');
             $this->redirect('/auth/forgot-password');
         }
+    }
+
+    /**
+     * Get client IP address, taking into account possible proxy servers
+     * 
+     * @return string Client IP address
+     */
+    private function getClientIp(): string
+    {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        
+        // Check for proxy headers
+        $headers = [
+            'HTTP_CLIENT_IP',
+            'HTTP_X_FORWARDED_FOR',
+            'HTTP_X_FORWARDED',
+            'HTTP_FORWARDED_FOR',
+            'HTTP_FORWARDED'
+        ];
+        
+        foreach ($headers as $header) {
+            if (!empty($_SERVER[$header])) {
+                $ips = explode(',', $_SERVER[$header]);
+                $validIp = trim($ips[0]);
+                
+                // Make sure it's a valid IP
+                if (filter_var($validIp, FILTER_VALIDATE_IP)) {
+                    $ip = $validIp;
+                    break;
+                }
+            }
+        }
+        
+        return $ip;
     }
 }
