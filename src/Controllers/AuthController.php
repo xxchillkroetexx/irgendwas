@@ -59,7 +59,24 @@ class AuthController extends BaseController
             $this->session->resetLoginAttempts($email);
             $this->session->resetLoginAttempts($clientIp);
             
-            $this->session->setFlash('success', 'Sie haben sich erfolgreich angemeldet');
+            // Get user to access failed login attempts
+            $user = $this->auth->user();
+            
+            // Check for failed login attempts since last successful login
+            $failedAttempts = $user->getTempFailedAttempts();
+            if ($failedAttempts > 0) {
+                $this->session->setFlash('warning', "Seit Ihrem letzten erfolgreichen Login gab es {$failedAttempts} fehlgeschlagene Anmeldeversuche für Ihr Konto.");
+            }
+            
+            // Check if we have a previous login time stored in flash
+            $lastLogin = $this->session->getFlash('last_login');
+            if ($lastLogin) {
+                $formattedDate = date('d.m.Y H:i', strtotime($lastLogin));
+                $this->session->setFlash('success', "Willkommen zurück! Ihr letzter Login war am {$formattedDate}.");
+            } else {
+                $this->session->setFlash('success', 'Sie haben sich erfolgreich angemeldet.');
+            }
+            
             $this->redirect('/user/dashboard');
         } else {
             // Failed login - increment attempts for both IP and email

@@ -18,7 +18,9 @@ return [
         'reset_password' => 'Reset Password',
         'submit' => 'Submit',
         'already_have_account' => 'Already have an account?',
-        'dont_have_account' => 'Don\'t have an account?'
+        'dont_have_account' => 'Don\'t have an account?',
+        'welcome_back' => 'Welcome back! Your last login was on {date}.',
+        'login_success' => 'You have successfully logged in.'
     ],
     'groups' => [
         'my_groups' => 'My Groups',
