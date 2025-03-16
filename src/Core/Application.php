@@ -15,6 +15,14 @@ class Application
 
     public function __construct()
     {
+        // Initialize i18n
+        I18n::getInstance();
+        
+        // Include global translation functions if not using composer autoload
+        if (!function_exists('__')) {
+            require_once APP_ROOT . '/src/Localization/functions.php';
+        }
+        
         $this->router = Router::getInstance();
         $this->setupRoutes();
     }
@@ -30,14 +38,14 @@ class Application
 
             // Display error in development mode
             if (getenv('APP_DEBUG') === 'true') {
-                echo '<h1>Application Error</h1>';
+                echo '<h1>' . __('application_error') . '</h1>';
                 echo '<p>' . $e->getMessage() . '</p>';
-                echo '<h2>Stack Trace:</h2>';
+                echo '<h2>' . __('stack_trace') . '</h2>';
                 echo '<pre>' . $e->getTraceAsString() . '</pre>';
             } else {
                 // Show a generic error in production
-                echo '<h1>Application Error</h1>';
-                echo '<p>An unexpected error occurred. Please try again later.</p>';
+                echo '<h1>' . __('application_error') . '</h1>';
+                echo '<p>' . __('generic_error_message') . '</p>';
             }
         }
     }

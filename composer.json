@@ -9,6 +9,9 @@
     "autoload": {
         "psr-4": {
             "SecretSanta\\": "src/"
-        }
+        },
+        "files": [
+            "src/Localization/functions.php"
+        ]
     }
 }
