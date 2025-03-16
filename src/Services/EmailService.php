@@ -15,16 +15,69 @@ if (!defined('APP_ROOT')) {
     define('APP_ROOT', dirname(dirname(__DIR__)));
 }
 
+/**
+ * Email Service for sending various application emails
+ * 
+ * This service handles all email communications within the Secret Santa application,
+ * including invitations, notifications, and password resets. It uses PHPMailer
+ * for sending emails and supports both SMTP and PHP mail transport mechanisms.
+ */
 class EmailService
 {
+    /**
+     * SMTP host server address
+     * 
+     * @var string
+     */
     private string $host;
+    
+    /**
+     * SMTP server port
+     * 
+     * @var int
+     */
     private int $port;
+    
+    /**
+     * SMTP authentication username
+     * 
+     * @var string
+     */
     private string $username;
+    
+    /**
+     * SMTP authentication password
+     * 
+     * @var string
+     */
     private string $password;
+    
+    /**
+     * Email encryption type (tls/ssl)
+     * 
+     * @var string
+     */
     private string $encryption;
+    
+    /**
+     * Email sender address
+     * 
+     * @var string
+     */
     private string $fromAddress;
+    
+    /**
+     * Email sender name
+     * 
+     * @var string
+     */
     private string $fromName;
 
+    /**
+     * Initializes the email service with configuration from environment variables
+     * 
+     * Falls back to default values if environment variables are not set.
+     */
     public function __construct()
     {
         $this->host = getenv('MAIL_HOST') ?: 'smtp.example.com';
@@ -36,6 +89,17 @@ class EmailService
         $this->fromName = getenv('MAIL_FROM_NAME') ?: 'Secret Santa';
     }
 
+    /**
+     * Sends a group invitation email
+     * 
+     * Notifies a user that they have been invited to join a Secret Santa group
+     * and provides a link to accept the invitation.
+     * 
+     * @param User $invitee The user receiving the invitation
+     * @param Group $group The group they are being invited to
+     * @param User $inviter The user who sent the invitation
+     * @return bool Whether the email was sent successfully
+     */
     public function sendInvitation(User $invitee, Group $group, User $inviter): bool
     {
         $subject = "You've been invited to join a Secret Santa group";
@@ -58,6 +122,19 @@ class EmailService
         return $this->sendEmail($invitee->getEmail(), $subject, $message);
     }
 
+    /**
+     * Sends a notification about Secret Santa draw results
+     * 
+     * Informs a user about who they have been assigned to give a gift to
+     * after the group draw has been completed.
+     * 
+     * @param string $email Recipient email address
+     * @param string $giverName Name of the gift giver
+     * @param string $receiverName Name of the gift receiver
+     * @param string $groupName Name of the Secret Santa group
+     * @param string $groupUrl URL to the group page
+     * @return bool Whether the email was sent successfully
+     */
     public function sendDrawNotification(string $email, string $giverName, string $receiverName, string $groupName, string $groupUrl): bool
     {
         $subject = "Your Secret Santa Draw Results for {$groupName}";
@@ -81,6 +158,16 @@ class EmailService
         return $this->sendEmail($email, $subject, $message);
     }
 
+    /**
+     * Sends a password reset email
+     * 
+     * Generates and sends a password reset link to a user who has forgotten their password.
+     * The link contains a unique token that expires after 24 hours.
+     * 
+     * @param User $user User requesting the password reset
+     * @param string $token Unique token for password reset verification
+     * @return bool Whether the email was sent successfully
+     */
     public function sendPasswordReset(User $user, string $token): bool
     {
         $subject = "Password Reset Request";
@@ -116,6 +203,15 @@ class EmailService
         return $this->sendEmail($user->getEmail(), $subject, $message);
     }
 
+    /**
+     * Notifies a user that they already have an account
+     * 
+     * Sends an email when someone tries to register with an email that is already registered,
+     * providing options to reset password.
+     * 
+     * @param string $email Email address of the existing account
+     * @return bool Whether the email was sent successfully
+     */
     public function sendExistingAccountNotification(string $email): bool
     {
         $subject = "Account Information";
@@ -146,6 +242,16 @@ class EmailService
         return $this->sendEmail($email, $subject, $message);
     }
 
+    /**
+     * Sends a welcome email to a new user
+     * 
+     * Confirms successful account creation and provides information about
+     * the platform features.
+     * 
+     * @param string $email New user's email address
+     * @param string|null $name New user's name (optional)
+     * @return bool Whether the email was sent successfully
+     */
     public function sendWelcomeEmail(string $email, ?string $name = null): bool
     {
         $subject = "Welcome to Secret Santa!";
@@ -181,6 +287,17 @@ class EmailService
         return $this->sendEmail($email, $subject, $message);
     }
 
+    /**
+     * Handles the actual email sending process
+     * 
+     * Uses PHPMailer to send emails via SMTP or PHP mail function.
+     * In development mode, emails are saved to files instead of being sent.
+     * 
+     * @param string $to Recipient email address
+     * @param string $subject Email subject line
+     * @param string $message Email HTML content
+     * @return bool Whether the operation was successful
+     */
     private function sendEmail(string $to, string $subject, string $message): bool
     {
         // Log the email details for development purposes
@@ -289,6 +406,13 @@ class EmailService
         }
     }
 
+    /**
+     * Gets the base URL for the application
+     * 
+     * Uses APP_URL environment variable or defaults to localhost
+     * 
+     * @return string Base URL for application links
+     */
     private function getBaseUrl(): string
     {
         return getenv('APP_URL') ?: 'https://localhost';

@@ -1,3 +1,12 @@
+<?php
+/**
+ * Homepage View
+ * 
+ * The main landing page that introduces the application to new visitors.
+ * Shows login/register options, how the system works, and feature highlights.
+ */
+?>
+<!-- Main hero section -->
 <div class="text-center mb-5">
     <h1 class="display-4"><?= t('home.title') ?></h1>
     <p class="lead"><?= t('home.subtitle') ?></p>
@@ -5,8 +14,10 @@
 
 <div class="row justify-content-center">
     <div class="col-md-8">
+        <!-- Authentication options section -->
         <div class="row">
             <div class="col-md-6">
+                <!-- Login card -->
                 <div class="card mb-4">
                     <div class="card-body text-center">
                         <h5 class="card-title"><?= t('home.login.title') ?></h5>
@@ -16,6 +27,7 @@
                 </div>
             </div>
             <div class="col-md-6">
+                <!-- Register card -->
                 <div class="card mb-4">
                     <div class="card-body text-center">
                         <h5 class="card-title"><?= t('home.register.title') ?></h5>
@@ -26,10 +38,12 @@
             </div>
         </div>
 
+        <!-- How it works section - explains the process in 3 steps -->
         <div class="mt-5">
             <h2 class="text-center mb-4"><?= t('home.howItWorks.title') ?></h2>
             <div class="row">
                 <div class="col-md-4">
+                    <!-- Step 1: Create/join groups -->
                     <div class="card h-100">
                         <div class="card-body text-center">
                             <div class="mb-3">
@@ -43,6 +57,7 @@
                     </div>
                 </div>
                 <div class="col-md-4">
+                    <!-- Step 2: Create wishlists -->
                     <div class="card h-100">
                         <div class="card-body text-center">
                             <div class="mb-3">
@@ -56,6 +71,7 @@
                     </div>
                 </div>
                 <div class="col-md-4">
+                    <!-- Step 3: Gift exchange -->
                     <div class="card h-100">
                         <div class="card-body text-center">
                             <div class="mb-3">
@@ -71,9 +87,11 @@
             </div>
         </div>
 
+        <!-- Features highlight section -->
         <div class="mt-5 text-center">
             <h2><?= t('home.features.title') ?></h2>
             <div class="row mt-3">
+                <!-- Feature: Multiple groups -->
                 <div class="col-md-6 col-lg-3 mb-3">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -84,6 +102,7 @@
                         <div><?= t('home.features.multipleGroups') ?></div>
                     </div>
                 </div>
+                <!-- Feature: Email notifications -->
                 <div class="col-md-6 col-lg-3 mb-3">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -94,6 +113,7 @@
                         <div><?= t('home.features.emailNotifications') ?></div>
                     </div>
                 </div>
+                <!-- Feature: Exclusion rules -->
                 <div class="col-md-6 col-lg-3 mb-3">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -104,6 +124,7 @@
                         <div><?= t('home.features.exclusionRules') ?></div>
                     </div>
                 </div>
+                <!-- Feature: Prioritized wishlists -->
                 <div class="col-md-6 col-lg-3 mb-3">
                     <div class="d-flex align-items-center">
                         <div class="me-3">

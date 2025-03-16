@@ -8,12 +8,30 @@ use SecretSanta\Repositories\GroupMemberRepository;
 use SecretSanta\Repositories\UserRepository;
 use SecretSanta\Services\EmailService;
 
+/**
+ * Group Controller
+ * 
+ * Handles all group-related operations including CRUD operations, member management,
+ * invitation handling, and the Secret Santa draw process.
+ * 
+ * @package SecretSanta\Controllers
+ */
 class GroupController extends BaseController
 {
+    /**
+     * Repository instances for data access
+     * 
+     * @var GroupRepository
+     * @var GroupMemberRepository
+     * @var UserRepository
+     */
     private GroupRepository $groupRepository;
     private GroupMemberRepository $memberRepository;
     private UserRepository $userRepository;
 
+    /**
+     * Constructor - initializes repositories for data access
+     */
     public function __construct()
     {
         parent::__construct();
@@ -24,6 +42,8 @@ class GroupController extends BaseController
 
     /**
      * Display a list of groups the user belongs to
+     * 
+     * @return string HTML content
      */
     public function index()
     {
@@ -45,6 +65,8 @@ class GroupController extends BaseController
 
     /**
      * Show the form to create a new group
+     * 
+     * @return string HTML content
      */
     public function create()
     {
@@ -57,6 +79,10 @@ class GroupController extends BaseController
 
     /**
      * Store a newly created group
+     * 
+     * Creates a group with the authenticated user as admin
+     * 
+     * @return void
      */
     public function store()
     {
@@ -113,6 +139,11 @@ class GroupController extends BaseController
 
     /**
      * Display the specified group
+     * 
+     * Shows group details and members. Includes assignment info if draw is complete.
+     * 
+     * @param int $id Group ID
+     * @return string|void HTML content or redirect
      */
     public function show(int $id)
     {
@@ -161,6 +192,11 @@ class GroupController extends BaseController
 
     /**
      * Show the form for editing the specified group
+     * 
+     * Only accessible to group admin
+     * 
+     * @param int $id Group ID
+     * @return string|void HTML content or redirect
      */
     public function edit(int $id)
     {
@@ -188,6 +224,11 @@ class GroupController extends BaseController
 
     /**
      * Update the specified group
+     * 
+     * Only accessible to group admin
+     * 
+     * @param int $id Group ID
+     * @return void
      */
     public function update(int $id)
     {
@@ -254,7 +295,11 @@ class GroupController extends BaseController
     }
 
     /**
-     * Remove the group (only admin can do this)
+     * Deletes a group and all associated data including memberships,
+     * assignments, and exclusion rules
+     * 
+     * @param int $id Group ID
+     * @return void
      */
     public function delete(int $id)
     {
@@ -316,6 +361,10 @@ class GroupController extends BaseController
 
     /**
      * Join a group using an invitation code
+     * 
+     * Displays the form to enter an invitation code
+     * 
+     * @return string HTML content
      */
     public function showJoin()
     {
@@ -332,6 +381,10 @@ class GroupController extends BaseController
 
     /**
      * Process the group join request
+     * 
+     * Validates the invitation code and adds the user to the group if valid
+     * 
+     * @return void
      */
     public function join()
     {
@@ -377,6 +430,12 @@ class GroupController extends BaseController
 
     /**
      * Leave a group
+     * 
+     * Removes the user from a group they are a member of
+     * Group admin cannot leave their own group
+     * 
+     * @param int $id Group ID
+     * @return void
      */
     public function leave(int $id)
     {
@@ -413,6 +472,12 @@ class GroupController extends BaseController
 
     /**
      * Perform the Secret Santa draw for a group
+     * 
+     * Assigns each member a recipient for gift-giving,
+     * respecting any exclusion rules. Only the group admin can perform the draw.
+     * 
+     * @param int $id Group ID
+     * @return void
      */
     public function draw(int $id)
     {
@@ -459,6 +524,12 @@ class GroupController extends BaseController
 
     /**
      * Generate and send a new invitation link for sharing
+     * 
+     * Creates a new invitation code for the group
+     * Only the group admin can generate new invitation links
+     * 
+     * @param int $id Group ID
+     * @return void
      */
     public function generateInvitationLink(int $id)
     {
@@ -488,6 +559,12 @@ class GroupController extends BaseController
 
     /**
      * Send notifications to members after the draw
+     * 
+     * Sends emails to all members informing them of their assigned recipient
+     * 
+     * @param Group $group The group object with the draw completed
+     * @return void
+     * @throws \Exception If email sending fails
      */
     private function sendDrawNotifications(Group $group)
     {

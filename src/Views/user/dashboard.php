@@ -1,36 +1,67 @@
+<?php
+/**
+ * User Dashboard View
+ *
+ * This view displays the main user dashboard with group membership information,
+ * gift assignments, and quick access to common actions.
+ *
+ * @package     GiftExchange
+ * @subpackage  Views
+ * @category    User
+ * 
+ * @param User $user Current logged-in user object
+ * @param Group[] $groups Array of Group objects the user is a member of
+ * @param Assignment[] $assignments Array of gift assignments for the user
+ * 
+ * @author      GiftExchange Team
+ * @version     1.0
+ */
+?>
 <div class="row">
     <div class="col-md-8">
+        <!-- User welcome section with personalized greeting -->
         <h2><?= t('user.dashboard.welcome', ['name' => htmlspecialchars($user->getName())]) ?></h2>
         <p class="text-muted"><?= t('user.dashboard.subtitle') ?></p>
 
         <div class="row mt-4">
             <div class="col-md-6">
+                <!-- 
+                 * Groups card component
+                 * Displays all groups the user participates in with status indicators
+                 * Shows different states for drawn and pending groups
+                 -->
                 <div class="card mb-4">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0"><?= t('user.dashboard.groups.title') ?></h5>
                     </div>
                     <div class="card-body">
                         <?php if (empty($groups)): ?>
+                            <!-- Empty state when user has no groups -->
                             <p><?= t('user.dashboard.groups.empty') ?></p>
                             <a href="/groups/create" class="btn btn-primary"><?= t('user.dashboard.groups.createButton') ?></a>
                         <?php else: ?>
+                            <!-- Display list of groups the user belongs to -->
                             <ul class="list-group">
                                 <?php foreach ($groups as $group): ?>
                                     <li class="list-group-item d-flex justify-content-between align-items-center">
                                         <div>
                                             <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a>
                                             <?php if ($group->isDrawn()): ?>
+                                                <!-- Indicator for groups where assignments have been made -->
                                                 <span class="badge bg-success rounded-pill ms-2"><?= t('user.dashboard.groups.drawn') ?></span>
                                             <?php else: ?>
+                                                <!-- Indicator for groups waiting for drawing -->
                                                 <span class="badge bg-warning rounded-pill ms-2"><?= t('user.dashboard.groups.pending') ?></span>
                                             <?php endif; ?>
                                         </div>
                                         <?php if ($group->getAdminId() === $user->getId()): ?>
+                                            <!-- Admin badge for groups the user administrates -->
                                             <span class="badge bg-secondary"><?= t('user.dashboard.groups.admin') ?></span>
                                         <?php endif; ?>
                                     </li>
                                 <?php endforeach; ?>
                             </ul>
+                            <!-- Group action buttons -->
                             <div class="mt-3">
                                 <a href="/groups/create" class="btn btn-primary"><?= t('user.dashboard.groups.createButton') ?></a>
                                 <a href="/groups" class="btn btn-outline-primary"><?= t('user.dashboard.groups.viewAll') ?></a>
@@ -41,6 +72,11 @@
             </div>
 
             <div class="col-md-6">
+                <!-- 
+                 * Assignments card component
+                 * Shows all gift recipient assignments for the current user
+                 * Provides direct links to recipient wishlists
+                 -->
                 <div class="card mb-4">
                     <div class="card-header bg-success text-white">
                         <h5 class="mb-0"><?= t('user.dashboard.assignments.title') ?></h5>
@@ -69,6 +105,11 @@
     </div>
 
     <div class="col-md-4">
+        <!-- 
+         * Quick Actions panel
+         * Provides shortcut buttons for common user operations
+         * Improves navigation efficiency for frequent tasks
+         -->
         <div class="card mb-4">
             <div class="card-header bg-info text-white">
                 <h5 class="mb-0"><?= t('user.dashboard.quickActions.title') ?></h5>
@@ -82,6 +123,11 @@
             </div>
         </div>
 
+        <!-- 
+         * Tips and best practices panel
+         * Provides guidance for optimal user experience
+         * Helps users understand key features of the platform
+         -->
         <div class="card">
             <div class="card-header bg-light">
                 <h5 class="mb-0"><?= t('user.dashboard.tips.title') ?></h5>

@@ -11,14 +11,34 @@ use SecretSanta\Repositories\UserRepository;
 use SecretSanta\Repositories\GroupMemberRepository;
 use SecretSanta\Repositories\GiftAssignmentRepository;
 
+/**
+ * Wishlist Controller
+ * 
+ * Handles all operations related to user wishlists including viewing, creating, 
+ * editing, and managing wishlist items with their priorities.
+ * 
+ * @package SecretSanta\Controllers
+ */
 class WishlistController extends BaseController
 {
+    /**
+     * Repository instances for data access
+     *
+     * @var WishlistRepository
+     * @var WishlistItemRepository
+     * @var GroupRepository
+     * @var UserRepository
+     * @var GroupMemberRepository
+     */
     private WishlistRepository $wishlistRepository;
     private WishlistItemRepository $itemRepository;
     private GroupRepository $groupRepository;
     private UserRepository $userRepository;
     private GroupMemberRepository $memberRepository;
 
+    /**
+     * Constructor - initializes repositories for data access
+     */
     public function __construct()
     {
         parent::__construct();
@@ -31,6 +51,13 @@ class WishlistController extends BaseController
 
     /**
      * Display a wishlist for a user in a specific group
+     * 
+     * Enforces access control - users can only view their own wishlist or the wishlist
+     * of their assigned recipient (if draw has occurred) unless they are the group admin
+     * 
+     * @param int $userId The ID of the user whose wishlist to view
+     * @param int $groupId The ID of the group context
+     * @return string|void HTML content or redirect
      */
     public function view(int $userId, int $groupId)
     {
@@ -86,6 +113,11 @@ class WishlistController extends BaseController
 
     /**
      * Show the form to edit a wishlist
+     * 
+     * Creates a new wishlist if it doesn't exist yet for the user and group
+     * 
+     * @param int $groupId The ID of the group context
+     * @return string|void HTML content or redirect
      */
     public function edit(int $groupId)
     {
@@ -122,8 +154,11 @@ class WishlistController extends BaseController
         ]);
     }
 
-    /**
-     * Update the wishlist settings
+    /** 
+     * Updates wishlist properties such as priority ordering setting
+     * 
+     * @param int $groupId The ID of the group context
+     * @return void 
      */
     public function updateSettings(int $groupId)
     {
@@ -149,6 +184,11 @@ class WishlistController extends BaseController
 
     /**
      * Add an item to the wishlist
+     * 
+     * Creates a new wishlist item with validation of the input data
+     * 
+     * @param int $groupId The ID of the group context
+     * @return void
      */
     public function addItem(int $groupId)
     {
@@ -187,7 +227,7 @@ class WishlistController extends BaseController
         // Get or create wishlist
         $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
         if (!$wishlist) {
-            $wishlist = $this->wishlistRepository->createOrUpdateWishlist($userId, $groupId);
+            $wishlist = $->wishlistRepository->createOrUpdateWishlist($userId, $groupId);
         }
 
         // Add the item
@@ -199,6 +239,11 @@ class WishlistController extends BaseController
 
     /**
      * Update an existing wishlist item
+     * 
+     * Updates an item's details with validation and ownership check
+     * 
+     * @param int $itemId The ID of the wishlist item to update
+     * @return void
      */
     public function updateItem(int $itemId)
     {
@@ -256,6 +301,11 @@ class WishlistController extends BaseController
 
     /**
      * Delete a wishlist item
+     * 
+     * Removes an item after verifying ownership
+     * 
+     * @param int $itemId The ID of the wishlist item to delete
+     * @return void
      */
     public function deleteItem(int $itemId)
     {
@@ -288,6 +338,11 @@ class WishlistController extends BaseController
 
     /**
      * Update the priority order of wishlist items
+     * 
+     * Reorders items based on submitted priority positions
+     * 
+     * @param int $groupId The ID of the group context
+     * @return void
      */
     public function updatePriority(int $groupId)
     {

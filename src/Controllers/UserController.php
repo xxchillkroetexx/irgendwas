@@ -6,8 +6,24 @@ use SecretSanta\Repositories\UserRepository;
 use SecretSanta\Repositories\GroupRepository;
 use SecretSanta\Repositories\GiftAssignmentRepository;
 
+/**
+ * User Controller
+ * 
+ * Handles user-specific functionality including profile management,
+ * dashboard display, and user data API endpoints.
+ * 
+ * @package SecretSanta\Controllers
+ */
 class UserController extends BaseController
 {
+    /**
+     * Display the user's dashboard
+     * 
+     * Shows groups the user belongs to and any gift assignments they have.
+     * Requires authentication.
+     * 
+     * @return string HTML content
+     */
     public function dashboard()
     {
         // Require authentication
@@ -41,6 +57,14 @@ class UserController extends BaseController
         ]);
     }
 
+    /**
+     * Display the user profile page
+     * 
+     * Shows the profile information and allows for edits.
+     * Requires authentication.
+     * 
+     * @return string HTML content
+     */
     public function showProfile()
     {
         // Require authentication
@@ -53,6 +77,14 @@ class UserController extends BaseController
         ]);
     }
 
+    /**
+     * Update the user's profile information
+     * 
+     * Handles name changes and password updates.
+     * Requires authentication.
+     * 
+     * @return void
+     */
     public function updateProfile()
     {
         // Require authentication
@@ -110,8 +142,15 @@ class UserController extends BaseController
         $this->redirect('/user/profile');
     }
 
-    // API methods for JSON responses
-
+    /**
+     * API endpoint to get user data
+     * 
+     * Returns user information in JSON format.
+     * Requires authentication and only allows access to own data.
+     * 
+     * @param int $id The user ID to retrieve
+     * @return string JSON response
+     */
     public function apiGetUser($id)
     {
         // Require authentication
