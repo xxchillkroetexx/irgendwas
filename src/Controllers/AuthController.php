@@ -5,11 +5,23 @@ namespace SecretSanta\Controllers;
 use SecretSanta\Repositories\UserRepository;
 use SecretSanta\Services\EmailService;
 
+/**
+ * Authentication Controller
+ * 
+ * Handles all authentication-related actions including login, registration,
+ * password reset, and logout functionality.
+ * 
+ * @package SecretSanta\Controllers
+ */
 class AuthController extends BaseController
 {
-    // This needs to match the rate limit in session.php
-    private const MAX_LOGIN_ATTEMPTS = 5;
-
+    /**
+     * Display the login form
+     * 
+     * If the user is already logged in, redirect to dashboard instead
+     * 
+     * @return string|void HTML output or redirect
+     */
     public function showLogin()
     {
         // If already logged in, redirect to dashboard
@@ -20,6 +32,13 @@ class AuthController extends BaseController
         return $this->render('auth/login');
     }
 
+    /**
+     * Process login form submission
+     * 
+     * Authenticates user credentials and redirects accordingly
+     * 
+     * @return void
+     */
     public function login()
     {
         // Get client IP for rate limiting
@@ -103,6 +122,13 @@ class AuthController extends BaseController
         }
     }
 
+    /**
+     * Display the registration form
+     * 
+     * If the user is already logged in, redirect to dashboard instead
+     * 
+     * @return string|void HTML output or redirect
+     */
     public function showRegister()
     {
         // If already logged in, redirect to dashboard
@@ -113,6 +139,14 @@ class AuthController extends BaseController
         return $this->render('auth/register');
     }
 
+    /**
+     * Process registration form submission
+     * 
+     * Creates a new user account if validation passes and email is not already in use
+     * Implements anti-timing attack measures to prevent email enumeration
+     * 
+     * @return void
+     */
     public function register()
     {
         // Get client IP for rate limiting
@@ -189,6 +223,13 @@ class AuthController extends BaseController
         $this->redirect('/auth/login');
     }
 
+    /**
+     * Process user logout
+     * 
+     * Destroys the user session and redirects to homepage
+     * 
+     * @return void
+     */
     public function logout()
     {
         $this->auth->logout();
@@ -196,11 +237,24 @@ class AuthController extends BaseController
         $this->redirect('/');
     }
 
+    /**
+     * Display the forgot password form
+     * 
+     * @return string HTML output
+     */
     public function showForgotPassword()
     {
         return $this->render('auth/forgot-password');
     }
 
+    /**
+     * Process forgot password form submission
+     * 
+     * Sends password reset instructions to the provided email address
+     * Uses consistent responses to prevent email enumeration
+     * 
+     * @return void
+     */
     public function forgotPassword()
     {
         $email = $this->request->getPostParam('email');
@@ -219,6 +273,14 @@ class AuthController extends BaseController
         $this->redirect('/auth/login');
     }
 
+    /**
+     * Display the password reset form
+     * 
+     * Validates the reset token before showing the form
+     * 
+     * @param string $token The password reset token
+     * @return string|void HTML output or redirect
+     */
     public function showResetPassword($token)
     {
         // Check if token is valid before showing the form
@@ -238,6 +300,13 @@ class AuthController extends BaseController
         return $this->render('auth/reset-password', ['token' => $token]);
     }
 
+    /**
+     * Process password reset form submission
+     * 
+     * Updates user's password if reset token is valid
+     * 
+     * @return void
+     */
     public function resetPassword()
     {
         $token = $this->request->getPostParam('token');

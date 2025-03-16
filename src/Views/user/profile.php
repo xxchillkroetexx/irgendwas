@@ -22,24 +22,45 @@
             </div>
         </div>
 
+        <!-- 
+        * Password Change Card Section
+        * 
+        * This section provides a form for users to change their account password.
+        * It requires the current password for verification and ensures the new 
+        * password meets security requirements (minimum 8 characters).
+        * The form includes validation for password confirmation.
+        -->
         <div class="card">
             <div class="card-header bg-secondary text-white">
                 <h4 class="mb-0"><?= t('user.profile.changePassword.title') ?></h4>
             </div>
             <div class="card-body">
+                <!-- 
+                * Password Change Form
+                * @action /user/profile - Form submits to the profile controller
+                * @method post - Data is sent securely via POST method
+                -->
                 <form action="/user/profile" method="post">
+                    <!-- Current password field with validation -->
                     <div class="mb-3">
                         <label for="current_password" class="form-label"><?= t('user.profile.changePassword.current') ?></label>
                         <input type="password" class="form-control" id="current_password" name="current_password" required>
                     </div>
+                    
+                    <!-- New password field with security constraints -->
                     <div class="mb-3">
                         <label for="new_password" class="form-label"><?= t('user.profile.changePassword.new') ?></label>
+                        <!-- minlength=8 enforces minimum password security -->
                         <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
                     </div>
+                    
+                    <!-- Password confirmation field for validation -->
                     <div class="mb-3">
                         <label for="password_confirm" class="form-label"><?= t('user.profile.changePassword.confirm') ?></label>
                         <input type="password" class="form-control" id="password_confirm" name="password_confirm" required minlength="8">
                     </div>
+                    
+                    <!-- Submit button for password change form -->
                     <div class="d-grid">
                         <button type="submit" class="btn btn-secondary"><?= t('user.profile.changePassword.submit') ?></button>
                     </div>
@@ -47,6 +68,7 @@
             </div>
         </div>
 
+        <!-- Navigation link to return to dashboard -->
         <div class="mt-3 text-center">
             <a href="/user/dashboard" class="btn btn-outline-primary"><?= t('user.profile.backToDashboard') ?></a>
         </div>

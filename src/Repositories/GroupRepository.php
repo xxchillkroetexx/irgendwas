@@ -7,10 +7,33 @@ use SecretSanta\Models\Group;
 use SecretSanta\Models\User;
 use SecretSanta\Models\GiftAssignment;
 
+/**
+ * Repository class for handling Group data operations
+ * 
+ * Manages database interactions for group entities including CRUD operations,
+ * member management, and gift assignment drawing functionality.
+ */
 class GroupRepository extends DataMapper
 {
+    /**
+     * Database table name
+     * 
+     * @var string
+     */
     protected string $table = 'groups';
+    
+    /**
+     * Entity class name
+     * 
+     * @var string
+     */
     protected string $entityClass = Group::class;
+    
+    /**
+     * Available database columns
+     * 
+     * @var array
+     */
     protected array $columns = [
         'id',
         'name',
@@ -24,17 +47,38 @@ class GroupRepository extends DataMapper
         'updated_at'
     ];
 
+    /**
+     * Find a group by invitation code
+     * 
+     * @param string $code Invitation code to search for
+     * @return Group|null Group entity if found, null otherwise
+     */
     public function findByInvitationCode(string $code): ?Group
     {
         $groups = $this->findBy(['invitation_code' => $code]);
         return !empty($groups) ? $groups[0] : null;
     }
 
+    /**
+     * Find all groups administered by a specific user
+     * 
+     * @param int $adminId Admin user ID to search for
+     * @return array Array of Group entities
+     */
     public function findByAdminId(int $adminId): array
     {
         return $this->findBy(['admin_id' => $adminId]);
     }
 
+    /**
+     * Find all groups that a user belongs to
+     * 
+     * This method uses a JOIN with the group_members table to find groups
+     * where the user is a member, regardless of admin status.
+     * 
+     * @param int $userId User ID to find groups for
+     * @return array Array of Group entities
+     */
     public function findByUserId(int $userId): array
     {
         // This requires a JOIN with the group_members table
@@ -58,6 +102,12 @@ class GroupRepository extends DataMapper
         return $groups;
     }
 
+    /**
+     * Load the admin user for a group
+     * 
+     * @param Group $group The group to load admin for
+     * @return Group Group with admin user loaded
+     */
     public function loadAdmin(Group $group): Group
     {
         if ($group->getAdminId() === null) {
@@ -70,6 +120,12 @@ class GroupRepository extends DataMapper
         return $group->setAdmin($admin);
     }
 
+    /**
+     * Load all members of a group
+     * 
+     * @param Group $group The group to load members for
+     * @return Group Group with members loaded
+     */
     public function loadMembers(Group $group): Group
     {
         if ($group->getId() === null) {
@@ -92,6 +148,12 @@ class GroupRepository extends DataMapper
         return $group->setMembers($members);
     }
 
+    /**
+     * Load all gift assignments for a group
+     * 
+     * @param Group $group The group to load assignments for
+     * @return Group Group with assignments loaded
+     */
     public function loadAssignments(Group $group): Group
     {
         if ($group->getId() === null) {
@@ -104,6 +166,12 @@ class GroupRepository extends DataMapper
         return $group->setAssignments($assignments);
     }
 
+    /**
+     * Load all exclusion rules for a group
+     * 
+     * @param Group $group The group to load exclusion rules for
+     * @return Group Group with exclusion rules loaded
+     */
     public function loadExclusionRules(Group $group): Group
     {
         if ($group->getId() === null) {
@@ -116,6 +184,17 @@ class GroupRepository extends DataMapper
         return $group->setExclusionRules($exclusionRules);
     }
 
+    /**
+     * Create a new group
+     * 
+     * Automatically generates an invitation code and adds the creator as admin
+     * and as the first group member.
+     * 
+     * @param User $admin User entity who will be the admin
+     * @param string $name Group name
+     * @param string|null $description Optional group description
+     * @return Group The created group entity
+     */
     public function createGroup(User $admin, string $name, ?string $description = null): Group
     {
         $group = new Group();
@@ -133,6 +212,15 @@ class GroupRepository extends DataMapper
         return $group;
     }
 
+    /**
+     * Perform the Secret Santa gift assignment draw for a group
+     * 
+     * Creates gift assignments taking into account exclusion rules.
+     * Uses multiple attempts to find a valid assignment configuration.
+     * 
+     * @param Group $group The group to perform draw for
+     * @return bool True if draw was successful, false otherwise
+     */
     public function performDraw(Group $group): bool
     {
         if ($group->isDrawn()) {
@@ -191,6 +279,16 @@ class GroupRepository extends DataMapper
         }
     }
 
+    /**
+     * Algorithm to create Secret Santa assignments
+     * 
+     * Attempts to create a valid assignment where each person gives and receives
+     * exactly one gift while respecting exclusion rules.
+     * 
+     * @param array $members Array of User entities
+     * @param array $exclusionMap Map of user IDs to arrays of excluded user IDs
+     * @return array Associative array of giver IDs to receiver IDs
+     */
     private function drawSecretSanta(array $members, array $exclusionMap): array
     {
         $givers = array_map(function ($user) {
@@ -255,6 +353,14 @@ class GroupRepository extends DataMapper
         return [];
     }
 
+    /**
+     * Generate a unique invitation code for a group
+     * 
+     * Creates an 8-character alphanumeric code (excluding similar-looking characters)
+     * and ensures it is unique among existing groups.
+     * 
+     * @return string Unique invitation code
+     */
     private function generateInvitationCode(): string
     {
         do {

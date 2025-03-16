@@ -6,10 +6,33 @@ use SecretSanta\Database\DataMapper;
 use SecretSanta\Models\WishlistItem;
 use SecretSanta\Models\Wishlist;
 
+/**
+ * Repository class for handling WishlistItem data operations
+ * 
+ * Manages database interactions for wishlist item entities including CRUD operations
+ * and position management for ordered lists.
+ */
 class WishlistItemRepository extends DataMapper
 {
+    /**
+     * Database table name
+     * 
+     * @var string
+     */
     protected string $table = 'wishlist_items';
+    
+    /**
+     * Entity class name
+     * 
+     * @var string
+     */
     protected string $entityClass = WishlistItem::class;
+    
+    /**
+     * Available database columns
+     * 
+     * @var array
+     */
     protected array $columns = [
         'id',
         'wishlist_id',
@@ -23,6 +46,11 @@ class WishlistItemRepository extends DataMapper
 
     /**
      * Find all items for a specific wishlist
+     * 
+     * Returns items sorted by position in ascending order.
+     * 
+     * @param int $wishlistId Wishlist ID to find items for
+     * @return array Array of WishlistItem entities
      */
     public function findByWishlistId(int $wishlistId): array
     {
@@ -31,6 +59,9 @@ class WishlistItemRepository extends DataMapper
 
     /**
      * Load the wishlist relationship for an item
+     * 
+     * @param WishlistItem $item The item to load wishlist for
+     * @return WishlistItem Item with wishlist loaded
      */
     public function loadWishlist(WishlistItem $item): WishlistItem
     {
@@ -46,6 +77,14 @@ class WishlistItemRepository extends DataMapper
 
     /**
      * Create a new wishlist item
+     * 
+     * Automatically assigns the next available position number.
+     * 
+     * @param Wishlist $wishlist The wishlist to add item to
+     * @param string $title Item title
+     * @param string|null $description Optional item description
+     * @param string|null $link Optional item link/URL
+     * @return WishlistItem The created item entity
      */
     public function createItem(Wishlist $wishlist, string $title, ?string $description = null, ?string $link = null): WishlistItem
     {
@@ -72,6 +111,11 @@ class WishlistItemRepository extends DataMapper
 
     /**
      * Update item positions for priority ordering
+     * 
+     * Takes an associative array where keys are item IDs and values are new positions.
+     * 
+     * @param array $itemPositions Array mapping item IDs to new positions
+     * @return bool True if positions were updated successfully, false otherwise
      */
     public function updatePositions(array $itemPositions): bool
     {
@@ -96,6 +140,9 @@ class WishlistItemRepository extends DataMapper
 
     /**
      * Delete all items for a wishlist
+     * 
+     * @param int $wishlistId Wishlist ID to delete items for
+     * @return bool True if items were deleted successfully, false otherwise
      */
     public function deleteAllForWishlist(int $wishlistId): bool
     {

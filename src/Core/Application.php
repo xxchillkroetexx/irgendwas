@@ -9,10 +9,31 @@ use SecretSanta\Controllers\GroupController;
 use SecretSanta\Controllers\WishlistController;
 use SecretSanta\Controllers\ExclusionController;
 
+/**
+ * Application Core Class
+ * 
+ * The main application class that bootstraps the Secret Santa application,
+ * sets up routes, and handles incoming requests. It serves as the central
+ * coordination point for the application.
+ * 
+ * @package SecretSanta\Core
+ * @version 1.0
+ */
 class Application
 {
+    /**
+     * Router instance for handling URL routing
+     * 
+     * @var Router
+     */
     private Router $router;
 
+    /**
+     * Constructor - initializes the application components
+     * 
+     * Sets up internationalization, loads translation functions,
+     * and configures all application routes
+     */
     public function __construct()
     {
         // Initialize i18n
@@ -27,6 +48,14 @@ class Application
         $this->setupRoutes();
     }
 
+    /**
+     * Run the application
+     * 
+     * Process the current request and generate a response.
+     * Handles errors and exceptions that occur during request processing.
+     * 
+     * @return void
+     */
     public function run(): void
     {
         try {
@@ -50,6 +79,14 @@ class Application
         }
     }
 
+    /**
+     * Configure all application routes
+     * 
+     * Defines the URL patterns and their corresponding controller actions.
+     * Groups routes by functionality (home, auth, user, group, wishlist, exclusion).
+     * 
+     * @return void
+     */
     private function setupRoutes(): void
     {
         // Home routes

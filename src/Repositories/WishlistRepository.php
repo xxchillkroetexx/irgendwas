@@ -7,10 +7,33 @@ use SecretSanta\Models\Wishlist;
 use SecretSanta\Models\User;
 use SecretSanta\Models\Group;
 
+/**
+ * Repository class for handling Wishlist data operations
+ * 
+ * Manages database interactions for wishlist entities including CRUD operations
+ * and relationship management with users and groups.
+ */
 class WishlistRepository extends DataMapper
 {
+    /**
+     * Database table name
+     * 
+     * @var string
+     */
     protected string $table = 'wishlists';
+    
+    /**
+     * Entity class name
+     * 
+     * @var string
+     */
     protected string $entityClass = Wishlist::class;
+    
+    /**
+     * Available database columns
+     * 
+     * @var array
+     */
     protected array $columns = [
         'id',
         'user_id',
@@ -22,6 +45,10 @@ class WishlistRepository extends DataMapper
 
     /**
      * Find a wishlist by user ID and group ID
+     * 
+     * @param int $userId User ID to search for
+     * @param int $groupId Group ID to search for
+     * @return Wishlist|null Wishlist entity if found, null otherwise
      */
     public function findByUserAndGroup(int $userId, int $groupId): ?Wishlist
     {
@@ -31,6 +58,9 @@ class WishlistRepository extends DataMapper
 
     /**
      * Find all wishlists for a specific group
+     * 
+     * @param int $groupId Group ID to search for
+     * @return array Array of Wishlist entities
      */
     public function findByGroupId(int $groupId): array
     {
@@ -39,6 +69,9 @@ class WishlistRepository extends DataMapper
 
     /**
      * Find all wishlists for a specific user
+     * 
+     * @param int $userId User ID to search for
+     * @return array Array of Wishlist entities
      */
     public function findByUserId(int $userId): array
     {
@@ -47,6 +80,9 @@ class WishlistRepository extends DataMapper
 
     /**
      * Load the user relationship for a wishlist
+     * 
+     * @param Wishlist $wishlist The wishlist to load user for
+     * @return Wishlist Wishlist with user loaded
      */
     public function loadUser(Wishlist $wishlist): Wishlist
     {
@@ -62,6 +98,9 @@ class WishlistRepository extends DataMapper
 
     /**
      * Load the group relationship for a wishlist
+     * 
+     * @param Wishlist $wishlist The wishlist to load group for
+     * @return Wishlist Wishlist with group loaded
      */
     public function loadGroup(Wishlist $wishlist): Wishlist
     {
@@ -77,6 +116,11 @@ class WishlistRepository extends DataMapper
 
     /**
      * Load the wishlist items for a wishlist
+     * 
+     * If the wishlist is priority ordered, items will be sorted by position.
+     * 
+     * @param Wishlist $wishlist The wishlist to load items for
+     * @return Wishlist Wishlist with items loaded
      */
     public function loadItems(Wishlist $wishlist): Wishlist
     {
@@ -99,6 +143,14 @@ class WishlistRepository extends DataMapper
 
     /**
      * Create or update a wishlist for a user in a group
+     * 
+     * If a wishlist for the given user and group already exists, it will be updated.
+     * Otherwise, a new wishlist will be created.
+     * 
+     * @param int $userId User ID to create/update wishlist for
+     * @param int $groupId Group ID to create/update wishlist for
+     * @param bool $isPriorityOrdered Whether the wishlist is priority ordered
+     * @return Wishlist The created or updated wishlist entity
      */
     public function createOrUpdateWishlist(int $userId, int $groupId, bool $isPriorityOrdered = false): Wishlist
     {

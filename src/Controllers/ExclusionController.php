@@ -8,13 +8,32 @@ use SecretSanta\Repositories\GroupRepository;
 use SecretSanta\Repositories\UserRepository;
 use SecretSanta\Repositories\GroupMemberRepository;
 
+/**
+ * Exclusion Controller
+ * 
+ * Handles functionality related to exclusion rules, which allow users to specify
+ * other users they should not be assigned to during the Secret Santa draw.
+ * 
+ * @package SecretSanta\Controllers
+ */
 class ExclusionController extends BaseController
 {
+    /**
+     * Repository instances for data access
+     * 
+     * @var ExclusionRuleRepository
+     * @var GroupRepository
+     * @var UserRepository
+     * @var GroupMemberRepository
+     */
     private ExclusionRuleRepository $exclusionRepository;
     private GroupRepository $groupRepository;
     private UserRepository $userRepository;
     private GroupMemberRepository $memberRepository;
 
+    /**
+     * Constructor - initializes repositories for data access
+     */
     public function __construct()
     {
         parent::__construct();
@@ -26,6 +45,12 @@ class ExclusionController extends BaseController
 
     /**
      * Display exclusion rules for a group
+     * 
+     * Shows the current exclusion rules for the authenticated user
+     * and allows them to manage these rules
+     * 
+     * @param int $groupId The ID of the group
+     * @return string|void HTML content or redirect
      */
     public function index(int $groupId)
     {
@@ -74,6 +99,12 @@ class ExclusionController extends BaseController
 
     /**
      * Add a new exclusion rule
+     * 
+     * Creates a new rule preventing the authenticated user from being
+     * assigned to a specific other user during the draw
+     * 
+     * @param int $groupId The ID of the group
+     * @return void
      */
     public function add(int $groupId)
     {
@@ -128,6 +159,12 @@ class ExclusionController extends BaseController
 
     /**
      * Remove an exclusion rule
+     * 
+     * Deletes an existing exclusion rule
+     * 
+     * @param int $groupId The ID of the group
+     * @param int $excludedUserId The ID of the user to no longer exclude
+     * @return void
      */
     public function remove(int $groupId, int $excludedUserId)
     {

@@ -2,15 +2,31 @@
 
 namespace SecretSanta\Core;
 
+/**
+ * Autoloader class provides PSR-4 compliant class autoloading.
+ * 
+ * Allows registering namespaces with corresponding base directories
+ * and automatically loads class files when needed.
+ */
 class Autoloader
 {
+    /** @var array Registered namespaces with their base directories */
     private array $namespaces = [];
 
+    /**
+     * Registers this autoloader with PHP's autoload system.
+     */
     public function register(): void
     {
         spl_autoload_register([$this, 'loadClass']);
     }
 
+    /**
+     * Adds a namespace prefix to the autoloader.
+     * 
+     * @param string $namespace The namespace prefix
+     * @param string $baseDir The base directory for the namespace
+     */
     public function addNamespace(string $namespace, string $baseDir): void
     {
         $namespace = trim($namespace, '\\') . '\\';
@@ -19,6 +35,12 @@ class Autoloader
         $this->namespaces[$namespace] = $baseDir;
     }
 
+    /**
+     * Loads a class file based on its fully qualified name.
+     * 
+     * @param string $class The fully qualified class name
+     * @return bool True if the class was loaded, false otherwise
+     */
     public function loadClass(string $class): bool
     {
         $namespace = $class;
@@ -48,6 +70,13 @@ class Autoloader
         return false;
     }
 
+    /**
+     * Loads a class file from a registered namespace.
+     * 
+     * @param string $namespace The namespace prefix
+     * @param string $relativeClass The class name relative to the namespace
+     * @return bool True if the file was loaded, false otherwise
+     */
     private function loadMappedFile(string $namespace, string $relativeClass): bool
     {
         if (!isset($this->namespaces[$namespace])) {
@@ -65,6 +94,11 @@ class Autoloader
         return false;
     }
 
+    /**
+     * Gets the list of registered namespaces and their base directories.
+     * 
+     * @return array The registered namespaces
+     */
     public function getRegisteredNamespaces(): array
     {
         return $this->namespaces;

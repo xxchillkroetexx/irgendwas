@@ -2,17 +2,49 @@
 
 namespace SecretSanta\Config;
 
+/**
+ * Database Connection Management Class
+ * 
+ * This class manages database connections using the Singleton pattern to ensure
+ * only one database connection exists throughout the application. It also provides
+ * functionality to initialize the database schema.
+ * 
+ * @package SecretSanta\Config
+ * @version 1.0
+ */
 class Database
 {
+    /**
+     * Singleton instance of the Database class
+     * 
+     * @var self|null
+     */
     private static ?self $instance = null;
+    
+    /**
+     * PDO connection instance
+     * 
+     * @var \PDO|null
+     */
     private ?\PDO $connection = null;
 
+    /**
+     * Database connection parameters
+     * 
+     * @var string
+     */
     private string $host;
     private string $port;
     private string $database;
     private string $username;
     private string $password;
 
+    /**
+     * Private constructor to prevent direct instantiation
+     * 
+     * Loads database configuration from environment variables 
+     * with fallback default values
+     */
     private function __construct()
     {
         $this->host = getenv('DB_HOST') ?: 'localhost';
@@ -22,6 +54,11 @@ class Database
         $this->password = getenv('DB_PASSWORD') ?: 'irgendeinpasswort';
     }
 
+    /**
+     * Get the singleton instance of the Database class
+     * 
+     * @return self The Database instance
+     */
     public static function getInstance(): self
     {
         if (self::$instance === null) {
@@ -31,6 +68,14 @@ class Database
         return self::$instance;
     }
 
+    /**
+     * Get the PDO connection to the database
+     * 
+     * Creates a new connection if one doesn't exist yet
+     * 
+     * @return \PDO The PDO connection object
+     * @throws \Exception If connection fails
+     */
     public function getConnection(): \PDO
     {
         if ($this->connection === null) {
@@ -51,6 +96,15 @@ class Database
         return $this->connection;
     }
 
+    /**
+     * Initialize the database structure
+     * 
+     * Reads the SQL schema file and executes all SQL statements to create
+     * the necessary database tables and structure
+     * 
+     * @throws \Exception If the schema file is missing or database initialization fails
+     * @return void
+     */
     public function initialize(): void
     {
         // Get the schema SQL content

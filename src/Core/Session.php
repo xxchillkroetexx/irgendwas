@@ -2,9 +2,22 @@
 
 namespace SecretSanta\Core;
 
+/**
+ * Session management class implementing Singleton pattern
+ * 
+ * Provides methods to manage PHP sessions, including flash messages
+ * and form input persistence.
+ */
 class Session
 {
+    /**
+     * @var self|null Singleton instance
+     */
     private static ?self $instance = null;
+    
+    /**
+     * @var bool Whether the session has been started
+     */
     private bool $started = false;
     private const INACTIVITY_LIMIT = 1200; // 20 minutes in seconds
     
@@ -19,11 +32,19 @@ class Session
     private const REGISTRATION_LOCKOUT_MULTIPLIER = 3; // Each additional failed attempt triples the lockout time (higher grwoth rate than login lockout, as registration is less frequent)
         
     
+    /**
+     * Private constructor to enforce singleton pattern
+     */
     private function __construct()
     {
         // Don't start session in constructor - will do it on demand
     }
 
+    /**
+     * Get the singleton instance
+     * 
+     * @return self The session instance
+     */
     public static function getInstance(): self
     {
         if (self::$instance === null) {
@@ -33,41 +54,63 @@ class Session
         return self::$instance;
     }
 
+    /**
+     * Start the session if not already started
+     * 
+     * @return void
+     */
     private function start(): void
     {
         if (!$this->started && session_status() === PHP_SESSION_NONE && !headers_sent()) {
             session_start();
             $this->started = true;
-            $this->checkInactivity();
         }
     }
 
-    public function checkInactivity(): void
-    {
-        if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > self::INACTIVITY_LIMIT) {
-            $this->destroy();
-        }
-        $_SESSION['last_activity'] = time();
-    }
-
+    /**
+     * Set a session value
+     * 
+     * @param string $key Session key
+     * @param mixed $value Value to store
+     * @return void
+     */
     public function set(string $key, $value): void
     {
         $this->start();
         $_SESSION[$key] = $value;
     }
 
+    /**
+     * Get a session value
+     * 
+     * @param string $key Session key
+     * @param mixed $default Default value if key not found
+     * @return mixed Session value or default
+     */
     public function get(string $key, $default = null)
     {
         $this->start();
         return $_SESSION[$key] ?? $default;
     }
 
+    /**
+     * Check if a session key exists
+     * 
+     * @param string $key Session key
+     * @return bool True if key exists
+     */
     public function has(string $key): bool
     {
         $this->start();
         return isset($_SESSION[$key]);
     }
 
+    /**
+     * Remove a session value
+     * 
+     * @param string $key Session key
+     * @return void
+     */
     public function remove(string $key): void
     {
         $this->start();
@@ -76,6 +119,11 @@ class Session
         }
     }
 
+    /**
+     * Destroy the current session
+     * 
+     * @return void
+     */
     public function destroy(): void
     {
         $this->start();
@@ -84,6 +132,13 @@ class Session
         $this->started = false;
     }
 
+    /**
+     * Set a flash message (available only for the next request)
+     * 
+     * @param string $key Flash key
+     * @param mixed $value Flash value
+     * @return void
+     */
     public function setFlash(string $key, $value): void
     {
         $this->start();
@@ -94,6 +149,13 @@ class Session
         $_SESSION['_flash'][$key] = $value;
     }
 
+    /**
+     * Get and remove a flash message
+     * 
+     * @param string $key Flash key
+     * @param mixed $default Default value if key not found
+     * @return mixed Flash value or default
+     */
     public function getFlash(string $key, $default = null)
     {
         $this->start();
@@ -107,35 +169,70 @@ class Session
         return $value;
     }
 
+    /**
+     * Check if a flash message exists
+     * 
+     * @param string $key Flash key
+     * @return bool True if flash key exists
+     */
     public function hasFlash(string $key): bool
     {
         $this->start();
         return isset($_SESSION['_flash']) && isset($_SESSION['_flash'][$key]);
     }
 
+    /**
+     * Clear all flash messages
+     * 
+     * @return void
+     */
     public function clearFlash(): void
     {
         $this->start();
         $_SESSION['_flash'] = [];
     }
 
+    /**
+     * Regenerate session ID for security
+     * 
+     * @return void
+     */
     public function regenerate(): void
     {
         $this->start();
         session_regenerate_id(true);
     }
 
+    /**
+     * Get current session ID
+     * 
+     * @return string Session ID
+     */
     public function getSessionId(): string
     {
         $this->start();
         return session_id();
     }
 
+    /**
+     * Alias for setFlash
+     * 
+     * @param string $key Flash key
+     * @param mixed $value Flash value
+     * @return void
+     */
     public function flash(string $key, $value): void
     {
         $this->setFlash($key, $value);
     }
 
+    /**
+     * Get old form input value from flash data
+     * 
+     * @param string $key Input field name
+     * @param mixed $default Default value if not found
+     * @return mixed Input value or default
+     */
     public function getOldInput(string $key, $default = null)
     {
         $old = $this->getFlash('old') ?? [];
