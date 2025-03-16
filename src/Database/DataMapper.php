@@ -4,19 +4,64 @@ namespace SecretSanta\Database;
 
 use SecretSanta\Config\Database;
 
+/**
+ * Abstract DataMapper class for database operations
+ * 
+ * This class provides the base functionality for object-relational mapping,
+ * implementing the Data Mapper pattern to separate database access logic
+ * from domain objects.
+ */
 abstract class DataMapper
 {
+    /**
+     * Database connection
+     * 
+     * @var \mysqli
+     */
     protected \mysqli $db;
+    
+    /**
+     * The table name for this mapper
+     * 
+     * @var string
+     */
     protected string $table;
+    
+    /**
+     * The entity class name this mapper works with
+     * 
+     * @var string
+     */
     protected string $entityClass;
+    
+    /**
+     * List of database columns for the entity
+     * 
+     * @var array
+     */
     protected array $columns = [];
+    
+    /**
+     * The primary key column name
+     * 
+     * @var string
+     */
     protected string $primaryKey = 'id';
 
+    /**
+     * Constructor - initializes the database connection
+     */
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
     }
 
+    /**
+     * Find an entity by its ID
+     * 
+     * @param int $id The entity ID
+     * @return object|null The entity object or null if not found
+     */
     public function find(int $id)
     {
         $query = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ? LIMIT 1";
@@ -34,6 +79,15 @@ abstract class DataMapper
         return $this->mapToEntity($data);
     }
 
+    /**
+     * Find entities matching the given criteria
+     * 
+     * @param array $criteria Associative array of conditions (column => value)
+     * @param array $orderBy Associative array for sorting (column => direction)
+     * @param int|null $limit Maximum number of results to return
+     * @param int|null $offset Number of results to skip
+     * @return array Array of entity objects
+     */
     public function findBy(array $criteria, array $orderBy = [], ?int $limit = null, ?int $offset = null)
     {
         $query = "SELECT * FROM {$this->table}";
@@ -106,11 +160,25 @@ abstract class DataMapper
         return $entities;
     }
 
+    /**
+     * Find all entities in the table
+     * 
+     * @param array $orderBy Associative array for sorting (column => direction)
+     * @param int|null $limit Maximum number of results to return
+     * @param int|null $offset Number of results to skip
+     * @return array Array of entity objects
+     */
     public function findAll(array $orderBy = [], ?int $limit = null, ?int $offset = null)
     {
         return $this->findBy([], $orderBy, $limit, $offset);
     }
 
+    /**
+     * Save an entity (insert or update)
+     * 
+     * @param object $entity The entity to save
+     * @return object The saved entity with updated data
+     */
     public function save($entity)
     {
         $data = $this->mapFromEntity($entity);
@@ -122,6 +190,12 @@ abstract class DataMapper
         }
     }
 
+    /**
+     * Delete an entity from the database
+     * 
+     * @param object $entity The entity to delete
+     * @return bool True if deletion was successful
+     */
     public function delete($entity): bool
     {
         $data = $this->mapFromEntity($entity);
@@ -140,6 +214,12 @@ abstract class DataMapper
         return $affectedRows > 0;
     }
 
+    /**
+     * Delete an entity by its ID
+     * 
+     * @param int $id The ID of the entity to delete
+     * @return bool True if deletion was successful
+     */
     public function deleteById(int $id): bool
     {
         $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE {$this->primaryKey} = ?");
@@ -151,6 +231,12 @@ abstract class DataMapper
         return $affectedRows > 0;
     }
 
+    /**
+     * Insert a new entity into the database
+     * 
+     * @param array $data The entity data
+     * @return object The created entity
+     */
     protected function insert(array $data)
     {
         // Automatically set created_at and updated_at timestamps if they exist in the columns
@@ -214,6 +300,12 @@ abstract class DataMapper
         return $this->mapToEntity($data);
     }
 
+    /**
+     * Update an existing entity in the database
+     * 
+     * @param array $data The entity data
+     * @return object The updated entity
+     */
     protected function update(array $data)
     {
         $id = $data[$this->primaryKey];
@@ -272,26 +364,47 @@ abstract class DataMapper
         return $this->find($id);
     }
 
+    /**
+     * Start a database transaction
+     */
     public function beginTransaction()
     {
         $this->db->begin_transaction();
     }
 
+    /**
+     * Commit the current database transaction
+     */
     public function commit()
     {
         $this->db->commit();
     }
 
+    /**
+     * Roll back the current database transaction
+     */
     public function rollback()
     {
         $this->db->rollback();
     }
 
+    /**
+     * Map database data to an entity object
+     * 
+     * @param array $data The database data
+     * @return object The created entity
+     */
     protected function mapToEntity(array $data)
     {
         return new $this->entityClass($data);
     }
 
+    /**
+     * Map an entity object to database data
+     * 
+     * @param object $entity The entity to map
+     * @return array The database data
+     */
     protected function mapFromEntity($entity): array
     {
         if (method_exists($entity, 'toArray')) {
