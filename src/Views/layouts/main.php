@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secret Santa</title>
+    <title><?= t('app.name') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
@@ -13,7 +13,7 @@
     <header>
         <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
             <div class="container">
-                <a class="navbar-brand" href="/">Secret Santa</a>
+                <a class="navbar-brand" href="/"><?= t('app.name') ?></a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
                 </button>
@@ -21,10 +21,10 @@
                     <ul class="navbar-nav me-auto">
                         <?php if ($auth->check()): ?>
                             <li class="nav-item">
-                                <a class="nav-link" href="/user/dashboard">Dashboard</a>
+                                <a class="nav-link" href="/user/dashboard"><?= t('nav.dashboard') ?></a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="/groups">My Groups</a>
+                                <a class="nav-link" href="/groups"><?= t('nav.groups') ?></a>
                             </li>
                         <?php endif; ?>
                     </ul>
@@ -35,19 +35,19 @@
                                     <?= htmlspecialchars($auth->user()->getName()) ?>
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><a class="dropdown-item" href="/user/profile">Profile</a></li>
+                                    <li><a class="dropdown-item" href="/user/profile"><?= t('nav.profile') ?></a></li>
                                     <li>
                                         <hr class="dropdown-divider">
                                     </li>
-                                    <li><a class="dropdown-item" href="/auth/logout">Logout</a></li>
+                                    <li><a class="dropdown-item" href="/auth/logout"><?= t('auth.logout') ?></a></li>
                                 </ul>
                             </li>
                         <?php else: ?>
                             <li class="nav-item">
-                                <a class="nav-link" href="/auth/login">Login</a>
+                                <a class="nav-link" href="/auth/login"><?= t('auth.login') ?></a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="/auth/register">Register</a>
+                                <a class="nav-link" href="/auth/register"><?= t('auth.register') ?></a>
                             </li>
                         <?php endif; ?>
                         <li class="nav-item dropdown">
@@ -93,7 +93,7 @@
 
     <footer class="mt-auto py-3 bg-light">
         <div class="container text-center">
-            <p class="mb-0">&copy; <?= date('Y') ?> Secret Santa App</p>
+            <p class="mb-0">&copy; <?= date('Y') ?> <?= t('footer.copyright') ?></p>
         </div>
     </footer>
 

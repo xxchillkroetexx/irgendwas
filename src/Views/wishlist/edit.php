@@ -1,10 +1,10 @@
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
-        <h1>Edit Your Wishlist</h1>
-        <p class="lead">For group: <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a></p>
+        <h1><?= t('wishlist.edit.title') ?></h1>
+        <p class="lead"><?= t('wishlist.edit.forGroup') ?> <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a></p>
     </div>
     <div>
-        <a href="/wishlist/view/<?= $auth->userId() ?>/<?= $group->getId() ?>" class="btn btn-outline-secondary">View My Wishlist</a>
+        <a href="/wishlist/view/<?= $auth->userId() ?>/<?= $group->getId() ?>" class="btn btn-outline-secondary"><?= t('wishlist.view.title', ['name' => t('group.show.you')]) ?></a>
     </div>
 </div>
 
@@ -29,12 +29,12 @@
 <!-- Add New Item Form -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="card-title mb-0">Add New Item</h5>
+        <h5 class="card-title mb-0"><?= t('wishlist.edit.addItem') ?></h5>
     </div>
     <div class="card-body">
         <form action="/wishlist/<?= $group->getId() ?>/item/add" method="post">
             <div class="mb-3">
-                <label for="title" class="form-label">Item Title *</label>
+                <label for="title" class="form-label"><?= t('wishlist.edit.itemTitle') ?> *</label>
                 <input type="text" class="form-control" id="title" name="title" required
                     value="<?= isset($old['title']) ? htmlspecialchars($old['title']) : '' ?>">
                 <?php if (isset($errors['title'])): ?>
@@ -43,22 +43,22 @@
             </div>
 
             <div class="mb-3">
-                <label for="description" class="form-label">Description</label>
+                <label for="description" class="form-label"><?= t('wishlist.edit.itemDescription') ?></label>
                 <textarea class="form-control" id="description" name="description" rows="3"><?= isset($old['description']) ? htmlspecialchars($old['description']) : '' ?></textarea>
-                <div class="form-text">Optional. Add details like size, color, or model.</div>
+                <div class="form-text"><?= t('wishlist.edit.descriptionHelp') ?></div>
             </div>
 
             <div class="mb-3">
-                <label for="link" class="form-label">Link</label>
+                <label for="link" class="form-label"><?= t('wishlist.edit.link') ?></label>
                 <input type="url" class="form-control" id="link" name="link"
                     value="<?= isset($old['link']) ? htmlspecialchars($old['link']) : '' ?>">
-                <div class="form-text">Optional. Add a link to the item online.</div>
+                <div class="form-text"><?= t('wishlist.edit.linkHelp') ?></div>
                 <?php if (isset($errors['link'])): ?>
                     <div class="text-danger"><?= htmlspecialchars($errors['link']) ?></div>
                 <?php endif; ?>
             </div>
 
-            <button type="submit" class="btn btn-success">Add Item</button>
+            <button type="submit" class="btn btn-success"><?= t('wishlist.edit.addItem') ?></button>
         </form>
     </div>
 </div>
@@ -66,14 +66,14 @@
 <!-- Existing Items -->
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="card-title mb-0">My Wishlist Items</h5>
+        <h5 class="card-title mb-0"><?= t('wishlist.edit.title') ?></h5>
         <?php if ($wishlist->isPriorityOrdered() && !empty($wishlist->getItems())): ?>
             <button type="button" class="btn btn-outline-primary btn-sm" id="editPriorityBtn">Edit Priority Order</button>
         <?php endif; ?>
     </div>
     <div class="card-body">
         <?php if (empty($wishlist->getItems())): ?>
-            <p class="text-center py-4">You haven't added any items to your wishlist yet.</p>
+            <p class="text-center py-4"><?= t('wishlist.edit.noItems') ?></p>
         <?php else: ?>
             <div class="table-responsive">
                 <table class="table table-hover">
@@ -103,7 +103,7 @@
                                     <?php if ($item->getLink()): ?>
                                         <div class="mt-1">
                                             <a href="<?= htmlspecialchars($item->getLink()) ?>" target="_blank" class="small">
-                                                View Item <i class="bi bi-box-arrow-up-right"></i>
+                                                <?= t('wishlist.view.viewItem') ?> <i class="bi bi-box-arrow-up-right"></i>
                                             </a>
                                         </div>
                                     <?php endif; ?>
@@ -115,11 +115,11 @@
                                             data-title="<?= htmlspecialchars($item->getTitle()) ?>"
                                             data-description="<?= htmlspecialchars($item->getDescription() ?? '') ?>"
                                             data-link="<?= htmlspecialchars($item->getLink() ?? '') ?>">
-                                            Edit
+                                            <?= t('wishlist.edit.edit') ?>
                                         </button>
                                         <a href="/wishlist/item/<?= $item->getId() ?>/delete" class="btn btn-outline-danger"
-                                            onclick="return confirm('Are you sure you want to delete this item?')">
-                                            Delete
+                                            onclick="return confirm('<?= t('wishlist.edit.removeItemConfirm') ?>')">
+                                            <?= t('wishlist.edit.removeItem') ?>
                                         </a>
                                     </div>
                                 </td>
@@ -138,30 +138,30 @@
         <div class="modal-content">
             <form id="editItemForm" action="" method="post">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="editItemModalLabel">Edit Item</h5>
+                    <h5 class="modal-title" id="editItemModalLabel"><?= t('wishlist.edit.edit') ?> <?= t('wishlist.edit.itemTitle') ?></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="editTitle" class="form-label">Item Title *</label>
+                        <label for="editTitle" class="form-label"><?= t('wishlist.edit.itemTitle') ?> *</label>
                         <input type="text" class="form-control" id="editTitle" name="title" required>
                     </div>
 
                     <div class="mb-3">
-                        <label for="editDescription" class="form-label">Description</label>
+                        <label for="editDescription" class="form-label"><?= t('wishlist.edit.itemDescription') ?></label>
                         <textarea class="form-control" id="editDescription" name="description" rows="3"></textarea>
-                        <div class="form-text">Optional. Add details like size, color, or model.</div>
+                        <div class="form-text"><?= t('wishlist.edit.descriptionHelp') ?></div>
                     </div>
 
                     <div class="mb-3">
-                        <label for="editLink" class="form-label">Link</label>
+                        <label for="editLink" class="form-label"><?= t('wishlist.edit.link') ?></label>
                         <input type="url" class="form-control" id="editLink" name="link">
-                        <div class="form-text">Optional. Add a link to the item online.</div>
+                        <div class="form-text"><?= t('wishlist.edit.linkHelp') ?></div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= t('wishlist.edit.cancel') ?></button>
+                    <button type="submit" class="btn btn-primary"><?= t('wishlist.edit.save') ?></button>
                 </div>
             </form>
         </div>
