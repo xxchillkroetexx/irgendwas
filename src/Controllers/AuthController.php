@@ -23,16 +23,16 @@ class AuthController extends BaseController
         $password = $this->request->getPostParam('password');
 
         if (empty($email) || empty($password)) {
-            $this->session->setFlash('error', 'Please enter both email and password');
+            $this->session->setFlash('error', t('flash.error.email_password_required'));
             $this->redirect('/auth/login');
             return;
         }
 
         if ($this->auth->login($email, $password)) {
-            $this->session->setFlash('success', 'You have successfully logged in');
+            $this->session->setFlash('success', t('flash.success.logged_in'));
             $this->redirect('/user/dashboard');
         } else {
-            $this->session->setFlash('error', 'Invalid email or password');
+            $this->session->setFlash('error', t('flash.error.invalid_credentials'));
             $this->redirect('/auth/login');
         }
     }
@@ -102,7 +102,7 @@ class AuthController extends BaseController
         }
 
         // Use the same response for both outcomes
-        $this->session->setFlash('success', 'If your registration was successful, you will receive an email with instructions');
+        $this->session->setFlash('success', t('flash.success.registration_instructions'));
 
         // Add a small random delay to make timing analysis more difficult
         usleep(random_int(100000, 200000)); // 0.1-0.2 second delay
@@ -113,7 +113,7 @@ class AuthController extends BaseController
     public function logout()
     {
         $this->auth->logout();
-        $this->session->setFlash('success', 'You have been successfully logged out');
+        $this->session->setFlash('success', t('flash.success.logged_out'));
         $this->redirect('/');
     }
 
@@ -127,7 +127,7 @@ class AuthController extends BaseController
         $email = $this->request->getPostParam('email');
 
         if (empty($email)) {
-            $this->session->setFlash('error', 'Please enter your email address');
+            $this->session->setFlash('error', t('flash.error.enter_email'));
             $this->redirect('/auth/forgot-password');
             return;
         }
@@ -136,7 +136,7 @@ class AuthController extends BaseController
         $success = $this->auth->requestPasswordReset($email);
 
         // Always show the success message (to prevent email enumeration)
-        $this->session->setFlash('success', 'If your email exists in our system, you will receive password reset instructions');
+        $this->session->setFlash('success', t('flash.success.reset_instructions'));
         $this->redirect('/auth/login');
     }
 
@@ -152,8 +152,7 @@ class AuthController extends BaseController
             $user->getResetTokenExpires() === null ||
             strtotime($user->getResetTokenExpires()) < time()
         ) {
-
-            $this->session->setFlash('error', 'The password reset link has expired or is invalid. Please request a new one.');
+            $this->session->setFlash('error', t('flash.error.reset_token_expired'));
             return $this->redirect('/auth/forgot-password');
         }
 
@@ -168,19 +167,19 @@ class AuthController extends BaseController
 
         // Validate inputs
         if (empty($token) || empty($password) || empty($passwordConfirm)) {
-            $this->session->setFlash('error', 'All fields are required');
+            $this->session->setFlash('error', t('flash.error.all_fields_required'));
             $this->redirect('/auth/reset-password/' . $token);
             return;
         }
 
         if ($password !== $passwordConfirm) {
-            $this->session->setFlash('error', 'Passwords do not match');
+            $this->session->setFlash('error', t('flash.error.passwords_dont_match'));
             $this->redirect('/auth/reset-password/' . $token);
             return;
         }
 
         if (strlen($password) < 8) {
-            $this->session->setFlash('error', 'Password must be at least 8 characters');
+            $this->session->setFlash('error', t('flash.error.password_too_short'));
             $this->redirect('/auth/reset-password/' . $token);
             return;
         }
@@ -188,10 +187,10 @@ class AuthController extends BaseController
         $success = $this->auth->resetPassword($token, $password);
 
         if ($success) {
-            $this->session->setFlash('success', 'Your password has been reset, you can now login');
+            $this->session->setFlash('success', t('flash.success.password_reset'));
             $this->redirect('/auth/login');
         } else {
-            $this->session->setFlash('error', 'Invalid or expired reset token');
+            $this->session->setFlash('error', t('flash.error.invalid_reset_token'));
             $this->redirect('/auth/forgot-password');
         }
     }
