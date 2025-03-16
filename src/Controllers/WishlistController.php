@@ -41,7 +41,7 @@ class WishlistController extends BaseController
         // Check if the user is a member of the group
         $member = $this->memberRepository->findByGroupAndUser($groupId, $currentUserId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
@@ -49,7 +49,7 @@ class WishlistController extends BaseController
         if ($userId !== $currentUserId) {
             $otherMember = $this->memberRepository->findByGroupAndUser($groupId, $userId);
             if (!$otherMember) {
-                $this->session->setFlash('error', 'This user is not a member of the group');
+                $this->session->setFlash('error', t('flash.error.user_not_in_group'));
                 return $this->redirect('/groups/' . $groupId);
             }
 
@@ -60,7 +60,7 @@ class WishlistController extends BaseController
                 $assignment = $assignmentRepository->findByGiverAndGroup($currentUserId, $groupId);
 
                 if (!$assignment || $assignment->getReceiverId() !== $userId) {
-                    $this->session->setFlash('error', 'You can only view the wishlist of your assigned recipient');
+                    $this->session->setFlash('error', t('flash.error.only_view_assigned_recipient'));
                     return $this->redirect('/groups/' . $groupId);
                 }
             }
@@ -96,13 +96,13 @@ class WishlistController extends BaseController
         // Check if the user is a member of the group
         $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
         $group = $this->groupRepository->find($groupId);
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
@@ -134,7 +134,7 @@ class WishlistController extends BaseController
         // Check if the user is a member of the group
         $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
@@ -143,7 +143,7 @@ class WishlistController extends BaseController
         // Update the wishlist
         $this->wishlistRepository->createOrUpdateWishlist($userId, $groupId, $isPriorityOrdered);
 
-        $this->session->setFlash('success', 'Wishlist settings updated');
+        $this->session->setFlash('success', t('flash.success.wishlist_settings_updated'));
         return $this->redirect('/wishlist/edit/' . $groupId);
     }
 
@@ -159,7 +159,7 @@ class WishlistController extends BaseController
         // Check if the user is a member of the group
         $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
@@ -193,7 +193,7 @@ class WishlistController extends BaseController
         // Add the item
         $this->itemRepository->createItem($wishlist, $title, $description, $link);
 
-        $this->session->setFlash('success', 'Item added to your wishlist');
+        $this->session->setFlash('success', t('flash.success.item_added'));
         return $this->redirect('/wishlist/edit/' . $groupId);
     }
 
@@ -209,7 +209,7 @@ class WishlistController extends BaseController
         // Get the item
         $item = $this->itemRepository->find($itemId);
         if (!$item) {
-            $this->session->setFlash('error', 'Item not found');
+            $this->session->setFlash('error', t('flash.error.item_not_found'));
             return $this->redirect('/groups');
         }
 
@@ -218,7 +218,7 @@ class WishlistController extends BaseController
         $wishlist = $item->getWishlist();
 
         if (!$wishlist || $wishlist->getUserId() !== $userId) {
-            $this->session->setFlash('error', 'You do not have permission to edit this item');
+            $this->session->setFlash('error', t('flash.error.no_permission_edit_item'));
             return $this->redirect('/groups');
         }
 
@@ -250,7 +250,7 @@ class WishlistController extends BaseController
 
         $this->itemRepository->save($item);
 
-        $this->session->setFlash('success', 'Item updated successfully');
+        $this->session->setFlash('success', t('flash.success.item_updated'));
         return $this->redirect('/wishlist/edit/' . $wishlist->getGroupId());
     }
 
@@ -266,7 +266,7 @@ class WishlistController extends BaseController
         // Get the item
         $item = $this->itemRepository->find($itemId);
         if (!$item) {
-            $this->session->setFlash('error', 'Item not found');
+            $this->session->setFlash('error', t('flash.error.item_not_found'));
             return $this->redirect('/groups');
         }
 
@@ -275,14 +275,14 @@ class WishlistController extends BaseController
         $wishlist = $item->getWishlist();
 
         if (!$wishlist || $wishlist->getUserId() !== $userId) {
-            $this->session->setFlash('error', 'You do not have permission to delete this item');
+            $this->session->setFlash('error', t('flash.error.no_permission_delete_item'));
             return $this->redirect('/groups');
         }
 
         // Delete the item
         $this->itemRepository->delete($item);
 
-        $this->session->setFlash('success', 'Item deleted successfully');
+        $this->session->setFlash('success', t('flash.success.item_deleted'));
         return $this->redirect('/wishlist/edit/' . $wishlist->getGroupId());
     }
 
@@ -298,21 +298,21 @@ class WishlistController extends BaseController
         // Check if the user is a member of the group
         $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
         // Get the wishlist
         $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
         if (!$wishlist) {
-            $this->session->setFlash('error', 'Wishlist not found');
+            $this->session->setFlash('error', t('flash.error.wishlist_not_found'));
             return $this->redirect('/wishlist/edit/' . $groupId);
         }
 
         // Get the item positions from the request
         $positions = $this->request->getPostParam('positions', []);
         if (empty($positions) || !is_array($positions)) {
-            $this->session->setFlash('error', 'Invalid item positions');
+            $this->session->setFlash('error', t('flash.error.invalid_item_positions'));
             return $this->redirect('/wishlist/edit/' . $groupId);
         }
 
@@ -320,9 +320,9 @@ class WishlistController extends BaseController
         $success = $this->itemRepository->updatePositions($positions);
 
         if ($success) {
-            $this->session->setFlash('success', 'Item priorities updated successfully');
+            $this->session->setFlash('success', t('flash.success.priorities_updated'));
         } else {
-            $this->session->setFlash('error', 'Failed to update item priorities');
+            $this->session->setFlash('error', t('flash.error.priorities_update_failed'));
         }
 
         return $this->redirect('/wishlist/edit/' . $groupId);

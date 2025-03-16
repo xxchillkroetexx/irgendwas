@@ -107,7 +107,7 @@ class GroupController extends BaseController
         // Save the group with the updated dates
         $this->groupRepository->save($group);
 
-        $this->session->setFlash('success', 'Group created successfully!');
+        $this->session->setFlash('success', t('flash.success.group_created'));
         return $this->redirect('/groups/' . $group->getId());
     }
 
@@ -122,14 +122,14 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Check if user is a member of this group
         $member = $this->memberRepository->findByGroupAndUser($id, $userId);
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
@@ -170,13 +170,13 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Only admin can edit group
         if ($group->getAdminId() !== $userId) {
-            $this->session->setFlash('error', 'You are not authorized to edit this group');
+            $this->session->setFlash('error', t('flash.error.not_authorized_edit'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -197,13 +197,13 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Only admin can update group
         if ($group->getAdminId() !== $userId) {
-            $this->session->setFlash('error', 'You are not authorized to edit this group');
+            $this->session->setFlash('error', t('flash.error.not_authorized_edit'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -249,7 +249,7 @@ class GroupController extends BaseController
 
         $this->groupRepository->save($group);
 
-        $this->session->setFlash('success', 'Group updated successfully!');
+        $this->session->setFlash('success', t('flash.success.group_updated'));
         return $this->redirect('/groups/' . $id);
     }
 
@@ -264,13 +264,13 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Only admin can delete group
         if ($group->getAdminId() !== $userId) {
-            $this->session->setFlash('error', 'You are not authorized to delete this group');
+            $this->session->setFlash('error', t('flash.error.not_authorized_delete'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -305,11 +305,11 @@ class GroupController extends BaseController
 
             $this->groupRepository->commit();
 
-            $this->session->setFlash('success', 'Group deleted successfully!');
+            $this->session->setFlash('success', t('flash.success.group_deleted'));
             return $this->redirect('/groups');
         } catch (\Exception $e) {
             $this->groupRepository->rollback();
-            $this->session->setFlash('error', 'Failed to delete group: ' . $e->getMessage());
+            $this->session->setFlash('error', t('flash.error.group_delete_failed', ['error' => $e->getMessage()]));
             return $this->redirect('/groups/' . $id);
         }
     }
@@ -340,14 +340,14 @@ class GroupController extends BaseController
         $code = $this->request->getPostParam('invitation_code');
 
         if (empty($code)) {
-            $this->session->setFlash('error', 'Invitation code is required');
+            $this->session->setFlash('error', t('flash.error.invitation_code_required'));
             return $this->redirect('/groups/join');
         }
 
         $group = $this->groupRepository->findByInvitationCode($code);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Invalid invitation code');
+            $this->session->setFlash('error', t('flash.error.invalid_invitation_code'));
             return $this->redirect('/groups/join');
         }
 
@@ -357,21 +357,21 @@ class GroupController extends BaseController
         $existingMember = $this->memberRepository->findByGroupAndUser($group->getId(), $userId);
 
         if ($existingMember) {
-            $this->session->setFlash('info', 'You are already a member of this group');
+            $this->session->setFlash('info', t('flash.info.already_member'));
             return $this->redirect('/groups/' . $group->getId());
         }
 
         // Check if registration deadline has passed
         $deadline = $group->getRegistrationDeadline();
         if ($deadline && strtotime($deadline) < time()) {
-            $this->session->setFlash('error', 'The registration deadline for this group has passed');
+            $this->session->setFlash('error', t('flash.error.registration_deadline_passed'));
             return $this->redirect('/groups/join');
         }
 
         // Add user to group
         $this->memberRepository->addMember($group->getId(), $userId);
 
-        $this->session->setFlash('success', 'You have successfully joined the group!');
+        $this->session->setFlash('success', t('flash.success.group_joined'));
         return $this->redirect('/groups/' . $group->getId());
     }
 
@@ -386,13 +386,13 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Admin cannot leave their own group
         if ($group->getAdminId() === $userId) {
-            $this->session->setFlash('error', 'As the admin, you cannot leave the group. You can delete it instead.');
+            $this->session->setFlash('error', t('flash.error.admin_cannot_leave'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -400,14 +400,14 @@ class GroupController extends BaseController
         $member = $this->memberRepository->findByGroupAndUser($id, $userId);
 
         if (!$member) {
-            $this->session->setFlash('error', 'You are not a member of this group');
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
             return $this->redirect('/groups');
         }
 
         // Remove user from group
         $this->memberRepository->removeMember($id, $userId);
 
-        $this->session->setFlash('success', 'You have left the group');
+        $this->session->setFlash('success', t('flash.success.left_group'));
         return $this->redirect('/groups');
     }
 
@@ -422,19 +422,19 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Only admin can perform the draw
         if ($group->getAdminId() !== $userId) {
-            $this->session->setFlash('error', 'Only the admin can perform the draw');
+            $this->session->setFlash('error', t('flash.error.only_admin_draw'));
             return $this->redirect('/groups/' . $id);
         }
 
         // Check if already drawn
         if ($group->isDrawn()) {
-            $this->session->setFlash('error', 'The draw has already been performed for this group');
+            $this->session->setFlash('error', t('flash.error.already_drawn'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -442,16 +442,16 @@ class GroupController extends BaseController
         $success = $this->groupRepository->performDraw($group);
 
         if (!$success) {
-            $this->session->setFlash('error', 'Failed to perform the draw. Make sure there are enough members and the exclusion rules allow for a valid draw.');
+            $this->session->setFlash('error', t('flash.error.draw_failed'));
             return $this->redirect('/groups/' . $id);
         }
 
         // Send notifications to members
         try {
             $this->sendDrawNotifications($group);
-            $this->session->setFlash('success', 'The draw has been performed successfully and notifications have been sent to all members!');
+            $this->session->setFlash('success', t('flash.success.draw_success'));
         } catch (\Exception $e) {
-            $this->session->setFlash('warning', 'The draw has been performed successfully, but there was an error sending notifications: ' . $e->getMessage());
+            $this->session->setFlash('warning', t('flash.warning.draw_partial_success', ['error' => $e->getMessage()]));
         }
 
         return $this->redirect('/groups/' . $id);
@@ -468,13 +468,13 @@ class GroupController extends BaseController
         $group = $this->groupRepository->find($id);
 
         if (!$group) {
-            $this->session->setFlash('error', 'Group not found');
+            $this->session->setFlash('error', t('flash.error.group_not_found'));
             return $this->redirect('/groups');
         }
 
         // Only admin can generate new invitation links
         if ($group->getAdminId() !== $userId) {
-            $this->session->setFlash('error', 'Only the admin can generate new invitation links');
+            $this->session->setFlash('error', t('flash.error.only_admin_invitation'));
             return $this->redirect('/groups/' . $id);
         }
 
@@ -482,7 +482,7 @@ class GroupController extends BaseController
         $group->setInvitationCode(substr(str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZ23456789'), 0, 8));
         $this->groupRepository->save($group);
 
-        $this->session->setFlash('success', 'New invitation code generated successfully');
+        $this->session->setFlash('success', t('flash.success.invitation_generated'));
         return $this->redirect('/groups/' . $id);
     }
 

@@ -2,6 +2,8 @@
 
 namespace SecretSanta\Controllers;
 
+use SecretSanta\Core\I18n;
+
 class HomeController extends BaseController
 {
     public function index()
@@ -16,9 +18,14 @@ class HomeController extends BaseController
 
     public function setLanguage($locale)
     {
-        // Store the language preference in session
-        // (We'll implement proper language support later)
-        $this->session->set('language', $locale);
+        // Update the locale
+        $i18n = I18n::getInstance();
+        
+        // Validate the locale is supported
+        $availableLocales = $i18n->getAvailableLocales();
+        if (in_array($locale, $availableLocales)) {
+            $i18n->setLocale($locale);
+        }
 
         // Redirect back to referring page or home
         $referer = $this->request->getServerParam('HTTP_REFERER', '/');
