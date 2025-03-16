@@ -68,6 +68,19 @@ class Session
     }
 
     /**
+     * Check for inactivity and destroy the session if inactive
+     * 
+     * @return void
+     */
+    public function checkInactivity(): void
+    {
+        if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > self::INACTIVITY_LIMIT) {
+            $this->destroy();
+        }
+        $_SESSION['last_activity'] = time();
+    }
+
+    /**
      * Set a session value
      * 
      * @param string $key Session key
