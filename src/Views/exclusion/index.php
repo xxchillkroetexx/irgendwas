@@ -1,10 +1,10 @@
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
-        <h1>Manage Exclusion Rules</h1>
-        <p class="lead">For group: <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a></p>
+        <h1><?= t('exclusion.title') ?></h1>
+        <p class="lead"><?= t('exclusion.forGroup') ?> <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a></p>
     </div>
     <div>
-        <a href="/groups/<?= $group->getId() ?>" class="btn btn-outline-secondary">Back to Group</a>
+        <a href="/groups/<?= $group->getId() ?>" class="btn btn-outline-secondary"><?= t('exclusion.backToGroup') ?></a>
     </div>
 </div>
 
@@ -12,18 +12,18 @@
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="card-title mb-0">Add New Exclusion</h5>
+                <h5 class="card-title mb-0"><?= t('exclusion.addNew.title') ?></h5>
             </div>
             <div class="card-body">
                 <p class="text-muted">
-                    Exclusion rules prevent you from being assigned to specific people during the Secret Santa draw.
+                    <?= t('exclusion.addNew.description') ?>
                 </p>
 
                 <form action="/exclusions/<?= $group->getId() ?>/add" method="post">
                     <div class="mb-3">
-                        <label for="excludedUserId" class="form-label">Select person to exclude:</label>
+                        <label for="excludedUserId" class="form-label"><?= t('exclusion.addNew.selectPerson') ?></label>
                         <select class="form-select" id="excludedUserId" name="excluded_user_id" required>
-                            <option value="">-- Select a person --</option>
+                            <option value=""><?= t('exclusion.addNew.selectPlaceholder') ?></option>
                             <?php foreach ($members as $member): ?>
                                 <?php if ($member->getId() !== $auth->userId()): ?>
                                     <?php
@@ -45,25 +45,24 @@
                         </select>
                     </div>
 
-                    <button type="submit" class="btn btn-primary">Add Exclusion</button>
+                    <button type="submit" class="btn btn-primary"><?= t('exclusion.addNew.submit') ?></button>
                 </form>
             </div>
         </div>
 
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Why Use Exclusions?</h5>
+                <h5 class="card-title mb-0"><?= t('exclusion.why.title') ?></h5>
             </div>
             <div class="card-body">
-                <p>Exclusion rules are useful when:</p>
+                <p><?= t('exclusion.why.intro') ?></p>
                 <ul>
-                    <li>You want to avoid being matched with your spouse or partner</li>
-                    <li>You've already exchanged gifts with someone outside the Secret Santa</li>
-                    <li>You want to increase the chance of meeting new people</li>
+                    <li><?= t('exclusion.why.reason1') ?></li>
+                    <li><?= t('exclusion.why.reason2') ?></li>
+                    <li><?= t('exclusion.why.reason3') ?></li>
                 </ul>
                 <p class="text-muted small">
-                    <strong>Note:</strong> Adding too many exclusions might make it impossible to find a valid
-                    Secret Santa arrangement. Use them sparingly!
+                    <strong>Note:</strong> <?= t('exclusion.why.note') ?>
                 </p>
             </div>
         </div>
@@ -72,11 +71,11 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Your Current Exclusions</h5>
+                <h5 class="card-title mb-0"><?= t('exclusion.current.title') ?></h5>
             </div>
             <div class="card-body">
                 <?php if (empty($exclusions)): ?>
-                    <p class="text-center py-4">You haven't added any exclusions yet.</p>
+                    <p class="text-center py-4"><?= t('exclusion.current.empty') ?></p>
                 <?php else: ?>
                     <ul class="list-group">
                         <?php foreach ($exclusions as $exclusion): ?>
@@ -87,8 +86,8 @@
                                 </span>
                                 <a href="/exclusions/<?= $group->getId() ?>/remove/<?= $exclusion->getExcludedUserId() ?>"
                                     class="btn btn-sm btn-outline-danger"
-                                    onclick="return confirm('Are you sure you want to remove this exclusion?')">
-                                    Remove
+                                    onclick="return confirm('<?= t('exclusion.current.removeConfirm') ?>')">
+                                    <?= t('exclusion.current.remove') ?>
                                 </a>
                             </li>
                         <?php endforeach; ?>

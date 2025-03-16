@@ -7,6 +7,7 @@ use SecretSanta\Core\View;
 use SecretSanta\Core\Auth;
 use SecretSanta\Core\Session;
 use SecretSanta\Core\Router;
+use SecretSanta\Core\I18n;
 
 class BaseController
 {
@@ -15,6 +16,7 @@ class BaseController
     protected Auth $auth;
     protected Session $session;
     protected Router $router;
+    protected I18n $i18n;
 
     public function __construct()
     {
@@ -22,6 +24,7 @@ class BaseController
         $this->auth = Auth::getInstance();
         $this->session = Session::getInstance();
         $this->router = Router::getInstance();
+        $this->i18n = I18n::getInstance();
 
         $this->view = new View(__DIR__ . '/../Views');
     }
@@ -31,12 +34,15 @@ class BaseController
         // Add common data for all views
         $data['auth'] = $this->auth;
         $data['session'] = $this->session;
+        $data['i18n'] = $this->i18n;
 
         return $this->view->renderWithLayout($template, 'layouts/main', $data);
     }
 
     protected function renderPartial(string $template, array $data = []): string
     {
+        // Add i18n to partial views too
+        $data['i18n'] = $this->i18n;
         return $this->view->render($template, $data);
     }
 
@@ -48,7 +54,7 @@ class BaseController
     protected function requireAuth(): void
     {
         if (!$this->auth->check()) {
-            $this->session->setFlash('error', 'You must be logged in to access this page');
+            $this->session->setFlash('error', __('auth_required'));
             $this->redirect('/auth/login');
         }
     }
