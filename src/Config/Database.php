@@ -2,17 +2,49 @@
 
 namespace SecretSanta\Config;
 
+/**
+ * Database Connection Management Class
+ * 
+ * This class manages database connections using the Singleton pattern to ensure
+ * only one database connection exists throughout the application. It also provides
+ * functionality to initialize the database schema.
+ * 
+ * @package SecretSanta\Config
+ * @version 1.0
+ */
 class Database
 {
+    /**
+     * Singleton instance of the Database class
+     * 
+     * @var self|null
+     */
     private static ?self $instance = null;
-    private ?\mysqli $connection = null;
 
+    /**
+     * PDO connection instance
+     * 
+     * @var \PDO|null
+     */
+    private ?\PDO $connection = null;
+
+    /**
+     * Database connection parameters
+     * 
+     * @var string
+     */
     private string $host;
     private string $port;
     private string $database;
     private string $username;
     private string $password;
 
+    /**
+     * Private constructor to prevent direct instantiation
+     * 
+     * Loads database configuration from environment variables 
+     * with fallback default values
+     */
     private function __construct()
     {
         $this->host = getenv('DB_HOST') ?: 'localhost';
@@ -22,6 +54,11 @@ class Database
         $this->password = getenv('DB_PASSWORD') ?: 'irgendeinpasswort';
     }
 
+    /**
+     * Get the singleton instance of the Database class
+     * 
+     * @return self The Database instance
+     */
     public static function getInstance(): self
     {
         if (self::$instance === null) {
@@ -31,30 +68,27 @@ class Database
         return self::$instance;
     }
 
-    public function getConnection(): \mysqli
+    /**
+     * Get the PDO connection to the database
+     * 
+     * Creates a new connection if one doesn't exist yet
+     * 
+     * @return \PDO The PDO connection object
+     * @throws \Exception If connection fails
+     */
+    public function getConnection(): \PDO
     {
         if ($this->connection === null) {
             try {
-                // Create mysqli connection
-                $this->connection = new \mysqli(
-                    $this->host,
-                    $this->username,
-                    $this->password,
-                    $this->database,
-                    (int)$this->port
-                );
+                $dsn = "mysql:host={$this->host};port={$this->port};dbname={$this->database};charset=utf8mb4";
+                $options = [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+                    \PDO::ATTR_EMULATE_PREPARES => false,
+                ];
 
-                // Check for connection errors
-                if ($this->connection->connect_error) {
-                    throw new \Exception("Database connection failed: " . $this->connection->connect_error);
-                }
-
-                // Set charset
-                $this->connection->set_charset('utf8mb4');
-                
-                // Set error reporting mode
-                mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-            } catch (\Exception $e) {
+                $this->connection = new \PDO($dsn, $this->username, $this->password, $options);
+            } catch (\PDOException $e) {
                 throw new \Exception("Database connection failed: " . $e->getMessage());
             }
         }
@@ -62,6 +96,15 @@ class Database
         return $this->connection;
     }
 
+    /**
+     * Initialize the database structure
+     * 
+     * Reads the SQL schema file and executes all SQL statements to create
+     * the necessary database tables and structure
+     * 
+     * @throws \Exception If the schema file is missing or database initialization fails
+     * @return void
+     */
     public function initialize(): void
     {
         // Get the schema SQL content
@@ -87,14 +130,13 @@ class Database
 
         try {
             $connection = $this->getConnection();
+            $connection->setAttribute(\PDO::ATTR_EMULATE_PREPARES, 0);
 
             // Execute each statement
             foreach ($statements as $statement) {
-                if (!$connection->query($statement)) {
-                    throw new \Exception("Error executing statement: " . $connection->error);
-                }
+                $connection->exec($statement);
             }
-        } catch (\Exception $e) {
+        } catch (\PDOException $e) {
             throw new \Exception("Error initializing database: " . $e->getMessage());
         }
     }
