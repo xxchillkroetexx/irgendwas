@@ -14,36 +14,36 @@ class Session
      * @var self|null Singleton instance
      */
     private static ?self $instance = null;
-    
+
     /**
      * @var bool Whether the session has been started
      */
     private bool $started = false;
-    private const INACTIVITY_LIMIT
-    
-    // Rate limiting constants
-    private const MAX_LOGIN_ATTEMPTS
-    private const BASE_LOCKOUT_TIME
-    private const LOCKOUT_MULTIPLIER
+    private int $inactivityLimit;
 
-    // Rate limiting constants for registration
-    private const MAX_REGISTRATION
-    private const BASE_REGISTRATION_LOCKOUT_TIME
-    private const REGISTRATION_LOCKOUT_MULTIPLIER
-    
+    // Rate limiting properties
+    private int $maxLoginAttempts;
+    private int $baseLockoutTime;
+    private int $lockoutMultiplier;
+
+    // Rate limiting properties for registration
+    private int $maxRegistration;
+    private int $baseRegistrationLockoutTime;
+    private int $registrationLockoutMultiplier;
+
     /**
      * Private constructor to enforce singleton pattern
      */
     private function __construct()
     {
         // Load Rate limiting constants from environment variables
-        $this->INACTIVITY_LIMIT = getenv('SESSION_INACTIVITY_LIMIT') ?: 1200;
-        $this->MAX_LOGIN_ATTEMPTS = getenv('MAX_LOGIN_ATTEMPTS') ?: 5;
-        $this->BASE_LOCKOUT_TIME = getenv('BASE_LOCKOUT_TIME') ?: 300;
-        $this->LOCKOUT_MULTIPLIER = getenv('LOCKOUT_MULTIPLIER') ?: 2;
-        $this->MAX_REGISTRATION = getenv('MAX_REGISTRATION') ?: 3;
-        $this->BASE_REGISTRATION_LOCKOUT_TIME = getenv('BASE_REGISTRATION_LOCKOUT_TIME') ?: 600;
-        $this->REGISTRATION_LOCKOUT_MULTIPLIER = getenv('REGISTRATION_LOCKOUT_MULTIPLIER') ?: 3;
+        $this->inactivityLimit = getenv('SESSION_INACTIVITY_LIMIT') ?: 1200;
+        $this->maxLoginAttempts = getenv('MAX_LOGIN_ATTEMPTS') ?: 5;
+        $this->baseLockoutTime = getenv('BASE_LOCKOUT_TIME') ?: 300;
+        $this->lockoutMultiplier = getenv('LOCKOUT_MULTIPLIER') ?: 2;
+        $this->maxRegistration = getenv('MAX_REGISTRATION') ?: 3;
+        $this->baseRegistrationLockoutTime = getenv('BASE_REGISTRATION_LOCKOUT_TIME') ?: 600;
+        $this->registrationLockoutMultiplier = getenv('REGISTRATION_LOCKOUT_MULTIPLIER') ?: 3;
         // Don't start session in constructor - will do it on demand
     }
 
@@ -81,7 +81,7 @@ class Session
      */
     public function checkInactivity(): void
     {
-        if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > self::INACTIVITY_LIMIT) {
+        if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > $this->inactivityLimit) {
             $this->destroy();
         }
         $_SESSION['last_activity'] = time();
@@ -268,11 +268,11 @@ class Session
     public function incrementLoginAttempts(string $identifier): int
     {
         $this->start();
-        
+
         if (!isset($_SESSION['login_attempts'])) {
             $_SESSION['login_attempts'] = [];
         }
-        
+
         if (!isset($_SESSION['login_attempts'][$identifier])) {
             $_SESSION['login_attempts'][$identifier] = [
                 'attempts' => 0,
@@ -280,19 +280,19 @@ class Session
                 'lockout_until' => 0
             ];
         }
-        
+
         $_SESSION['login_attempts'][$identifier]['attempts']++;
         $_SESSION['login_attempts'][$identifier]['last_attempt'] = time();
-        
+
         // If attempts exceed threshold, set lockout timestamp
-        if ($_SESSION['login_attempts'][$identifier]['attempts'] >= self::MAX_LOGIN_ATTEMPTS) {
+        if ($_SESSION['login_attempts'][$identifier]['attempts'] >= $this->maxLoginAttempts) {
             $lockoutTime = $this->calculateLockoutTime($_SESSION['login_attempts'][$identifier]['attempts']);
             $_SESSION['login_attempts'][$identifier]['lockout_until'] = time() + $lockoutTime;
         }
-        
+
         return $_SESSION['login_attempts'][$identifier]['attempts'];
     }
-    
+
     /**
      * Get the number of login attempts for a given identifier
      *
@@ -302,14 +302,14 @@ class Session
     public function getLoginAttempts(string $identifier): int
     {
         $this->start();
-        
+
         if (!isset($_SESSION['login_attempts']) || !isset($_SESSION['login_attempts'][$identifier])) {
             return 0;
         }
-        
+
         return $_SESSION['login_attempts'][$identifier]['attempts'];
     }
-    
+
     /**
      * Reset login attempts counter for a given identifier
      *
@@ -318,12 +318,12 @@ class Session
     public function resetLoginAttempts(string $identifier): void
     {
         $this->start();
-        
+
         if (isset($_SESSION['login_attempts']) && isset($_SESSION['login_attempts'][$identifier])) {
             unset($_SESSION['login_attempts'][$identifier]);
         }
     }
-    
+
     /**
      * Check if login is locked for a given identifier
      *
@@ -333,23 +333,23 @@ class Session
     public function isLoginLocked(string $identifier): bool
     {
         $this->start();
-        
+
         if (!isset($_SESSION['login_attempts']) || !isset($_SESSION['login_attempts'][$identifier])) {
             return false;
         }
-        
+
         $lockoutUntil = $_SESSION['login_attempts'][$identifier]['lockout_until'] ?? 0;
-        
+
         // If lockout period has expired
         if ($lockoutUntil > 0 && $lockoutUntil <= time()) {
             // Keep the attempt count but remove the lockout
             $_SESSION['login_attempts'][$identifier]['lockout_until'] = 0;
             return false;
         }
-        
+
         return $lockoutUntil > time();
     }
-    
+
     /**
      * Get remaining lockout time in seconds
      *
@@ -359,19 +359,21 @@ class Session
     public function getRemainingLockoutTime(string $identifier): int
     {
         $this->start();
-        
-        if (!isset($_SESSION['login_attempts']) || 
+
+        if (
+            !isset($_SESSION['login_attempts']) ||
             !isset($_SESSION['login_attempts'][$identifier]) ||
-            !isset($_SESSION['login_attempts'][$identifier]['lockout_until'])) {
+            !isset($_SESSION['login_attempts'][$identifier]['lockout_until'])
+        ) {
             return 0;
         }
-        
+
         $lockoutUntil = $_SESSION['login_attempts'][$identifier]['lockout_until'];
         $remaining = $lockoutUntil - time();
-        
+
         return $remaining > 0 ? $remaining : 0;
     }
-    
+
     /**
      * Calculate lockout time based on number of attempts
      *
@@ -380,19 +382,19 @@ class Session
      */
     private function calculateLockoutTime(int $attempts): int
     {
-        $excessAttempts = $attempts - self::MAX_LOGIN_ATTEMPTS;
-        
+        $excessAttempts = $attempts - $this->maxLoginAttempts;
+
         if ($excessAttempts < 0) {
             return 0;
         }
-        
+
         // Base lockout time for first violation
         if ($excessAttempts === 0) {
-            return self::BASE_LOCKOUT_TIME;
+            return $this->baseLockoutTime;
         }
-        
+
         // Increase lockout time exponentially with each additional attempt
-        return self::BASE_LOCKOUT_TIME * pow(self::LOCKOUT_MULTIPLIER, $excessAttempts);
+        return $this->baseLockoutTime * pow($this->lockoutMultiplier, $excessAttempts);
     }
 
     /**
@@ -404,11 +406,11 @@ class Session
     public function incrementRegistrationAttempts(string $identifier): int
     {
         $this->start();
-        
+
         if (!isset($_SESSION['registration_attempts'])) {
             $_SESSION['registration_attempts'] = [];
         }
-        
+
         if (!isset($_SESSION['registration_attempts'][$identifier])) {
             $_SESSION['registration_attempts'][$identifier] = [
                 'attempts' => 0,
@@ -416,16 +418,16 @@ class Session
                 'lockout_until' => 0
             ];
         }
-        
+
         $_SESSION['registration_attempts'][$identifier]['attempts']++;
         $_SESSION['registration_attempts'][$identifier]['last_attempt'] = time();
-        
+
         // If attempts exceed threshold, set lockout timestamp
-        if ($_SESSION['registration_attempts'][$identifier]['attempts'] >= self::MAX_REGISTRATION) {
+        if ($_SESSION['registration_attempts'][$identifier]['attempts'] >= $this->maxRegistration) {
             $lockoutTime = $this->calculateRegistrationLockoutTime($_SESSION['registration_attempts'][$identifier]['attempts']);
             $_SESSION['registration_attempts'][$identifier]['lockout_until'] = time() + $lockoutTime;
         }
-        
+
         return $_SESSION['registration_attempts'][$identifier]['attempts'];
     }
 
@@ -438,20 +440,20 @@ class Session
     public function isRegistrationLocked(string $identifier): bool
     {
         $this->start();
-        
+
         if (!isset($_SESSION['registration_attempts']) || !isset($_SESSION['registration_attempts'][$identifier])) {
             return false;
         }
-        
+
         $lockoutUntil = $_SESSION['registration_attempts'][$identifier]['lockout_until'] ?? 0;
-        
+
         // If lockout period has expired
         if ($lockoutUntil > 0 && $lockoutUntil <= time()) {
             // Keep the attempt count but remove the lockout
             $_SESSION['registration_attempts'][$identifier]['lockout_until'] = 0;
             return false;
         }
-        
+
         return $lockoutUntil > time();
     }
 
@@ -464,16 +466,18 @@ class Session
     public function getRemainingRegistrationLockoutTime(string $identifier): int
     {
         $this->start();
-        
-        if (!isset($_SESSION['registration_attempts']) || 
+
+        if (
+            !isset($_SESSION['registration_attempts']) ||
             !isset($_SESSION['registration_attempts'][$identifier]) ||
-            !isset($_SESSION['registration_attempts'][$identifier]['lockout_until'])) {
+            !isset($_SESSION['registration_attempts'][$identifier]['lockout_until'])
+        ) {
             return 0;
         }
-        
+
         $lockoutUntil = $_SESSION['registration_attempts'][$identifier]['lockout_until'];
         $remaining = $lockoutUntil - time();
-        
+
         return $remaining > 0 ? $remaining : 0;
     }
 
@@ -485,19 +489,19 @@ class Session
      */
     private function calculateRegistrationLockoutTime(int $attempts): int
     {
-        $excessAttempts = $attempts - self::MAX_REGISTRATION;
-        
+        $excessAttempts = $attempts - $this->maxRegistration;
+
         if ($excessAttempts < 0) {
             return 0;
         }
-        
+
         // Base lockout time for first violation
         if ($excessAttempts === 0) {
-            return self::BASE_REGISTRATION_LOCKOUT_TIME;
+            return $this->baseRegistrationLockoutTime;
         }
-        
+
         // Increase lockout time exponentially with each additional attempt
-        return self::BASE_REGISTRATION_LOCKOUT_TIME * pow(self::REGISTRATION_LOCKOUT_MULTIPLIER, $excessAttempts);
+        return $this->baseRegistrationLockoutTime * pow($this->registrationLockoutMultiplier, $excessAttempts);
     }
 
     public function update(): void
