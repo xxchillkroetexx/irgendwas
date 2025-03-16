@@ -52,7 +52,7 @@
                         <?php endif; ?>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="languageDropdown" data-bs-toggle="dropdown">
-                                EN
+                                <?= strtoupper($session->get('locale', 'en')) ?>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="/language/en">English</a></li>
