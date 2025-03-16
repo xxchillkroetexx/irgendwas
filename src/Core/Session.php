@@ -19,24 +19,31 @@ class Session
      * @var bool Whether the session has been started
      */
     private bool $started = false;
-    private const INACTIVITY_LIMIT = 1200; // 20 minutes in seconds
+    private const INACTIVITY_LIMIT
     
     // Rate limiting constants
-    private const MAX_LOGIN_ATTEMPTS = 5; // Maximum login attempts before lockout
-    private const BASE_LOCKOUT_TIME = 300; // Base lockout time in seconds (5 minutes)
-    private const LOCKOUT_MULTIPLIER = 2; // Each additional failed attempt doubles the lockout time
+    private const MAX_LOGIN_ATTEMPTS
+    private const BASE_LOCKOUT_TIME
+    private const LOCKOUT_MULTIPLIER
 
     // Rate limiting constants for registration
-    private const MAX_REGISTRATION = 3; // Maximum registration per IP-address before lockout
-    private const BASE_REGISTRATION_LOCKOUT_TIME = 600; // Base lockout time in seconds (10 minutes)
-    private const REGISTRATION_LOCKOUT_MULTIPLIER = 3; // Each additional failed attempt triples the lockout time (higher grwoth rate than login lockout, as registration is less frequent)
-        
+    private const MAX_REGISTRATION
+    private const BASE_REGISTRATION_LOCKOUT_TIME
+    private const REGISTRATION_LOCKOUT_MULTIPLIER
     
     /**
      * Private constructor to enforce singleton pattern
      */
     private function __construct()
     {
+        // Load Rate limiting constants from environment variables
+        $this->INACTIVITY_LIMIT = getenv('SESSION_INACTIVITY_LIMIT') ?: 1200;
+        $this->MAX_LOGIN_ATTEMPTS = getenv('MAX_LOGIN_ATTEMPTS') ?: 5;
+        $this->BASE_LOCKOUT_TIME = getenv('BASE_LOCKOUT_TIME') ?: 300;
+        $this->LOCKOUT_MULTIPLIER = getenv('LOCKOUT_MULTIPLIER') ?: 2;
+        $this->MAX_REGISTRATION = getenv('MAX_REGISTRATION') ?: 3;
+        $this->BASE_REGISTRATION_LOCKOUT_TIME = getenv('BASE_REGISTRATION_LOCKOUT_TIME') ?: 600;
+        $this->REGISTRATION_LOCKOUT_MULTIPLIER = getenv('REGISTRATION_LOCKOUT_MULTIPLIER') ?: 3;
         // Don't start session in constructor - will do it on demand
     }
 

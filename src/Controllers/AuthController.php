@@ -15,6 +15,15 @@ use SecretSanta\Services\EmailService;
  */
 class AuthController extends BaseController
 {
+    // This needs to match the rate limit in session.php
+    private const MAX_LOGIN_ATTEMPTS
+
+    public function __construct()
+    {
+        parent::__construct();
+        this->MAX_LOGIN_ATTEMPTS = getenv('MAX_LOGIN_ATTEMPTS') ?: 5;
+    }
+
     /**
      * Display the login form
      * 
