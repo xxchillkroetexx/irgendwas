@@ -17,8 +17,7 @@ class HomeController extends BaseController
     public function setLanguage($locale)
     {
         // Store the language preference in session
-        // (We'll implement proper language support later)
-        $this->session->set('language', $locale);
+        $this->session->set('locale', $locale);
 
         // Redirect back to referring page or home
         $referer = $this->request->getServerParam('HTTP_REFERER', '/');
