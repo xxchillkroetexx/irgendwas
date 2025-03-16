@@ -34,8 +34,13 @@ class Auth
             return false;
         }
 
-        $this->session->regenerate();
+        // Store last login time in session flash to show next time
+        if ($user->getLastLogin() !== null && $user->getLastLogin() !== '') {
+            $this->session->setFlash('last_login', $user->getLastLogin());
+        }
+
         $this->session->set('user_id', $user->getId());
+        $this->session->regenerate();
         $this->user = $user;
 
         return true;
@@ -71,7 +76,11 @@ class Auth
 
     public function check(): bool
     {
-        return $this->session->has('user_id');
+        if ($this->session->has('user_id')) {
+            $this->session->set('last_activity', time());
+            return true;
+        }
+        return false;
     }
 
     public function user(): ?User

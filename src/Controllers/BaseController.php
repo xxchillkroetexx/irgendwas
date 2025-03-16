@@ -27,6 +27,7 @@ class BaseController
         $this->i18n = I18n::getInstance();
 
         $this->view = new View(__DIR__ . '/../Views');
+        $this->session->checkInactivity(); // Ensure the session is updated on each request to reset the inactivity timer
     }
 
     protected function render(string $template, array $data = []): string

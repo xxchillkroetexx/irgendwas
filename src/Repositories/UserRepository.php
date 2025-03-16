@@ -18,7 +18,8 @@ class UserRepository extends DataMapper
         'updated_at',
         'last_login',
         'reset_token',
-        'reset_token_expires'
+        'reset_token_expires',
+        'failed_login_attempts'
     ];
 
     public function findByEmail(string $email): ?User
@@ -79,14 +80,22 @@ class UserRepository extends DataMapper
         }
 
         if (!password_verify($password, $user->getPassword())) {
+            // Increment failed login attempts
+            $failedAttempts = $user->getFailedLoginAttempts() + 1;
+            $user->setFailedLoginAttempts($failedAttempts);
+            $this->save($user);
             return null;
         }
 
-        // Update last login time
-        $user->setLastLogin(date('Y-m-d H:i:s'));
+        // Store failed attempts for flash message
+        $failedAttempts = $user->getFailedLoginAttempts();
+        
+        // Update last login time and reset failed login attempts
+        $user->setLastLogin(date('Y-m-d H:i:s'))
+             ->setFailedLoginAttempts(0);
         $this->save($user);
 
-        return $user;
+        return $user->setTempFailedAttempts($failedAttempts);
     }
 
     public function createUser(string $email, string $name, string $password): User

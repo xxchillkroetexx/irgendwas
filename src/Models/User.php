@@ -13,6 +13,8 @@ class User
     private ?string $last_login = null;
     private ?string $reset_token = null;
     private ?string $reset_token_expires = null;
+    private int $failed_login_attempts = 0;
+    private int $tempFailedAttempts = 0; // Only temp variable for saving the amount of failed attempts for flash messages
 
     // Lazy-loaded relationships
     private array $groups = [];
@@ -23,6 +25,7 @@ class User
         if (!empty($data)) {
             $this->hydrate($data);
         }
+        
     }
 
     public function hydrate(array $data): void
@@ -36,6 +39,7 @@ class User
         if (isset($data['last_login'])) $this->last_login = $data['last_login'];
         if (isset($data['reset_token'])) $this->reset_token = $data['reset_token'];
         if (isset($data['reset_token_expires'])) $this->reset_token_expires = $data['reset_token_expires'];
+        if (isset($data['failed_login_attempts'])) $this->failed_login_attempts = (int) $data['failed_login_attempts'];
     }
 
     public function getId(): ?int
@@ -141,6 +145,40 @@ class User
         return $this->wishlists;
     }
 
+    public function getFailedLoginAttempts(): int
+    {
+        return $this->failed_login_attempts;
+    }
+
+    public function setFailedLoginAttempts(int $attempts): self
+    {
+        $this->failed_login_attempts = $attempts;
+        return $this;
+    }
+
+    public function getTempFailedAttempts(): int
+    {
+        return $this->tempFailedAttempts;
+    }
+
+    public function setTempFailedAttempts(int $attempts): self
+    {
+        $this->tempFailedAttempts = $attempts;
+        return $this;
+    }
+
+    public function incrementFailedLoginAttempts(): self
+    {
+        $this->failed_login_attempts++;
+        return $this;
+    }
+
+    public function resetFailedLoginAttempts(): self
+    {
+        $this->failed_login_attempts = 0;
+        return $this;
+    }
+
     public function toArray(): array
     {
         return [
@@ -152,7 +190,8 @@ class User
             'updated_at' => $this->updated_at ?? null,
             'last_login' => $this->last_login,
             'reset_token' => $this->reset_token,
-            'reset_token_expires' => $this->reset_token_expires
+            'reset_token_expires' => $this->reset_token_expires,
+            'failed_login_attempts' => $this->failed_login_attempts
         ];
     }
 }
