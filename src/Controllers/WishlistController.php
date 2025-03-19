@@ -227,7 +227,7 @@ class WishlistController extends BaseController
         // Get or create wishlist
         $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
         if (!$wishlist) {
-            $wishlist = $->wishlistRepository->createOrUpdateWishlist($userId, $groupId);
+            $wishlist = $this->wishlistRepository->createOrUpdateWishlist($userId, $groupId);
         }
 
         // Add the item
