@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Exclusion management view
  * 
@@ -14,7 +15,7 @@
 /**
  * Header section with group information and navigation
  */
- ?>
+?>
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
         <h1><?= t('exclusion.title') ?></h1>
@@ -27,10 +28,10 @@
 
 <div class="row">
     <div class="col-md-6">
-        /**
-         * Add new exclusion card
-         * Allows users to exclude a member from activities
-         */
+        <!-- 
+          Add new exclusion card 
+          Allows users to exclude a member from activities 
+        -->
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.addNew.title') ?></h5>
@@ -39,18 +40,17 @@
                 <p class="text-muted">
                     <?= t('exclusion.addNew.description') ?>
                 </p>
-
-                /**
-                 * Exclusion form
-                 * POST request to /exclusions/{groupId}/add with the excluded user ID
-                 */
+                <!--
+                  Exclusion form
+                  POST request to /exclusions/<?= $group->getId() ?>/add with the excluded user ID
+                -->
                 <form action="/exclusions/<?= $group->getId() ?>/add" method="post">
                     <div class="mb-3">
                         <label for="excludedUserId" class="form-label"><?= t('exclusion.addNew.selectPerson') ?></label>
                         <select class="form-select" id="excludedUserId" name="excluded_user_id" required>
                             <option value=""><?= t('exclusion.addNew.selectPlaceholder') ?></option>
                             <?php foreach ($members as $member): ?>
-                                <?php 
+                                <?php
                                 /**
                                  * Skip the current user from the exclusion options
                                  * Users cannot exclude themselves
@@ -83,9 +83,7 @@
             </div>
         </div>
 
-        /**
-         * Information card explaining the purpose of exclusions
-         */
+        <!-- Information card explaining the purpose of exclusions -->
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.why.title') ?></h5>
@@ -105,16 +103,16 @@
     </div>
 
     <div class="col-md-6">
-        /**
-         * Current exclusions list card
-         * Displays all active exclusions with remove options
-         */
+        <!--
+            Current exclusions list card
+            Displays all active exclusions with remove options
+        -->
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.current.title') ?></h5>
             </div>
             <div class="card-body">
-                <?php 
+                <?php
                 /**
                  * Display placeholder message if no exclusions exist
                  */
@@ -122,7 +120,7 @@
                     <p class="text-center py-4"><?= t('exclusion.current.empty') ?></p>
                 <?php else: ?>
                     <ul class="list-group">
-                        <?php 
+                        <?php
                         /**
                          * Loop through each exclusion and display with remove option
                          */
@@ -132,7 +130,7 @@
                                     <i class="bi bi-person-x me-2"></i>
                                     <?= htmlspecialchars($exclusion->getExcludedUser()->getName()) ?>
                                 </span>
-                                <?php 
+                                <?php
                                 /**
                                  * Link to remove exclusion with confirmation dialog
                                  */

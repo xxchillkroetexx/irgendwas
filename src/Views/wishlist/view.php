@@ -26,7 +26,7 @@
     </div>
 </div>
 
-// Main wishlist content card
+<!-- Main wishlist content card -->
 <div class="card mb-4">
     <div class="card-body">
         <?php if ($wishlist && !empty($wishlist->getItems())): ?>
