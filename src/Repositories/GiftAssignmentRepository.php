@@ -79,23 +79,6 @@ class GiftAssignmentRepository extends DataMapper
     }
 
     /**
-     * Find the gift assignment for a specific receiver in a group
-     * 
-     * @param int $receiverId The ID of the receiver
-     * @param int $groupId The ID of the group
-     * @return GiftAssignment|null Returns the assignment or null if not found
-     */
-    public function findByReceiverAndGroup(int $receiverId, int $groupId): ?GiftAssignment
-    {
-        $result = $this->findBy([
-            'receiver_id' => $receiverId,
-            'group_id' => $groupId
-        ]);
-
-        return !empty($result) ? $result[0] : null;
-    }
-
-    /**
      * Load the giver user object for a gift assignment
      * 
      * @param GiftAssignment $assignment The gift assignment to load the giver for
