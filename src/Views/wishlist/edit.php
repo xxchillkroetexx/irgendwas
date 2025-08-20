@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Wishlist Edit Template
  * 
@@ -154,6 +155,28 @@
                 </table>
             </div>
         <?php endif; ?>
+    </div>
+</div>
+
+<!-- Danger Zone - Delete Wishlist -->
+<div class="card border-danger">
+    <div class="card-header bg-danger text-white">
+        <h5 class="card-title mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Danger Zone
+        </h5>
+    </div>
+    <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted"><?= t('wishlist.edit.deleteWishlist') ?></h6>
+        <p class="text-muted">
+            This will permanently delete your entire wishlist and all items. This action cannot be undone.
+        </p>
+        <a href="/wishlist/<?= $group->getId() ?>/delete"
+            class="btn btn-danger"
+            onclick="return confirm('<?= t('wishlist.edit.deleteWishlistConfirm') ?>')">
+            <i class="bi bi-trash3-fill me-2"></i>
+            <?= t('wishlist.edit.deleteWishlist') ?>
+        </a>
     </div>
 </div>
 

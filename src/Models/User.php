@@ -13,42 +13,42 @@ class User
      * @var int|null Unique identifier of the user
      */
     private ?int $id = null;
-    
+
     /**
      * @var string User's email address (used for login)
      */
     private string $email;
-    
+
     /**
      * @var string User's hashed password
      */
     private string $password;
-    
+
     /**
      * @var string User's display name
      */
     private string $name;
-    
+
     /**
      * @var string Timestamp when the user account was created
      */
     private string $created_at;
-    
+
     /**
      * @var string Timestamp when the user account was last updated
      */
     private string $updated_at;
-    
+
     /**
      * @var string|null Timestamp of the user's last login
      */
     private ?string $last_login = null;
-    
+
     /**
      * @var string|null Token for password reset
      */
     private ?string $reset_token = null;
-    
+
     /**
      * @var string|null Expiration timestamp for the reset token
      */
@@ -61,7 +61,7 @@ class User
      * @var array Groups the user belongs to
      */
     private array $groups = [];
-    
+
     /**
      * @var array Wishlists belonging to the user
      */
@@ -77,7 +77,6 @@ class User
         if (!empty($data)) {
             $this->hydrate($data);
         }
-        
     }
 
     /**

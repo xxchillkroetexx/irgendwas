@@ -21,14 +21,14 @@ class WishlistRepository extends DataMapper
      * @var string
      */
     protected string $table = 'wishlists';
-    
+
     /**
      * Entity class name
      * 
      * @var string
      */
     protected string $entityClass = Wishlist::class;
-    
+
     /**
      * Available database columns
      * 

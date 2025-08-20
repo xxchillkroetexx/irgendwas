@@ -20,13 +20,13 @@ class ExclusionRuleRepository extends DataMapper
      * @var string
      */
     protected string $table = 'exclusion_rules';
-    
+
     /**
      * Entity class associated with this repository
      * @var string
      */
     protected string $entityClass = ExclusionRule::class;
-    
+
     /**
      * Database columns for the exclusion rules table
      * @var array

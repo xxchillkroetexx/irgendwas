@@ -20,14 +20,14 @@ class WishlistItemRepository extends DataMapper
      * @var string
      */
     protected string $table = 'wishlist_items';
-    
+
     /**
      * Entity class name
      * 
      * @var string
      */
     protected string $entityClass = WishlistItem::class;
-    
+
     /**
      * Available database columns
      * 
@@ -128,31 +128,6 @@ class WishlistItemRepository extends DataMapper
                     $item->setPosition($position);
                     $this->save($item);
                 }
-            }
-
-            $this->commit();
-            return true;
-        } catch (\Exception $e) {
-            $this->rollback();
-            return false;
-        }
-    }
-
-    /**
-     * Delete all items for a wishlist
-     * 
-     * @param int $wishlistId Wishlist ID to delete items for
-     * @return bool True if items were deleted successfully, false otherwise
-     */
-    public function deleteAllForWishlist(int $wishlistId): bool
-    {
-        $items = $this->findByWishlistId($wishlistId);
-
-        $this->beginTransaction();
-
-        try {
-            foreach ($items as $item) {
-                $this->delete($item);
             }
 
             $this->commit();

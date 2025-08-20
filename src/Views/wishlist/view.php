@@ -1,4 +1,4 @@
-/**
+<!-- /**
  * Wishlist View Template
  * 
  * Displays a user's wishlist for a specific group.
@@ -10,7 +10,7 @@
  * @var bool $is_own_wishlist Whether the current user is viewing their own wishlist
  */
 
-// Header section with title and group information
+// Header section with title and group information -->
 <div class="d-flex justify-content-between align-items-start mb-4">
     <div>
         <h1><?= t('wishlist.view.title', ['name' => htmlspecialchars($user->getName())]) ?></h1>
@@ -23,7 +23,7 @@
     </div>
 </div>
 
-// Main wishlist content card
+<!-- // Main wishlist content card -->
 <div class="card mb-4">
     <div class="card-body">
         <?php if ($wishlist && !empty($wishlist->getItems())): ?>

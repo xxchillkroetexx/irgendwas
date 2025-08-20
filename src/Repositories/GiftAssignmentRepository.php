@@ -19,13 +19,13 @@ class GiftAssignmentRepository extends DataMapper
      * @var string
      */
     protected string $table = 'gift_assignments';
-    
+
     /**
      * Entity class associated with this repository
      * @var string
      */
     protected string $entityClass = GiftAssignment::class;
-    
+
     /**
      * Database columns for the gift assignments table
      * @var array

@@ -38,12 +38,12 @@ class Application
     {
         // Initialize i18n
         I18n::getInstance();
-        
+
         // Include global translation functions if not using composer autoload
         if (!function_exists('__')) {
             require_once APP_ROOT . '/src/Localization/functions.php';
         }
-        
+
         $this->router = Router::getInstance();
         $this->setupRoutes();
     }
@@ -134,6 +134,7 @@ class Application
         $this->router->post('/wishlist/item/:itemId/update', [WishlistController::class, 'updateItem']);
         $this->router->get('/wishlist/item/:itemId/delete', [WishlistController::class, 'deleteItem']);
         $this->router->post('/wishlist/:groupId/priority', [WishlistController::class, 'updatePriority']);
+        $this->router->get('/wishlist/:groupId/delete', [WishlistController::class, 'deleteWishlist']);
 
         // Exclusion routes
         $this->router->get('/exclusions/:groupId', [ExclusionController::class, 'index']);
