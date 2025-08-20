@@ -62,17 +62,6 @@ class GiftAssignmentRepository extends DataMapper
     }
 
     /**
-     * Find all gift assignments where a user is the receiver
-     * 
-     * @param int $receiverId The ID of the receiver
-     * @return array Array of GiftAssignment objects
-     */
-    public function findByReceiverId(int $receiverId): array
-    {
-        return $this->findBy(['receiver_id' => $receiverId]);
-    }
-
-    /**
      * Find the gift assignment for a specific giver in a group
      * 
      * @param int $giverId The ID of the giver
