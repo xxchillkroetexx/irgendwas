@@ -13,55 +13,53 @@ class User
      * @var int|null Unique identifier of the user
      */
     private ?int $id = null;
-    
+
     /**
      * @var string User's email address (used for login)
      */
     private string $email;
-    
+
     /**
      * @var string User's hashed password
      */
     private string $password;
-    
+
     /**
      * @var string User's display name
      */
     private string $name;
-    
+
     /**
      * @var string Timestamp when the user account was created
      */
     private string $created_at;
-    
+
     /**
      * @var string Timestamp when the user account was last updated
      */
     private string $updated_at;
-    
+
     /**
      * @var string|null Timestamp of the user's last login
      */
     private ?string $last_login = null;
-    
+
     /**
      * @var string|null Token for password reset
      */
     private ?string $reset_token = null;
-    
+
     /**
      * @var string|null Expiration timestamp for the reset token
      */
     private ?string $reset_token_expires = null;
-    private int $failed_login_attempts = 0;
-    private int $tempFailedAttempts = 0; // Only temp variable for saving the amount of failed attempts for flash messages
 
     // Lazy-loaded relationships
     /**
      * @var array Groups the user belongs to
      */
     private array $groups = [];
-    
+
     /**
      * @var array Wishlists belonging to the user
      */
@@ -77,7 +75,6 @@ class User
         if (!empty($data)) {
             $this->hydrate($data);
         }
-        
     }
 
     /**
@@ -97,7 +94,6 @@ class User
         if (isset($data['last_login'])) $this->last_login = $data['last_login'];
         if (isset($data['reset_token'])) $this->reset_token = $data['reset_token'];
         if (isset($data['reset_token_expires'])) $this->reset_token_expires = $data['reset_token_expires'];
-        if (isset($data['failed_login_attempts'])) $this->failed_login_attempts = (int) $data['failed_login_attempts'];
     }
 
     /**
@@ -306,40 +302,6 @@ class User
         return $this->wishlists;
     }
 
-    public function getFailedLoginAttempts(): int
-    {
-        return $this->failed_login_attempts;
-    }
-
-    public function setFailedLoginAttempts(int $attempts): self
-    {
-        $this->failed_login_attempts = $attempts;
-        return $this;
-    }
-
-    public function getTempFailedAttempts(): int
-    {
-        return $this->tempFailedAttempts;
-    }
-
-    public function setTempFailedAttempts(int $attempts): self
-    {
-        $this->tempFailedAttempts = $attempts;
-        return $this;
-    }
-
-    public function incrementFailedLoginAttempts(): self
-    {
-        $this->failed_login_attempts++;
-        return $this;
-    }
-
-    public function resetFailedLoginAttempts(): self
-    {
-        $this->failed_login_attempts = 0;
-        return $this;
-    }
-
     /**
      * Converts the user object to an associative array
      * 
@@ -356,8 +318,7 @@ class User
             'updated_at' => $this->updated_at ?? null,
             'last_login' => $this->last_login,
             'reset_token' => $this->reset_token,
-            'reset_token_expires' => $this->reset_token_expires,
-            'failed_login_attempts' => $this->failed_login_attempts
+            'reset_token_expires' => $this->reset_token_expires
         ];
     }
 }

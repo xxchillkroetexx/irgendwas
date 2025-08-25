@@ -15,13 +15,9 @@ use SecretSanta\Services\EmailService;
  */
 class AuthController extends BaseController
 {
-    // This needs to match the rate limit in session.php
-    private int $MAX_LOGIN_ATTEMPTS;
-
     public function __construct()
     {
         parent::__construct();
-        $this->MAX_LOGIN_ATTEMPTS = getenv('MAX_LOGIN_ATTEMPTS') ?: 5;
     }
 
     /**
@@ -50,18 +46,6 @@ class AuthController extends BaseController
      */
     public function login()
     {
-        // Get client IP for rate limiting
-        $clientIp = $this->getClientIp();
-
-        // Check if IP is on lockout
-        if ($this->session->isLoginLocked($clientIp)) {
-            $remainingTime = $this->session->getRemainingLockoutTime($clientIp);
-            $minutes = ceil($remainingTime / 60);
-            $this->session->setFlash('error', t('flash.error.ip_locked', ['minutes' => $minutes]));
-            $this->redirect('/auth/login');
-            return;
-        }
-
         $email = $this->request->getPostParam('email');
         $password = $this->request->getPostParam('password');
 
@@ -71,62 +55,19 @@ class AuthController extends BaseController
             return;
         }
 
-        // Check if specific email is on lockout
-        if ($email && $this->session->isLoginLocked($email)) {
-            $remainingTime = $this->session->getRemainingLockoutTime($email);
-            $minutes = ceil($remainingTime / 60);
-
-            // Don't expose that the email exists, just state that too many attempts were made
-            $this->session->setFlash('error', t('flash.error.account_locked', ['minutes' => $minutes]));
-            $this->redirect('/auth/login');
-            return;
-        }
-
         if ($this->auth->login($email, $password)) {
-
-            // Successful login - reset login attempts for both IP and email
-            $this->session->resetLoginAttempts($email);
-            $this->session->resetLoginAttempts($clientIp);
-
-            // Get user to access failed login attempts
-            $user = $this->auth->user();
-
-            // Check for failed login attempts since last successful login
-            $failedAttempts = $user->getTempFailedAttempts();
-
-
             // Check if we have a previous login time stored in flash
             $lastLogin = $this->session->getFlash('last_login');
             if ($lastLogin) {
                 $formattedDate = date('d.m.Y H:i', strtotime($lastLogin));
-                $this->session->setFlash('success', t('flash.success.welcome_back', [
-                    'date' => $formattedDate,
-                    'attempts' => $failedAttempts
-                ]));
+                $this->session->setFlash('success', t('flash.success.logged_in'));
             } else {
                 $this->session->setFlash('success', t('flash.success.logged_in'));
             }
 
             $this->redirect('/user/dashboard');
         } else {
-            // Failed login - increment attempts for both IP and email
-            $this->session->incrementLoginAttempts($clientIp);
-
-            if (!empty($email)) {
-                $emailAttempts = $this->session->incrementLoginAttempts($email);
-                $remaining = $this->MAX_LOGIN_ATTEMPTS - $emailAttempts;
-
-                if ($remaining > 0) {
-                    $this->session->setFlash('error', t('flash.error.logged_in', ['remaining' => $remaining]));
-                } else {
-                    $lockoutTime = $this->session->getRemainingLockoutTime($email);
-                    $minutes = ceil($lockoutTime / 60);
-                    $this->session->setFlash('error', t('flash.error.account_locked', ['minutes' => $minutes]));
-                }
-            } else {
-                $this->session->setFlash('error', t('flash.error.invalid_credentials'));
-            }
-
+            $this->session->setFlash('error', t('flash.error.invalid_credentials'));
             $this->redirect('/auth/login');
         }
     }
@@ -158,19 +99,6 @@ class AuthController extends BaseController
      */
     public function register()
     {
-        // Get client IP for rate limiting
-        $clientIp = $this->getClientIp();
-
-        // Check if IP is locked out from registering
-        if ($this->session->isRegistrationLocked($clientIp)) {
-            $remainingTime = $this->session->getRemainingRegistrationLockoutTime($clientIp);
-            $minutes = ceil($remainingTime / 60);
-
-            $this->session->setFlash('error', t('flash.error.registration_locked', ['minutes' => $minutes]));
-            $this->redirect('/auth/register');
-            return;
-        }
-
         $email = $this->request->getPostParam('email');
         $name = $this->request->getPostParam('name');
         $password = $this->request->getPostParam('password');
@@ -222,7 +150,7 @@ class AuthController extends BaseController
             $this->auth->register($email, $name, $password);
             $mailer->sendWelcomeEmail($email);
         }
-        $this->session->incrementRegistrationAttempts($clientIp);
+
         // Use the same response for both outcomes
         $this->session->setFlash('success', t('flash.success.registration_instructions'));
 

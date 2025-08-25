@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     last_login TIMESTAMP NULL,
     reset_token VARCHAR(255) NULL,
-    reset_token_expires TIMESTAMP NULL,
-    failed_login_attempts INT NOT NULL DEFAULT 0
+    reset_token_expires TIMESTAMP NULL
   );
 
 -- Groups table
