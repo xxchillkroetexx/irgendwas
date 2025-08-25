@@ -19,13 +19,13 @@ class GiftAssignmentRepository extends DataMapper
      * @var string
      */
     protected string $table = 'gift_assignments';
-    
+
     /**
      * Entity class associated with this repository
      * @var string
      */
     protected string $entityClass = GiftAssignment::class;
-    
+
     /**
      * Database columns for the gift assignments table
      * @var array
@@ -62,17 +62,6 @@ class GiftAssignmentRepository extends DataMapper
     }
 
     /**
-     * Find all gift assignments where a user is the receiver
-     * 
-     * @param int $receiverId The ID of the receiver
-     * @return array Array of GiftAssignment objects
-     */
-    public function findByReceiverId(int $receiverId): array
-    {
-        return $this->findBy(['receiver_id' => $receiverId]);
-    }
-
-    /**
      * Find the gift assignment for a specific giver in a group
      * 
      * @param int $giverId The ID of the giver
@@ -83,23 +72,6 @@ class GiftAssignmentRepository extends DataMapper
     {
         $result = $this->findBy([
             'giver_id' => $giverId,
-            'group_id' => $groupId
-        ]);
-
-        return !empty($result) ? $result[0] : null;
-    }
-
-    /**
-     * Find the gift assignment for a specific receiver in a group
-     * 
-     * @param int $receiverId The ID of the receiver
-     * @param int $groupId The ID of the group
-     * @return GiftAssignment|null Returns the assignment or null if not found
-     */
-    public function findByReceiverAndGroup(int $receiverId, int $groupId): ?GiftAssignment
-    {
-        $result = $this->findBy([
-            'receiver_id' => $receiverId,
             'group_id' => $groupId
         ]);
 

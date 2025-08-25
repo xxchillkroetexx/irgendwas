@@ -382,4 +382,44 @@ class WishlistController extends BaseController
 
         return $this->redirect('/wishlist/edit/' . $groupId);
     }
+
+    /**
+     * Delete a user's entire wishlist for a specific group
+     * 
+     * Removes the wishlist and all its items after verifying ownership
+     * 
+     * @param int $groupId The ID of the group context
+     * @return void
+     */
+    public function deleteWishlist(int $groupId)
+    {
+        $this->requireAuth();
+
+        $userId = $this->auth->userId();
+
+        // Check if the user is a member of the group
+        $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
+        if (!$member) {
+            $this->session->setFlash('error', t('flash.error.not_group_member'));
+            return $this->redirect('/groups');
+        }
+
+        // Get the wishlist
+        $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
+        if (!$wishlist) {
+            $this->session->setFlash('error', t('flash.error.wishlist_not_found'));
+            return $this->redirect('/groups/' . $groupId);
+        }
+
+        // Delete the wishlist (this will cascade delete all items due to foreign key constraints)
+        $success = $this->wishlistRepository->delete($wishlist);
+
+        if ($success) {
+            $this->session->setFlash('success', t('flash.success.wishlist_deleted'));
+        } else {
+            $this->session->setFlash('error', t('flash.error.wishlist_delete_failed'));
+        }
+
+        return $this->redirect('/groups/' . $groupId);
+    }
 }
