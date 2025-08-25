@@ -19,14 +19,14 @@ class UserRepository extends DataMapper
      * @var string
      */
     protected string $table = 'users';
-    
+
     /**
      * Entity class name
      * 
      * @var string
      */
     protected string $entityClass = User::class;
-    
+
     /**
      * Available database columns
      * 
@@ -41,8 +41,7 @@ class UserRepository extends DataMapper
         'updated_at',
         'last_login',
         'reset_token',
-        'reset_token_expires',
-        'failed_login_attempts'
+        'reset_token_expires'
     ];
 
     /**
@@ -137,22 +136,14 @@ class UserRepository extends DataMapper
         }
 
         if (!password_verify($password, $user->getPassword())) {
-            // Increment failed login attempts
-            $failedAttempts = $user->getFailedLoginAttempts() + 1;
-            $user->setFailedLoginAttempts($failedAttempts);
-            $this->save($user);
             return null;
         }
 
-        // Store failed attempts for flash message
-        $failedAttempts = $user->getFailedLoginAttempts();
-        
-        // Update last login time and reset failed login attempts
-        $user->setLastLogin(date('Y-m-d H:i:s'))
-             ->setFailedLoginAttempts(0);
+        // Update last login time
+        $user->setLastLogin(date('Y-m-d H:i:s'));
         $this->save($user);
 
-        return $user->setTempFailedAttempts($failedAttempts);
+        return $user;
     }
 
     /**

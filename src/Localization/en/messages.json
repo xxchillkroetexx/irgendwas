@@ -255,12 +255,5 @@
     "flash.error.passwords_dont_match": "Passwords do not match",
     "flash.error.password_too_short": "Password must be at least 8 characters",
     "flash.success.password_reset": "Your password has been reset, you can now login",
-    "flash.error.invalid_reset_token": "Invalid or expired reset token",
-
-    
-    "flash.error.account_locked": "Your account has been locked due to too many failed login attempts. Please try again after {minutes} minutes.",
-    "flash.error.ip_locked": "Too many failed login attempts from this IP address. Please try again after {minutes} minutes.",
-    "flash.success.welcome_back": "Welcome back! Your last login was on {date}. Since your last successful login, there have been {attempts} failed login attempts on your account.",
-    "flash.error.logged_in": "Invalid email or password. Remaining attempts: {remaining}",
-    "flash.error.registration_locked": "Registration is currently locked. Please try again in {minutes} minutes."
+    "flash.error.invalid_reset_token": "Invalid or expired reset token"
 }
