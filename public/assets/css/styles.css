@@ -1,21 +1,30 @@
 /* Global Styles */
 :root {
-  --primary-color: 220, 53, 69;
-  --secondary-color: 0, 145, 75;
-  --accent-color: 106, 97, 246;
-  --light-color: 236, 240, 241;
-  --dark-color: 44, 62, 80;
-  --success-color: 46, 204, 113;
-  --warning-color: 243, 156, 18;
-  --danger-color: 231, 76, 60;
-  --bs-primary-rgb: var(--primary-color);
+  --primary-color: #dc3545;
+  --secondary-color: #00914b;
+  --accent-color: #6a61f6;
+  --light-color: #ecf0f1;
+  --dark-color: #2c3e50;
+  --success-color: #2ecc71;
+  --warning-color: #f39c12;
+  --danger-color: #e74c3c;
+}
+
+.bg-primary {
+  background-color: var(--primary-color) !important;
+}
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.6;
   color: var(--dark-color);
-  background-color: rgb(248, 249, 250);
+  background-color: #f8f9fa;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -39,11 +48,12 @@ main {
 }
 
 .card-header {
-  background-color: rgb(var(--primary-color));
+  background-color: var(--primary-color);
   color: white;
   border-top-left-radius: 8px !important;
   border-top-right-radius: 8px !important;
 }
+
 
 /* Button Styles */
 .btn {
@@ -54,34 +64,34 @@ main {
 }
 
 .btn-primary {
-  background-color: rgb(var(--primary-color));
-  border-color: rgb(var(--primary-color));
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
 }
 
 .btn-primary:hover {
-  background-color: rgb(26, 37, 48);
-  border-color: rgb(26, 37, 48);
+  background-color: #1a2530;
+  border-color: #1a2530;
 }
 
 .btn-success {
-  background-color: rgb(var(--success-color));
-  border-color: rgb(var(--success-color));
+  background-color: var(--success-color);
+  border-color: var(--success-color);
 }
 
 .btn-success:hover {
-  background-color: rgb(37, 162, 90);
-  border-color: rgb(37, 162, 90);
+  background-color: #25a25a;
+  border-color: #25a25a;
 }
 
 /* Form Styles */
 .form-control {
   border-radius: 4px;
-  border: 1px solid rgb(206, 212, 218);
+  border: 1px solid #ced4da;
   padding: 0.6rem 0.75rem;
 }
 
 .form-control:focus {
-  border-color: rgb(var(--accent-color));
+  border-color: var(--accent-color);
   box-shadow: 0 0 0 0.25rem rgba(52, 152, 219, 0.25);
 }
 
@@ -94,13 +104,13 @@ main {
 /* Footer Styles */
 footer {
   padding: 2rem 0;
-  background-color: rgb(var(--light-color));
+  background-color: var(--light-color);
   margin-top: auto;
 }
 
 /* Custom classes for the app */
 .wishlist-item {
-  border-left: 4px solid rgb(var(--accent-color));
+  border-left: 4px solid var(--accent-color);
   margin-bottom: 1rem;
   padding: 1rem;
   background-color: white;
@@ -109,7 +119,7 @@ footer {
 }
 
 .priority-badge {
-  background-color: rgb(var(--warning-color));
+  background-color: var(--warning-color);
   color: white;
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
@@ -129,17 +139,17 @@ footer {
 
 .recipient-info {
   padding: 1.5rem;
-  background-color: rgb(248, 249, 250);
+  background-color: #f8f9fa;
   border-radius: 8px;
   margin-top: 1.5rem;
 }
 
 .exclusion-rule {
   display: flex;
-  justify-content: between;
+  justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background-color: rgb(248, 249, 250);
+  background-color: #f8f9fa;
   border-radius: 4px;
   margin-bottom: 0.5rem;
 }
