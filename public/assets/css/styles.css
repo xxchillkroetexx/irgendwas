@@ -37,10 +37,6 @@ main {
   transition: transform 0.3s ease;
 }
 
-.card:hover {
-  transform: translateY(-5px);
-}
-
 .card-header {
   background-color: var(--primary-color);
   color: white;
