@@ -111,7 +111,7 @@
          * Improves navigation efficiency for frequent tasks
          -->
         <div class="card mb-4">
-            <div class="card-header bg-info text-white">
+            <div class="card-header text-white">
                 <h5 class="mb-0"><?= t('user.dashboard.quickActions.title') ?></h5>
             </div>
             <div class="card-body">
