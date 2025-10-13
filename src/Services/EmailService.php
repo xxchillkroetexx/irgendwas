@@ -316,16 +316,17 @@ class EmailService
             // Ensure the directory exists
             $emailDir = APP_ROOT . '/storage/emails';
             if (!is_dir($emailDir)) {
-                try {
-                    if (!mkdir($emailDir, 0777, true) && !is_dir($emailDir)) {
-                        error_log("Unable to create email directory: $emailDir");
-                    } else {
-                        // Ensure correct permissions after creation
-                        chmod($emailDir, 0777);
-                    }
-                } catch (\Exception $e) {
-                    error_log("Exception creating email directory: " . $e->getMessage());
+                if (!@mkdir($emailDir, 0775, true) && !is_dir($emailDir)) {
+                    error_log("Unable to create email directory: $emailDir - Check permissions");
+                    // Try to continue anyway, will fail gracefully below
                 }
+            }
+
+            // Check if directory is writable
+            if (!is_dir($emailDir) || !is_writable($emailDir)) {
+                error_log("Email directory not writable: $emailDir");
+                // Still return true to prevent blocking registration
+                return true;
             }
 
             // Sanitize the subject for use in the filename
@@ -333,16 +334,12 @@ class EmailService
             $filename = $emailDir . '/' . time() . '_' . $sanitizedSubject . '.html';
 
             // Save email to a file for testing purposes
-            try {
-                if (is_dir($emailDir) && is_writable($emailDir)) {
-                    file_put_contents($filename, $fileContent);
-                    error_log("Email saved to file for testing: {$filename}");
-                } else {
-                    error_log("Cannot write to email directory: $emailDir");
-                }
-            } catch (\Exception $e) {
-                error_log("Exception saving email to file: " . $e->getMessage());
+            if (@file_put_contents($filename, $fileContent) !== false) {
+                error_log("Email saved to file for testing: {$filename}");
+            } else {
+                error_log("Failed to save email to file: {$filename}");
             }
+            
             // Skip sending the email in development mode
             error_log("Email sending skipped (development mode)");
             return true;

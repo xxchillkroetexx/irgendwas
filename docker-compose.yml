@@ -27,7 +27,7 @@ services:
     volumes:
       - ./public:/var/www/public:ro
       - ./src:/var/www/src:ro
-      - ./storage:/var/www/storage # for saving files like emails, if no mailserver is used
+      - ./storage:/var/www/storage:rw
       - ./docker/php/php-fpm.conf:/usr/local/etc/php-fpm.d/www.conf:ro
       - php_logs:/var/log/php-fpm
     user: www-data

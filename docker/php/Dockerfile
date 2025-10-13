@@ -37,6 +37,11 @@ WORKDIR /var/www
 RUN mkdir -p /var/log/php-fpm && \
     chown -R www-data:www-data /var/log/php-fpm
 
+# Create storage directory for emails and set permissions
+RUN mkdir -p /var/www/storage/emails && \
+    chown -R www-data:www-data /var/www/storage && \
+    chmod -R 775 /var/www/storage
+
 # Configure PHP
 RUN echo "display_errors = On" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
     echo "error_reporting = E_ALL" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
