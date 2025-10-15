@@ -38,7 +38,6 @@ class WishlistRepository extends DataMapper
         'id',
         'user_id',
         'group_id',
-        'is_priority_ordered',
         'created_at',
         'updated_at'
     ];
@@ -117,8 +116,6 @@ class WishlistRepository extends DataMapper
     /**
      * Load the wishlist items for a wishlist
      * 
-     * If the wishlist is priority ordered, items will be sorted by position.
-     * 
      * @param Wishlist $wishlist The wishlist to load items for
      * @return Wishlist Wishlist with items loaded
      */
@@ -131,13 +128,6 @@ class WishlistRepository extends DataMapper
         $wishlistItemRepository = new WishlistItemRepository();
         $items = $wishlistItemRepository->findByWishlistId($wishlist->getId());
 
-        // Sort items by position if priority ordered
-        if ($wishlist->isPriorityOrdered()) {
-            usort($items, function ($a, $b) {
-                return $a->getPosition() - $b->getPosition();
-            });
-        }
-
         return $wishlist->setItems($items);
     }
 
@@ -149,10 +139,9 @@ class WishlistRepository extends DataMapper
      * 
      * @param int $userId User ID to create/update wishlist for
      * @param int $groupId Group ID to create/update wishlist for
-     * @param bool $isPriorityOrdered Whether the wishlist is priority ordered
      * @return Wishlist The created or updated wishlist entity
      */
-    public function createOrUpdateWishlist(int $userId, int $groupId, bool $isPriorityOrdered = false): Wishlist
+    public function createOrUpdateWishlist(int $userId, int $groupId): Wishlist
     {
         $wishlist = $this->findByUserAndGroup($userId, $groupId);
 
@@ -160,11 +149,7 @@ class WishlistRepository extends DataMapper
             // Create new wishlist
             $wishlist = new Wishlist();
             $wishlist->setUserId($userId)
-                ->setGroupId($groupId)
-                ->setIsPriorityOrdered($isPriorityOrdered);
-        } else {
-            // Update existing wishlist
-            $wishlist->setIsPriorityOrdered($isPriorityOrdered);
+                ->setGroupId($groupId);
         }
 
         return $this->save($wishlist);

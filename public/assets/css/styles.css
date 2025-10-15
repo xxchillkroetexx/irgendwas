@@ -155,15 +155,6 @@ footer {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.priority-badge {
-  background-color: var(--warning-color);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: bold;
-}
-
 .group-card {
   margin-bottom: 1.5rem;
 }

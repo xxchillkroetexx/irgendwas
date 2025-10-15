@@ -25,11 +25,6 @@ class Wishlist
     private int $group_id;
     
     /**
-     * @var bool Whether the items in this wishlist are ordered by priority
-     */
-    private bool $is_priority_ordered = false;
-    
-    /**
      * @var string Timestamp when the wishlist was created
      */
     private string $created_at;
@@ -78,7 +73,6 @@ class Wishlist
         if (isset($data['id'])) $this->id = (int) $data['id'];
         if (isset($data['user_id'])) $this->user_id = (int) $data['user_id'];
         if (isset($data['group_id'])) $this->group_id = (int) $data['group_id'];
-        if (isset($data['is_priority_ordered'])) $this->is_priority_ordered = (bool) $data['is_priority_ordered'];
         if (isset($data['created_at'])) $this->created_at = $data['created_at'];
         if (isset($data['updated_at'])) $this->updated_at = $data['updated_at'];
     }
@@ -134,28 +128,6 @@ class Wishlist
     public function setGroupId(int $group_id): self
     {
         $this->group_id = $group_id;
-        return $this;
-    }
-
-    /**
-     * Checks if the items in this wishlist are ordered by priority
-     * 
-     * @return bool
-     */
-    public function isPriorityOrdered(): bool
-    {
-        return $this->is_priority_ordered;
-    }
-
-    /**
-     * Sets whether the items in this wishlist are ordered by priority
-     * 
-     * @param bool $is_priority_ordered
-     * @return self
-     */
-    public function setIsPriorityOrdered(bool $is_priority_ordered): self
-    {
-        $this->is_priority_ordered = $is_priority_ordered;
         return $this;
     }
 
@@ -262,7 +234,6 @@ class Wishlist
             'id' => $this->id,
             'user_id' => $this->user_id,
             'group_id' => $this->group_id,
-            'is_priority_ordered' => $this->is_priority_ordered,
             'created_at' => $this->created_at ?? null,
             'updated_at' => $this->updated_at ?? null
         ];

@@ -21,46 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
             bsAlert.close();
         });
     }, 5000);
-    
-    // Handle wishlist item sorting
-    var wishlistContainer = document.querySelector('.wishlist-items-container');
-    if (wishlistContainer) {
-        initWishlistSorting();
-    }
-    
-    // Handle priority toggle
-    var priorityToggle = document.getElementById('priority-toggle');
-    if (priorityToggle) {
-        priorityToggle.addEventListener('change', function() {
-            var form = this.closest('form');
-            if (form) {
-                form.submit();
-            }
-        });
-    }
 });
-
-function initWishlistSorting() {
-    // Get all move up/down buttons
-    var moveButtons = document.querySelectorAll('.move-item-btn');
-    
-    // Add click event listeners
-    moveButtons.forEach(function(button) {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            var direction = this.dataset.direction;
-            var itemId = this.dataset.itemId;
-            
-            // Submit the move request
-            var form = document.createElement('form');
-            form.method = 'post';
-            form.action = '/wishlist/item/move/' + itemId + '/' + direction;
-            document.body.appendChild(form);
-            form.submit();
-        });
-    });
-}
 
 // Confirm deletion
 function confirmDelete(message, formId) {

@@ -25,25 +25,6 @@
     </div>
 </div>
 
-<!-- Wishlist Settings Section -->
-<div class="card mb-4">
-    <div class="card-header">
-        <h5 class="card-title mb-0">Wishlist Settings</h5>
-    </div>
-    <div class="card-body">
-        <form action="/wishlist/<?= $group->getId() ?>/settings" method="post">
-            <!-- Priority ordering toggle switch -->
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" id="isPriorityOrdered" name="is_priority_ordered" value="1" <?= $wishlist->isPriorityOrdered() ? 'checked' : '' ?>>
-                <label class="form-check-label" for="isPriorityOrdered">
-                    Priority Order Items (drag and reorder items to indicate preference)
-                </label>
-            </div>
-            <button type="submit" class="btn btn-primary">Save Settings</button>
-        </form>
-    </div>
-</div>
-
 <!-- Add New Item Form -->
 <div class="card mb-4">
     <div class="card-header">
@@ -86,11 +67,8 @@
 
 <!-- Existing Items Table -->
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header">
         <h5 class="card-title mb-0"><?= t('wishlist.edit.title') ?></h5>
-        <?php if ($wishlist->isPriorityOrdered() && !empty($wishlist->getItems())): ?>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="editPriorityBtn">Edit Priority Order</button>
-        <?php endif; ?>
     </div>
     <div class="card-body">
         <?php if (empty($wishlist->getItems())): ?>
@@ -102,23 +80,13 @@
                 <table class="table table-hover">
                     <thead>
                         <tr>
-                            <?php if ($wishlist->isPriorityOrdered()): ?>
-                                <th width="5%">Priority</th>
-                            <?php endif; ?>
                             <th>Item</th>
                             <th width="15%">Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="wishlistItems">
+                    <tbody>
                         <?php foreach ($wishlist->getItems() as $item): ?>
-                            <tr data-item-id="<?= $item->getId() ?>">
-                                <?php if ($wishlist->isPriorityOrdered()): ?>
-                                    <!-- Priority number and hidden input for ordering -->
-                                    <td class="text-center priority-handle" style="cursor: grab;">
-                                        <span class="badge bg-secondary"><?= $item->getPosition() ?></span>
-                                        <input type="hidden" name="positions[<?= $item->getId() ?>]" value="<?= $item->getPosition() ?>">
-                                    </td>
-                                <?php endif; ?>
+                            <tr>
                                 <td>
                                     <!-- Item details -->
                                     <div class="fw-bold"><?= htmlspecialchars($item->getTitle()) ?></div>
@@ -159,7 +127,7 @@
 </div>
 
 <!-- Danger Zone - Delete Wishlist -->
-<div class="card border-danger">
+<div class="card border-danger mt-4">
     <div class="card-header bg-danger text-white">
         <h5 class="card-title mb-0">
             <i class="bi bi-exclamation-triangle-fill me-2"></i>
@@ -217,43 +185,6 @@
     </div>
 </div>
 
-<!-- Priority Order Modal -->
-<div class="modal fade" id="priorityOrderModal" tabindex="-1" aria-labelledby="priorityOrderModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form action="/wishlist/<?= $group->getId() ?>/priority" method="post">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="priorityOrderModalLabel">Edit Priority Order</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-muted">Drag and drop items to set your priority order. Items at the top have higher priority.</p>
-
-                    <!-- Sortable list of wishlist items -->
-                    <ul class="list-group" id="sortableItems">
-                        <?php foreach ($wishlist->getItems() as $item): ?>
-                            <li class="list-group-item d-flex justify-content-between align-items-center" data-item-id="<?= $item->getId() ?>">
-                                <span class="priority-handle me-2" style="cursor: grab;">
-                                    <i class="bi bi-grip-vertical"></i>
-                                </span>
-                                <div class="flex-grow-1">
-                                    <?= htmlspecialchars($item->getTitle()) ?>
-                                </div>
-                                <input type="hidden" name="positions[<?= $item->getId() ?>]" value="<?= $item->getPosition() ?>" class="position-input">
-                                <span class="badge bg-secondary position-display"><?= $item->getPosition() ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Order</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <!-- Client-side JavaScript -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -284,18 +215,5 @@
                 modal.show();
             });
         });
-
-        // Priority order modal event handling
-        const editPriorityBtn = document.getElementById('editPriorityBtn');
-        if (editPriorityBtn) {
-            editPriorityBtn.addEventListener('click', function() {
-                const modal = new bootstrap.Modal(document.getElementById('priorityOrderModal'));
-                modal.show();
-            });
-        }
-
-        // TODO: Implement drag and drop sorting functionality
-        // This would require a JavaScript library like Sortable.js
-        // For now, this is a placeholder for future enhancement
     });
 </script>
