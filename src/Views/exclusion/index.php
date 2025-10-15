@@ -27,10 +27,10 @@
 
 <div class="row">
     <div class="col-md-6">
-        /**
-         * Add new exclusion card
-         * Allows users to exclude a member from activities
-         */
+        <!-- 
+            Add new exclusion card
+            Allows users to exclude a member from activities
+        -->
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.addNew.title') ?></h5>
@@ -40,10 +40,10 @@
                     <?= t('exclusion.addNew.description') ?>
                 </p>
 
-                /**
-                 * Exclusion form
-                 * POST request to /exclusions/{groupId}/add with the excluded user ID
-                 */
+                <!--
+                    Exclusion form
+                    POST request to /exclusions/{groupId}/add with the excluded user ID
+                -->
                 <form action="/exclusions/<?= $group->getId() ?>/add" method="post">
                     <div class="mb-3">
                         <label for="excludedUserId" class="form-label"><?= t('exclusion.addNew.selectPerson') ?></label>
@@ -83,9 +83,9 @@
             </div>
         </div>
 
-        /**
-         * Information card explaining the purpose of exclusions
-         */
+        <!--
+            Information card explaining the purpose of exclusions
+        -->
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.why.title') ?></h5>
@@ -105,10 +105,10 @@
     </div>
 
     <div class="col-md-6">
-        /**
-         * Current exclusions list card
-         * Displays all active exclusions with remove options
-         */
+        <!--
+            Current exclusions list card
+            Displays all active exclusions with remove options
+        -->
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><?= t('exclusion.current.title') ?></h5>

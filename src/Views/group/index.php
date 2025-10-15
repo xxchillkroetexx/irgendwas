@@ -16,7 +16,7 @@
         <h1><?= t('group.title') ?></h1>
     </div>
     <div class="col-auto">
-        <a href="/groups/create" class="btn btn-primary"><?= t('group.createButton') ?></a>
+        <a href="/groups/create" class="btn btn-secondary"><?= t('group.createButton') ?></a>
         <a href="/groups/join" class="btn btn-outline-primary"><?= t('group.joinButton') ?></a>
     </div>
 </div>

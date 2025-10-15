@@ -39,9 +39,9 @@
                                 <div>
                                     <a href="/groups/<?= $group->getId() ?>"><?= htmlspecialchars($group->getName()) ?></a>
                                     <?php if ($group->isDrawn()): ?>
-                                        <span class="badge bg-success rounded-pill ms-2"><?= t('user.dashboard.groups.drawn') ?></span>
+                                        <span class="badge bg-success rounded-pill ms-2"><?= t('group.status.drawn') ?></span>
                                     <?php else: ?>
-                                        <span class="badge bg-warning rounded-pill ms-2"><?= t('user.dashboard.groups.pending') ?></span>
+                                        <span class="badge bg-warning text-dark rounded-pill ms-2"><?= t('group.status.notDrawn') ?></span>
                                     <?php endif; ?>
                                 </div>
                                 <?php if ($group->getAdminId() === $user->getId()): ?>
@@ -52,7 +52,7 @@
                     </ul>
                     <div class="mt-3">
                         <a href="/groups/create" class="btn btn-primary"><?= t('user.dashboard.groups.createButton') ?></a>
-                        <a href="/groups" class="btn btn-outline-primary"><?= t('user.dashboard.groups.viewAll') ?></a>
+                        <a href="/groups/join" class="btn btn-outline-secondary"><?= t('group.joinButton') ?></a>
                     </div>
                 <?php endif; ?>
             </div>

@@ -170,7 +170,7 @@
                 <h5 class="card-title mb-0"><?= t('group.show.members', ['count' => count($group->getMembers())]) ?></h5>
                 <!-- Exclusions management (only available before draw) -->
                 <?php if (!$group->isDrawn()): ?>
-                    <a href="/exclusions/<?= $group->getId() ?>" class="btn btn-sm btn-outline-primary"><?= t('group.show.manageExclusions') ?></a>
+                    <a href="/exclusions/<?= $group->getId() ?>" class="btn btn-sm btn-secondary"><?= t('group.show.manageExclusions') ?></a>
                 <?php endif; ?>
             </div>
             <div class="card-body">
@@ -212,7 +212,7 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0"><?= t('group.show.yourWishlist') ?></h5>
-                <a href="/wishlist/edit/<?= $group->getId() ?>" class="btn btn-sm btn-primary"><?= t('group.show.editWishlist') ?></a>
+                <a href="/wishlist/edit/<?= $group->getId() ?>" class="btn btn-sm btn-secondary"><?= t('group.show.editWishlist') ?></a>
             </div>
             <div class="card-body">
                 <p class="card-text">
@@ -240,6 +240,6 @@
         document.execCommand("copy");
 
         // Show toast or alert that copying was successful
-        alert("Copied to clipboard!");
+        // alert("Copied to clipboard!");
     }
 </script>

@@ -79,7 +79,7 @@
                 <?php endif; ?>
             </div>
 
-            <button type="submit" class="btn btn-success"><?= t('wishlist.edit.addItem') ?></button>
+            <button type="submit" class="btn btn-secondary"><?= t('wishlist.edit.addItem') ?></button>
         </form>
     </div>
 </div>

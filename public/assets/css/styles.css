@@ -30,6 +30,11 @@ body {
   flex-direction: column;
 }
 
+a {
+  color: var(--secondary-color);
+  text-decoration: none;
+}
+
 main {
   flex: 1;
 }
@@ -71,6 +76,38 @@ main {
 .btn-primary:hover {
   background-color: #1a2530;
   border-color: #1a2530;
+}
+
+.btn-outline-primary {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.btn-secondary {
+  background-color: var(--secondary-color);
+  border-color: var(--secondary-color);
+}
+
+.btn-secondary:hover {
+  background-color: #007a3d;
+  border-color: #007a3d;
+}
+
+.btn-outline-secondary {
+  color: var(--secondary-color);
+  border-color: var(--secondary-color);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--secondary-color);
+  color: white;
+  border-color: var(--secondary-color);
 }
 
 .btn-success {
