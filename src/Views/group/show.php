@@ -61,7 +61,7 @@
                  * and has at least 3 members (minimum required for draw)
                  */
                 if ($is_admin && !$group->isDrawn() && !empty($group->getMembers()) && count($group->getMembers()) >= 3): ?>
-                    <a href="/groups/<?= $group->getId() ?>/draw" class="btn btn-sm btn-success"
+                    <a href="/groups/<?= $group->getId() ?>/draw" class="btn btn-sm btn-secondary"
                         onclick="return confirm('<?= t('group.show.performDrawConfirm') ?>')">
                         <?= t('group.show.performDraw') ?>
                     </a>

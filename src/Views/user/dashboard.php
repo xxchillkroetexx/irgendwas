@@ -31,7 +31,8 @@
             <div class="card-body">
                 <?php if (empty($groups)): ?>
                     <p><?= t('user.dashboard.groups.empty') ?></p>
-                    <a href="/groups/create" class="btn btn-primary"><?= t('user.dashboard.groups.createButton') ?></a>
+                    <a href="/groups/join" class="btn btn-primary"><?= t('group.joinButton') ?></a>
+                    <a href="/groups/create" class="btn btn-outline-secondary"><?= t('user.dashboard.groups.createButton') ?></a>
                 <?php else: ?>
                     <ul class="list-group">
                         <?php foreach ($groups as $group): ?>
