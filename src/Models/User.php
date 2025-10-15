@@ -54,6 +54,21 @@ class User
      */
     private ?string $reset_token_expires = null;
 
+    /**
+     * @var string|null Pending email address waiting for verification
+     */
+    private ?string $pending_email = null;
+
+    /**
+     * @var string|null Token for email verification
+     */
+    private ?string $email_verification_token = null;
+
+    /**
+     * @var string|null Expiration timestamp for the email verification token
+     */
+    private ?string $email_verification_expires = null;
+
     // Lazy-loaded relationships
     /**
      * @var array Groups the user belongs to
@@ -94,6 +109,9 @@ class User
         if (isset($data['last_login'])) $this->last_login = $data['last_login'];
         if (isset($data['reset_token'])) $this->reset_token = $data['reset_token'];
         if (isset($data['reset_token_expires'])) $this->reset_token_expires = $data['reset_token_expires'];
+        if (isset($data['pending_email'])) $this->pending_email = $data['pending_email'];
+        if (isset($data['email_verification_token'])) $this->email_verification_token = $data['email_verification_token'];
+        if (isset($data['email_verification_expires'])) $this->email_verification_expires = $data['email_verification_expires'];
     }
 
     /**
@@ -259,6 +277,72 @@ class User
     }
 
     /**
+     * Gets the pending email address
+     * 
+     * @return string|null
+     */
+    public function getPendingEmail(): ?string
+    {
+        return $this->pending_email;
+    }
+
+    /**
+     * Sets the pending email address
+     * 
+     * @param string|null $pending_email
+     * @return self
+     */
+    public function setPendingEmail(?string $pending_email): self
+    {
+        $this->pending_email = $pending_email;
+        return $this;
+    }
+
+    /**
+     * Gets the email verification token
+     * 
+     * @return string|null
+     */
+    public function getEmailVerificationToken(): ?string
+    {
+        return $this->email_verification_token;
+    }
+
+    /**
+     * Sets the email verification token
+     * 
+     * @param string|null $email_verification_token
+     * @return self
+     */
+    public function setEmailVerificationToken(?string $email_verification_token): self
+    {
+        $this->email_verification_token = $email_verification_token;
+        return $this;
+    }
+
+    /**
+     * Gets the expiration timestamp for the email verification token
+     * 
+     * @return string|null
+     */
+    public function getEmailVerificationExpires(): ?string
+    {
+        return $this->email_verification_expires;
+    }
+
+    /**
+     * Sets the expiration timestamp for the email verification token
+     * 
+     * @param string|null $email_verification_expires
+     * @return self
+     */
+    public function setEmailVerificationExpires(?string $email_verification_expires): self
+    {
+        $this->email_verification_expires = $email_verification_expires;
+        return $this;
+    }
+
+    /**
      * Sets the groups the user belongs to
      * 
      * @param array $groups
@@ -318,7 +402,10 @@ class User
             'updated_at' => $this->updated_at ?? null,
             'last_login' => $this->last_login,
             'reset_token' => $this->reset_token,
-            'reset_token_expires' => $this->reset_token_expires
+            'reset_token_expires' => $this->reset_token_expires,
+            'pending_email' => $this->pending_email,
+            'email_verification_token' => $this->email_verification_token,
+            'email_verification_expires' => $this->email_verification_expires
         ];
     }
 }

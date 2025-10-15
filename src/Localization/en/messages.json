@@ -55,6 +55,8 @@
     "user.profile.name": "Full Name",
     "user.profile.email": "Email",
     "user.profile.emailNotice": "Email address cannot be changed.",
+    "user.profile.emailChangeNotice": "You will receive a verification email if you change your address.",
+    "user.profile.emailPendingVerification": "Pending verification: {email}. Check your inbox for the verification link.",
     "user.profile.updateProfile": "Update Profile",
     "user.profile.changePassword.title": "Change Password",
     "user.profile.changePassword.current": "Current Password",
@@ -255,5 +257,10 @@
     "flash.error.passwords_dont_match": "Passwords do not match",
     "flash.error.password_too_short": "Password must be at least 8 characters",
     "flash.success.password_reset": "Your password has been reset, you can now login",
-    "flash.error.invalid_reset_token": "Invalid or expired reset token"
+    "flash.error.invalid_reset_token": "Invalid or expired reset token",
+    "flash.success.profile_updated": "Profile updated successfully",
+    "flash.success.email_verification_sent": "A verification link has been sent to your new email address",
+    "flash.error.email_already_in_use": "This email address is already in use",
+    "flash.success.email_verified": "Your email address has been successfully changed",
+    "flash.error.email_verification_failed": "Email verification failed. The link may have expired or is invalid."
 }
