@@ -37,7 +37,7 @@
         * The form includes validation for password confirmation.
         -->
         <div class="card">
-            <div class="card-header bg-secondary text-white">
+            <div class="card-header bg-primary text-white">
                 <h4 class="mb-0"><?= t('user.profile.changePassword.title') ?></h4>
             </div>
             <div class="card-body">

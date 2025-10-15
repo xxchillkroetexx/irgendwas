@@ -51,8 +51,8 @@
                         <?php endforeach; ?>
                     </ul>
                     <div class="mt-3">
-                        <a href="/groups/create" class="btn btn-primary"><?= t('user.dashboard.groups.createButton') ?></a>
-                        <a href="/groups/join" class="btn btn-outline-secondary"><?= t('group.joinButton') ?></a>
+                        <a href="/groups/join" class="btn btn-primary"><?= t('group.joinButton') ?></a>
+                        <a href="/groups/create" class="btn btn-outline-secondary"><?= t('user.dashboard.groups.createButton') ?></a>
                     </div>
                 <?php endif; ?>
             </div>
