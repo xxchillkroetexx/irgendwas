@@ -110,6 +110,7 @@ class BaseController
      * Require authentication for a controller action
      * 
      * Checks if user is logged in, redirects to login page if not
+     * Stores the intended URL to redirect back after login
      * Useful for protecting routes that require authentication
      * 
      * @return void
@@ -117,7 +118,11 @@ class BaseController
     protected function requireAuth(): void
     {
         if (!$this->auth->check()) {
-            $this->session->setFlash('error', __('auth_required'));
+            // Store the intended URL (current request URI)
+            $intendedUrl = $this->request->getServerParam('REQUEST_URI', '/');
+            $this->session->set('intended_url', $intendedUrl);
+            
+            $this->session->setFlash('error', t('auth.login.required'));
             $this->redirect('/auth/login');
         }
     }

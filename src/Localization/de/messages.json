@@ -32,6 +32,7 @@
     "auth.login.submit": "Anmelden",
     "auth.login.forgotPassword": "Passwort vergessen?",
     "auth.login.noAccount": "Noch kein Konto?",
+    "auth.login.required": "Bitte melden Sie sich an, um auf diese Seite zuzugreifen",
     "auth.register.title": "Registrieren",
     "auth.register.name": "Vollständiger Name",
     "auth.register.email": "E-Mail",
