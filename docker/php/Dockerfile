@@ -61,6 +61,14 @@ RUN composer dump-autoload --optimize
 RUN find /var/www/vendor -type f -exec chmod 644 {} \; && \
     find /var/www/vendor -type d -exec chmod 755 {} \;
 
+# Copy and configure entrypoint script
+COPY --chown=www-data:www-data docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=www-data:www-data docker/php/init-database.php /var/www/docker/php/init-database.php
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
 # Expose port 9000 and start php-fpm server
 EXPOSE 9000
 CMD ["php-fpm"]

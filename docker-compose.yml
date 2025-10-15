@@ -55,9 +55,9 @@ services:
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@example.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Secret Santa}
     healthcheck:
-      test: ["CMD", "php", "-v"]
-      start_period: 5s
-      start_interval: 1s
+      test: ["CMD", "php", "-r", "new PDO('mysql:host=mariadb;dbname=${DB_DATABASE}', '${DB_USERNAME}', '${DB_PASSWORD}');"]
+      start_period: 10s
+      start_interval: 2s
       interval: 10s
       timeout: 5s
       retries: 3
