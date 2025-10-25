@@ -1,0 +1,47 @@
+{
+    # Global options
+    admin off
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+}
+
+{$APP_URL} {
+    root * /var/www/public
+    
+    # Enable PHP FastCGI
+    php_fastcgi php:9000
+    
+    # Enable compression
+    encode gzip
+    
+    # Serve static files directly
+    file_server
+    
+    # Handle errors
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+    
+    # Security headers
+    header {
+        # Enable HTTP Strict Transport Security (HSTS)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        
+        # Disable content-type sniffing
+        X-Content-Type-Options "nosniff"
+        
+        # Enable XSS filtering
+        X-XSS-Protection "1; mode=block"
+        
+        # Prevent clickjacking
+        X-Frame-Options "SAMEORIGIN"
+        
+        # Control the information sent in the Referer header
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # Remove the Server header
+        -Server
+    }
+}
