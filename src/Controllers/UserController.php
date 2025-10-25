@@ -93,21 +93,14 @@ class UserController extends BaseController
         $user = $this->auth->user();
 
         $name = $this->request->getPostParam('name');
+        $email = $this->request->getPostParam('email');
         $currentPassword = $this->request->getPostParam('current_password');
         $newPassword = $this->request->getPostParam('new_password');
         $passwordConfirm = $this->request->getPostParam('password_confirm');
 
-        // Update name if provided
-        if (!empty($name) && $name !== $user->getName()) {
-            $user->setName($name);
+        $userRepository = new UserRepository();
 
-            $userRepository = new UserRepository();
-            $userRepository->save($user);
-
-            $this->session->setFlash('success', 'Your name has been updated');
-        }
-
-        // Update password if provided
+        // Handle password change if provided
         if (!empty($currentPassword) && !empty($newPassword)) {
             // Validate current password
             if (!password_verify($currentPassword, $user->getPassword())) {
@@ -132,13 +125,33 @@ class UserController extends BaseController
 
             // Update password
             $user->setPassword(password_hash($newPassword, PASSWORD_DEFAULT));
-
-            $userRepository = new UserRepository();
-            $userRepository->save($user);
-
-            $this->session->setFlash('success', 'Your password has been updated');
         }
 
+        // Handle name update
+        if (!empty($name) && $name !== $user->getName()) {
+            $user->setName($name);
+        }
+
+        // Handle email change
+        if (!empty($email) && $email !== $user->getEmail()) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->session->setFlash('error', 'Invalid email address');
+                $this->redirect('/user/profile');
+                return;
+            }
+
+            if ($this->auth->requestEmailChange($user, $email)) {
+                $this->session->setFlash('success', 'Email verification sent');
+            } else {
+                $this->session->setFlash('error', 'Email is already in use');
+            }
+            $this->redirect('/user/profile');
+            return;
+        }
+
+        // Save other changes
+        $userRepository->save($user);
+        $this->session->setFlash('success', 'Profile updated successfully');
         $this->redirect('/user/profile');
     }
 
@@ -174,5 +187,23 @@ class UserController extends BaseController
             'name' => $user->getName(),
             'email' => $user->getEmail()
         ]);
+    }
+
+    /**
+     * Verify the email change request
+     * 
+     * Confirms the user's new email address using a verification token.
+     * 
+     * @param string $token The verification token
+     * @return void
+     */
+    public function verifyEmail($token)
+    {
+        if ($this->auth->verifyEmailChange($token)) {
+            $this->session->setFlash('success', 'Email verified successfully');
+        } else {
+            $this->session->setFlash('error', 'Email verification failed');
+        }
+        $this->redirect('/user/profile');
     }
 }

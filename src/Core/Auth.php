@@ -197,4 +197,47 @@ class Auth
         $userRepository = new UserRepository();
         return $userRepository->resetPassword($token, $newPassword);
     }
+
+    /**
+     * Initiates an email change for a user
+     * 
+     * @param User $user The user changing their email
+     * @param string $newEmail The new email address
+     * @return bool True if the process was initiated successfully
+     */
+    public function requestEmailChange(User $user, string $newEmail): bool
+    {
+        $userRepository = new UserRepository();
+        
+        // Check if email is already in use
+        $existingUser = $userRepository->findByEmail($newEmail);
+        if ($existingUser && $existingUser->getId() !== $user->getId()) {
+            return false;
+        }
+
+        // Check if email is already pending for another user
+        $pendingUser = $userRepository->findByPendingEmail($newEmail);
+        if ($pendingUser && $pendingUser->getId() !== $user->getId()) {
+            return false;
+        }
+
+        // Generate verification token
+        $user = $userRepository->initiateEmailChange($user, $newEmail);
+
+        // Send verification email
+        $emailService = new \SecretSanta\Services\EmailService();
+        return $emailService->sendEmailVerification($user, $newEmail, $user->getEmailVerificationToken());
+    }
+
+    /**
+     * Verifies and completes an email change
+     * 
+     * @param string $token The email verification token
+     * @return bool True if the email was successfully changed
+     */
+    public function verifyEmailChange(string $token): bool
+    {
+        $userRepository = new UserRepository();
+        return $userRepository->verifyEmailChange($token);
+    }
 }

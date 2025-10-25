@@ -37,6 +37,11 @@ WORKDIR /var/www
 RUN mkdir -p /var/log/php-fpm && \
     chown -R www-data:www-data /var/log/php-fpm
 
+# Create storage directory for emails and set permissions
+RUN mkdir -p /var/www/storage/emails && \
+    chown -R www-data:www-data /var/www/storage && \
+    chmod -R 775 /var/www/storage
+
 # Configure PHP
 RUN echo "display_errors = On" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
     echo "error_reporting = E_ALL" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
@@ -55,6 +60,14 @@ RUN composer dump-autoload --optimize
 # Set minimal required permissions for vendor directory
 RUN find /var/www/vendor -type f -exec chmod 644 {} \; && \
     find /var/www/vendor -type d -exec chmod 755 {} \;
+
+# Copy and configure entrypoint script
+COPY --chown=www-data:www-data docker/php/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=www-data:www-data docker/php/init-database.php /var/www/docker/php/init-database.php
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Expose port 9000 and start php-fpm server
 EXPOSE 9000

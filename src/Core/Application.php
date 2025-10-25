@@ -108,6 +108,7 @@ class Application
         $this->router->get('/user/dashboard', [UserController::class, 'dashboard']);
         $this->router->get('/user/profile', [UserController::class, 'showProfile']);
         $this->router->post('/user/profile', [UserController::class, 'updateProfile']);
+        $this->router->get('/user/verify-email/:token', [UserController::class, 'verifyEmail']);
 
         // API routes
         $this->router->get('/api/user/:id', [UserController::class, 'apiGetUser']);

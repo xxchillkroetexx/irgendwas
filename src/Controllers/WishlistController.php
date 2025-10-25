@@ -154,34 +154,6 @@ class WishlistController extends BaseController
         ]);
     }
 
-    /** 
-     * Updates wishlist properties such as priority ordering setting
-     * 
-     * @param int $groupId The ID of the group context
-     * @return void 
-     */
-    public function updateSettings(int $groupId)
-    {
-        $this->requireAuth();
-
-        $userId = $this->auth->userId();
-
-        // Check if the user is a member of the group
-        $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
-        if (!$member) {
-            $this->session->setFlash('error', t('flash.error.not_group_member'));
-            return $this->redirect('/groups');
-        }
-
-        $isPriorityOrdered = (bool) $this->request->getPostParam('is_priority_ordered', false);
-
-        // Update the wishlist
-        $this->wishlistRepository->createOrUpdateWishlist($userId, $groupId, $isPriorityOrdered);
-
-        $this->session->setFlash('success', t('flash.success.wishlist_settings_updated'));
-        return $this->redirect('/wishlist/edit/' . $groupId);
-    }
-
     /**
      * Add an item to the wishlist
      * 
@@ -334,53 +306,6 @@ class WishlistController extends BaseController
 
         $this->session->setFlash('success', t('flash.success.item_deleted'));
         return $this->redirect('/wishlist/edit/' . $wishlist->getGroupId());
-    }
-
-    /**
-     * Update the priority order of wishlist items
-     * 
-     * Reorders items based on submitted priority positions
-     * 
-     * @param int $groupId The ID of the group context
-     * @return void
-     */
-    public function updatePriority(int $groupId)
-    {
-        $this->requireAuth();
-
-        $userId = $this->auth->userId();
-
-        // Check if the user is a member of the group
-        $member = $this->memberRepository->findByGroupAndUser($groupId, $userId);
-        if (!$member) {
-            $this->session->setFlash('error', t('flash.error.not_group_member'));
-            return $this->redirect('/groups');
-        }
-
-        // Get the wishlist
-        $wishlist = $this->wishlistRepository->findByUserAndGroup($userId, $groupId);
-        if (!$wishlist) {
-            $this->session->setFlash('error', t('flash.error.wishlist_not_found'));
-            return $this->redirect('/wishlist/edit/' . $groupId);
-        }
-
-        // Get the item positions from the request
-        $positions = $this->request->getPostParam('positions', []);
-        if (empty($positions) || !is_array($positions)) {
-            $this->session->setFlash('error', t('flash.error.invalid_item_positions'));
-            return $this->redirect('/wishlist/edit/' . $groupId);
-        }
-
-        // Update item positions
-        $success = $this->itemRepository->updatePositions($positions);
-
-        if ($success) {
-            $this->session->setFlash('success', t('flash.success.priorities_updated'));
-        } else {
-            $this->session->setFlash('error', t('flash.error.priorities_update_failed'));
-        }
-
-        return $this->redirect('/wishlist/edit/' . $groupId);
     }
 
     /**

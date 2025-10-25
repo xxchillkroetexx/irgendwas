@@ -56,16 +56,17 @@ class AuthController extends BaseController
         }
 
         if ($this->auth->login($email, $password)) {
-            // Check if we have a previous login time stored in flash
-            $lastLogin = $this->session->getFlash('last_login');
-            if ($lastLogin) {
-                $formattedDate = date('d.m.Y H:i', strtotime($lastLogin));
-                $this->session->setFlash('success', t('flash.success.logged_in'));
+            $this->session->setFlash('success', t('flash.success.logged_in'));
+            
+            // Check if there's an intended URL to redirect to
+            $intendedUrl = $this->session->get('intended_url');
+            if ($intendedUrl) {
+                // Clear the intended URL from session
+                $this->session->remove('intended_url');
+                $this->redirect($intendedUrl);
             } else {
-                $this->session->setFlash('success', t('flash.success.logged_in'));
+                $this->redirect('/user/dashboard');
             }
-
-            $this->redirect('/user/dashboard');
         } else {
             $this->session->setFlash('error', t('flash.error.invalid_credentials'));
             $this->redirect('/auth/login');

@@ -39,6 +39,8 @@ docker compose up -d
 
 After starting the Docker Compose stack, the application will be available at http://localhost or the URL configured in your .env file.
 
+**Note:** The database will be automatically initialized on first startup. No manual setup required!
+
 ## Configuration
 
 All configuration is handled through environment variables in the `.env` file.
@@ -70,10 +72,22 @@ Make sure to review and adjust these settings before deployment:
 
 ## Database Initialization
 
-After configuring your environment variables, initialize the database by visiting:
+The database is automatically initialized when you start the Docker containers for the first time. The system will:
+
+1. Wait for the database to be ready
+2. Check if tables exist
+3. Create the schema if needed
+
+If you need to manually reinitialize the database, you can still visit:
 
 ```
 https://localhost/setup.php
+```
+
+Or rebuild the containers:
+
+```bash
+./tools/rebuild-container.sh
 ```
 
 ## Directory Structure

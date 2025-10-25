@@ -288,6 +288,47 @@ class EmailService
     }
 
     /**
+     * Sends an email verification link for email change
+     * 
+     * @param User $user User requesting the email change
+     * @param string $newEmail New email address to verify
+     * @param string $token Unique token for email verification
+     * @return bool Whether the email was sent successfully
+     */
+    public function sendEmailVerification(User $user, string $newEmail, string $token): bool
+    {
+        $subject = "Verify Your New Email Address";
+
+        $baseUrl = $this->getBaseUrl();
+        $verifyLink = $baseUrl . "/user/verify-email/{$token}";
+
+        $message = "
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;'>
+                <h1 style='color: #0066cc; text-align: center;'>Verify Your New Email Address</h1>
+                <p>Hello {$user->getName()},</p>
+                <p>You recently requested to change your email address to <strong>{$newEmail}</strong>.</p>
+                <p>To complete this change, please click on the link below to verify your new email address:</p>
+                <p style='text-align: center;'>
+                    <a href='{$verifyLink}' style='display: inline-block; background-color: #0066cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;'>Verify Email Address</a>
+                </p>
+                <p style='text-align: center;'>Or copy and paste this URL into your browser: <br><a href='{$verifyLink}'>{$verifyLink}</a></p>
+                <p><strong>Important:</strong> This link will expire in 24 hours.</p>
+                <p>If you didn't request this change, you can safely ignore this email. Your current email address will remain unchanged.</p>
+                <hr style='border: none; border-top: 1px solid #ddd; margin: 20px 0;'>
+                <p style='font-size: 12px; color: #777; text-align: center;'>- The Secret Santa Team</p>
+            </div>
+        </body>
+        </html>
+        ";
+
+        error_log("Email verification link for {$user->getEmail()}: {$verifyLink}");
+
+        return $this->sendEmail($newEmail, $subject, $message);
+    }
+
+    /**
      * Handles the actual email sending process
      * 
      * Uses PHPMailer to send emails via SMTP or PHP mail function.
@@ -316,16 +357,17 @@ class EmailService
             // Ensure the directory exists
             $emailDir = APP_ROOT . '/storage/emails';
             if (!is_dir($emailDir)) {
-                try {
-                    if (!mkdir($emailDir, 0777, true) && !is_dir($emailDir)) {
-                        error_log("Unable to create email directory: $emailDir");
-                    } else {
-                        // Ensure correct permissions after creation
-                        chmod($emailDir, 0777);
-                    }
-                } catch (\Exception $e) {
-                    error_log("Exception creating email directory: " . $e->getMessage());
+                if (!@mkdir($emailDir, 0775, true) && !is_dir($emailDir)) {
+                    error_log("Unable to create email directory: $emailDir - Check permissions");
+                    // Try to continue anyway, will fail gracefully below
                 }
+            }
+
+            // Check if directory is writable
+            if (!is_dir($emailDir) || !is_writable($emailDir)) {
+                error_log("Email directory not writable: $emailDir");
+                // Still return true to prevent blocking registration
+                return true;
             }
 
             // Sanitize the subject for use in the filename
@@ -333,16 +375,12 @@ class EmailService
             $filename = $emailDir . '/' . time() . '_' . $sanitizedSubject . '.html';
 
             // Save email to a file for testing purposes
-            try {
-                if (is_dir($emailDir) && is_writable($emailDir)) {
-                    file_put_contents($filename, $fileContent);
-                    error_log("Email saved to file for testing: {$filename}");
-                } else {
-                    error_log("Cannot write to email directory: $emailDir");
-                }
-            } catch (\Exception $e) {
-                error_log("Exception saving email to file: " . $e->getMessage());
+            if (@file_put_contents($filename, $fileContent) !== false) {
+                error_log("Email saved to file for testing: {$filename}");
+            } else {
+                error_log("Failed to save email to file: {$filename}");
             }
+            
             // Skip sending the email in development mode
             error_log("Email sending skipped (development mode)");
             return true;

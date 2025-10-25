@@ -35,11 +35,6 @@ class WishlistItem
     private ?string $link = null;
     
     /**
-     * @var int Position/order of the item in the wishlist
-     */
-    private int $position = 0;
-    
-    /**
      * @var string Timestamp when the item was created
      */
     private string $created_at;
@@ -80,7 +75,6 @@ class WishlistItem
         if (isset($data['title'])) $this->title = $data['title'];
         if (isset($data['description'])) $this->description = $data['description'];
         if (isset($data['link'])) $this->link = $data['link'];
-        if (isset($data['position'])) $this->position = (int) $data['position'];
         if (isset($data['created_at'])) $this->created_at = $data['created_at'];
         if (isset($data['updated_at'])) $this->updated_at = $data['updated_at'];
     }
@@ -184,28 +178,6 @@ class WishlistItem
     }
 
     /**
-     * Gets the position/order of the wishlist item
-     * 
-     * @return int The position
-     */
-    public function getPosition(): int
-    {
-        return $this->position;
-    }
-
-    /**
-     * Sets the position/order of the wishlist item
-     * 
-     * @param int $position The position
-     * @return self
-     */
-    public function setPosition(int $position): self
-    {
-        $this->position = $position;
-        return $this;
-    }
-
-    /**
      * Gets the timestamp when the item was created
      * 
      * @return string The created timestamp
@@ -263,7 +235,6 @@ class WishlistItem
             'title' => $this->title,
             'description' => $this->description,
             'link' => $this->link,
-            'position' => $this->position,
             'created_at' => $this->created_at ?? null,
             'updated_at' => $this->updated_at ?? null
         ];

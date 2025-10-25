@@ -27,14 +27,6 @@
 <div class="card mb-4">
     <div class="card-body">
         <?php if ($wishlist && !empty($wishlist->getItems())): ?>
-            <?php if ($wishlist->isPriorityOrdered()): ?>
-                <!-- Information alert for priority-ordered wishlists -->
-                <div class="alert alert-info mb-4">
-                    <i class="bi bi-info-circle-fill me-2"></i>
-                    <?= t('wishlist.view.priorityOrdered') ?>
-                </div>
-            <?php endif; ?>
-
             <!-- Grid layout for wishlist items -->
             <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
                 <?php foreach ($wishlist->getItems() as $item): ?>
@@ -57,13 +49,6 @@
                                     </a>
                                 <?php endif; ?>
                             </div>
-
-                            <?php if ($wishlist->isPriorityOrdered()): ?>
-                                <!-- Priority indicator for ordered wishlists -->
-                                <div class="card-footer text-muted">
-                                    <small><?= t('wishlist.view.priority') ?>: <?= $item->getPosition() ?></small>
-                                </div>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>

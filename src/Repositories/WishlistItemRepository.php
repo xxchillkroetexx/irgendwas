@@ -39,7 +39,6 @@ class WishlistItemRepository extends DataMapper
         'title',
         'description',
         'link',
-        'position',
         'created_at',
         'updated_at'
     ];
@@ -54,7 +53,7 @@ class WishlistItemRepository extends DataMapper
      */
     public function findByWishlistId(int $wishlistId): array
     {
-        return $this->findBy(['wishlist_id' => $wishlistId], ['position' => 'ASC']);
+        return $this->findBy(['wishlist_id' => $wishlistId]);
     }
 
     /**
@@ -88,53 +87,12 @@ class WishlistItemRepository extends DataMapper
      */
     public function createItem(Wishlist $wishlist, string $title, ?string $description = null, ?string $link = null): WishlistItem
     {
-        // Find the highest position number for this wishlist
-        $items = $this->findByWishlistId($wishlist->getId());
-        $maxPosition = 0;
-
-        foreach ($items as $item) {
-            if ($item->getPosition() > $maxPosition) {
-                $maxPosition = $item->getPosition();
-            }
-        }
-
-        // Create new item with the next position number
         $item = new WishlistItem();
         $item->setWishlistId($wishlist->getId())
             ->setTitle($title)
             ->setDescription($description)
-            ->setLink($link)
-            ->setPosition($maxPosition + 1);
+            ->setLink($link);
 
         return $this->save($item);
-    }
-
-    /**
-     * Update item positions for priority ordering
-     * 
-     * Takes an associative array where keys are item IDs and values are new positions.
-     * 
-     * @param array $itemPositions Array mapping item IDs to new positions
-     * @return bool True if positions were updated successfully, false otherwise
-     */
-    public function updatePositions(array $itemPositions): bool
-    {
-        $this->beginTransaction();
-
-        try {
-            foreach ($itemPositions as $itemId => $position) {
-                $item = $this->find($itemId);
-                if ($item) {
-                    $item->setPosition($position);
-                    $this->save($item);
-                }
-            }
-
-            $this->commit();
-            return true;
-        } catch (\Exception $e) {
-            $this->rollback();
-            return false;
-        }
     }
 }

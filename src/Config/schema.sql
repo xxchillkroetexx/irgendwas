@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     last_login TIMESTAMP NULL,
     reset_token VARCHAR(255) NULL,
-    reset_token_expires TIMESTAMP NULL
+    reset_token_expires TIMESTAMP NULL,
+    pending_email VARCHAR(255) NULL,
+    email_verification_token VARCHAR(255) NULL,
+    email_verification_expires TIMESTAMP NULL
   );
 
 -- Groups table
@@ -59,7 +62,6 @@ CREATE TABLE IF NOT EXISTS wishlists (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     group_id INT NOT NULL,
-    is_priority_ordered BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY unique_wishlist (user_id, group_id),
@@ -74,7 +76,6 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
     title VARCHAR(255) NOT NULL,
     description TEXT NULL,
     link VARCHAR(2048) NULL,
-    position INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (wishlist_id) REFERENCES wishlists(id) ON DELETE CASCADE

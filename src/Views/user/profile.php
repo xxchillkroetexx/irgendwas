@@ -12,8 +12,14 @@
                     </div>
                     <div class="mb-3">
                         <label for="email" class="form-label"><?= t('user.profile.email') ?></label>
-                        <input type="email" class="form-control" id="email" value="<?= htmlspecialchars($user->getEmail()) ?>" readonly disabled>
-                        <div class="form-text"><?= t('user.profile.emailNotice') ?></div>
+                        <input type="email" class="form-control" id="email" name="email" value="<?= htmlspecialchars($user->getEmail()) ?>" required>
+                        <?php if ($user->getPendingEmail()): ?>
+                            <div class="alert alert-info mt-2">
+                                <?= t('user.profile.emailPendingVerification', ['email' => htmlspecialchars($user->getPendingEmail())]) ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="form-text"><?= t('user.profile.emailChangeNotice') ?></div>
+                        <?php endif; ?>
                     </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary"><?= t('user.profile.updateProfile') ?></button>
@@ -31,7 +37,7 @@
         * The form includes validation for password confirmation.
         -->
         <div class="card">
-            <div class="card-header bg-secondary text-white">
+            <div class="card-header bg-primary text-white">
                 <h4 class="mb-0"><?= t('user.profile.changePassword.title') ?></h4>
             </div>
             <div class="card-body">

@@ -41,7 +41,10 @@ class UserRepository extends DataMapper
         'updated_at',
         'last_login',
         'reset_token',
-        'reset_token_expires'
+        'reset_token_expires',
+        'pending_email',
+        'email_verification_token',
+        'email_verification_expires'
     ];
 
     /**
@@ -57,9 +60,33 @@ class UserRepository extends DataMapper
     }
 
     /**
+     * Finds a user by pending email address
+     * 
+     * @param string $email Pending email address to search for
+     * @return User|null User entity if found, null otherwise
+     */
+    public function findByPendingEmail(string $email): ?User
+    {
+        $users = $this->findBy(['pending_email' => $email]);
+        return !empty($users) ? $users[0] : null;
+    }
+
+    /**
+     * Finds a user by email verification token
+     * 
+     * @param string $token Email verification token to search for
+     * @return User|null User entity if found, null otherwise
+     */
+    public function findByEmailVerificationToken(string $token): ?User
+    {
+        $users = $this->findBy(['email_verification_token' => $token]);
+        return !empty($users) ? $users[0] : null;
+    }
+
+    /**
      * Finds a user by password reset token
      * 
-     * @param string $token Reset token to search for
+     * @param string $token Password reset token to search for
      * @return User|null User entity if found, null otherwise
      */
     public function findByResetToken(string $token): ?User
@@ -236,6 +263,87 @@ class UserRepository extends DataMapper
             return true;
         } catch (\Exception $e) {
             error_log("Error saving user after password reset: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Initiates email change by generating a verification token
+     * 
+     * @param User $user User entity
+     * @param string $newEmail New email address to verify
+     * @return User Updated user entity with verification token
+     * @throws \Exception If token generation or saving fails
+     */
+    public function initiateEmailChange(User $user, string $newEmail): User
+    {
+        // Generate a secure random token
+        $token = bin2hex(random_bytes(32));
+
+        // Set expiration to 24 hours from now
+        $expires = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+        // Update user with pending email and verification token
+        $user->setPendingEmail($newEmail)
+            ->setEmailVerificationToken($token)
+            ->setEmailVerificationExpires($expires);
+
+        try {
+            $savedUser = $this->save($user);
+            error_log("Email verification token generated for user ID " . $user->getId());
+            return $savedUser;
+        } catch (\Exception $e) {
+            error_log("Error generating email verification token: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Verifies and applies email change using a valid token
+     * 
+     * @param string $token Email verification token
+     * @return bool True if email was successfully changed, false otherwise
+     */
+    public function verifyEmailChange(string $token): bool
+    {
+        $user = $this->findByEmailVerificationToken($token);
+
+        if (!$user) {
+            error_log("Email verification failed: Token not found: " . substr($token, 0, 8) . "...");
+            return false;
+        }
+
+        // Check if token has expired
+        if ($user->getEmailVerificationExpires() === null || strtotime($user->getEmailVerificationExpires()) < time()) {
+            error_log("Email verification failed: Token expired for user ID " . $user->getId());
+            return false;
+        }
+
+        // Check if pending email is still available
+        if (!$user->getPendingEmail()) {
+            error_log("Email verification failed: No pending email for user ID " . $user->getId());
+            return false;
+        }
+
+        // Check if the new email is already taken by another user
+        $existingUser = $this->findByEmail($user->getPendingEmail());
+        if ($existingUser && $existingUser->getId() !== $user->getId()) {
+            error_log("Email verification failed: Email already taken for user ID " . $user->getId());
+            return false;
+        }
+
+        // Apply the email change
+        $user->setEmail($user->getPendingEmail())
+            ->setPendingEmail(null)
+            ->setEmailVerificationToken(null)
+            ->setEmailVerificationExpires(null);
+
+        try {
+            $this->save($user);
+            error_log("Email successfully changed for user ID " . $user->getId());
+            return true;
+        } catch (\Exception $e) {
+            error_log("Error saving user after email verification: " . $e->getMessage());
             return false;
         }
     }

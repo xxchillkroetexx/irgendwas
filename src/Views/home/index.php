@@ -32,7 +32,7 @@
                     <div class="card-body text-center">
                         <h5 class="card-title"><?= t('home.register.title') ?></h5>
                         <p class="card-text"><?= t('home.register.description') ?></p>
-                        <a href="/auth/register" class="btn btn-success"><?= t('auth.register') ?></a>
+                        <a href="/auth/register" class="btn btn-secondary"><?= t('auth.register') ?></a>
                     </div>
                 </div>
             </div>
@@ -114,7 +114,7 @@
                     </div>
                 </div>
                 <!-- Feature: Exclusion rules -->
-                <div class="col-md-6 col-lg-3 mb-3">
+                <div class="col-md-6 col-lg-4 mb-3">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-check-circle-fill text-success" viewBox="0 0 16 16">
@@ -122,17 +122,6 @@
                             </svg>
                         </div>
                         <div><?= t('home.features.exclusionRules') ?></div>
-                    </div>
-                </div>
-                <!-- Feature: Prioritized wishlists -->
-                <div class="col-md-6 col-lg-3 mb-3">
-                    <div class="d-flex align-items-center">
-                        <div class="me-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-check-circle-fill text-success" viewBox="0 0 16 16">
-                                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z" />
-                            </svg>
-                        </div>
-                        <div><?= t('home.features.prioritizedWishlists') ?></div>
                     </div>
                 </div>
             </div>
