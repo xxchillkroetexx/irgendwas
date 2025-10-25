@@ -1,41 +1,27 @@
 name: irgendwas
 
 services:
-  caddy:
-    image: caddy:latest
+  app:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./public:/var/www/public:ro
-      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # - ./public:/var/www/public:ro
+      # - ./src:/var/www/src:ro
+      # - ./storage:/var/www/storage:rw
+      # - ./docker/php/php-fpm.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+      # - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - php_logs:/var/log/php-fpm
       - caddy_data:/data
       - caddy_config:/config
-    depends_on:
-      php:
-        condition: service_healthy
-    networks:
-      - web
-    environment:
-      APP_URL: ${APP_URL:-https://localhost}
-    restart: unless-stopped
-
-  php:
-    build:
-      context: .
-      dockerfile: ./docker/php/Dockerfile
-    volumes:
-      - ./public:/var/www/public:ro
-      - ./src:/var/www/src:ro
-      - ./storage:/var/www/storage:rw
-      - ./docker/php/php-fpm.conf:/usr/local/etc/php-fpm.d/www.conf:ro
-      - php_logs:/var/log/php-fpm
-    user: www-data
     depends_on:
       mariadb:
         condition: service_healthy
     networks:
-      - web
+      - proxynet
       - database
     environment:
       APP_DEBUG: ${APP_DEBUG:-true}
@@ -54,6 +40,9 @@ services:
       MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@example.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Secret Santa}
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+      CADDY_AUTO_HTTPS: ${CADDY_AUTO_HTTPS:-off}
+      TRUSTED_PROXY_CIDR: ${TRUSTED_PROXY_CIDR:-172.18.0.0/16}
     healthcheck:
       test: ["CMD", "php", "-r", "new PDO('mysql:host=mariadb;dbname=${DB_DATABASE}', '${DB_USERNAME}', '${DB_PASSWORD}');"]
       start_period: 10s
@@ -84,17 +73,13 @@ services:
     restart: unless-stopped
 
 networks:
-  web:
-    name: irgendwas_web_network
+  proxynet:
+    name: proxynet
+    driver: bridge
   database:
-    name: irgendwas_database_network
 
 volumes:
   caddy_data:
-    name: irgendwas_caddy_data
   caddy_config:
-    name: irgendwas_caddy_config
   mariadb_data:
-    name: irgendwas_mariadb_data
   php_logs:
-    name: irgendwas_php_logs

@@ -23,7 +23,8 @@ echo "Database is ready!"
 echo "Checking database schema..."
 php /var/www/docker/php/init-database.php
 
-echo "Application ready!"
+echo "Starting PHP-FPM..."
+php-fpm -D
 
-# Execute the main container command
+echo "Starting Caddy..."
 exec "$@"

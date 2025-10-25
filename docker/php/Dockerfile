@@ -12,12 +12,20 @@ FROM php:8.2-fpm
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    gnupg2 \
+    ca-certificates \
+    debian-keyring \
+    debian-archive-keyring \
+    apt-transport-https \
     libpng-dev \
     libonig-dev \
     libxml2-dev \
     libicu-dev \
     zip \
-    unzip
+    unzip \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+    && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list \
+    && apt-get update && apt-get install -y caddy
 
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -41,6 +49,10 @@ RUN mkdir -p /var/log/php-fpm && \
 RUN mkdir -p /var/www/storage/emails && \
     chown -R www-data:www-data /var/www/storage && \
     chmod -R 775 /var/www/storage
+
+# Create directories for Caddy logs and set permissions
+RUN mkdir -p /var/log/caddy && \
+    chown -R www-data:www-data /var/log/caddy
 
 # Configure PHP
 RUN echo "display_errors = On" >> /usr/local/etc/php/conf.d/error-reporting.ini && \
@@ -66,9 +78,12 @@ COPY --chown=www-data:www-data docker/php/entrypoint.sh /usr/local/bin/entrypoin
 COPY --chown=www-data:www-data docker/php/init-database.php /var/www/docker/php/init-database.php
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Copy Caddy configuration
+COPY --chown=www-data:www-data docker/caddy/Caddyfile /etc/caddy/Caddyfile
+
 # Set entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Expose port 9000 and start php-fpm server
-EXPOSE 9000
-CMD ["php-fpm"]
+# Expose ports 80 and 443 for HTTP and HTTPS
+EXPOSE 80 443
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
