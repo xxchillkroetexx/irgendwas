@@ -97,6 +97,7 @@ pub fn app_state(
         pool,
         config: Arc::new(config),
         mailer,
+        rate_limiter: Arc::new(app::server::rate_limit::RateLimiter::system()),
     })
 }
 
@@ -112,6 +113,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_env()?;
     tracing::info!(?config, "configuration loaded");
+    // Login verifies unknown emails against it; computing it now keeps the first login fast.
+    app::server::password::init_dummy_hash();
 
     let leptos_options = leptos::config::get_configuration(None)?.leptos_options;
     let addr = leptos_options.site_addr;

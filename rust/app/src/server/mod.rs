@@ -9,9 +9,15 @@
 //!   must go through these.
 //! - [`flash`]: session-backed flash messages.
 //! - [`i18n`]: session/cookie locale helpers.
+//! - [`rate_limit`]: in-memory limiter with an injectable clock.
+//! - [`token`]: random link tokens, stored as SHA-256.
+//! - [`respond`]: redirects and headers from server fns and SSR renders.
+//! - [`auth_flow`], [`auth_mail`]: the auth server fn bodies and their mails.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod auth;
+pub mod auth_flow;
+pub mod auth_mail;
 pub mod authz;
 pub mod client_ip;
 pub mod config;
@@ -20,6 +26,9 @@ pub mod flash;
 pub mod i18n;
 pub mod mail;
 pub mod password;
+pub mod rate_limit;
+pub mod respond;
+pub mod token;
 
 use std::sync::Arc;
 
@@ -38,6 +47,7 @@ pub struct AppState {
     pub pool: MySqlPool,
     pub config: Arc<Config>,
     pub mailer: mail::Mailer,
+    pub rate_limiter: Arc<rate_limit::RateLimiter>,
 }
 
 impl FromRef<AppState> for LeptosOptions {

@@ -55,3 +55,40 @@ pub fn needs_rehash(stored_hash: &str) -> bool {
         Err(_) => true,
     }
 }
+
+/// A real argon2id hash (current parameters) of a random password, computed once per
+/// process. Logins for unknown emails verify against it, so they cost the same time as a
+/// wrong password for an existing account.
+static DUMMY_HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    let mut secret = [0u8; 32];
+    // Without OS randomness the fixed bytes are still fine: the hash is never matched.
+    let _ = getrandom::fill(&mut secret);
+    let password: String = secret.iter().map(|b| format!("{b:02x}")).collect();
+    hash(&password).expect("argon2 hashes a fixed-size password")
+});
+
+/// Computes the dummy hash now (call at startup so the first login does not pay for it).
+pub fn init_dummy_hash() {
+    std::sync::LazyLock::force(&DUMMY_HASH);
+}
+
+/// [`hash`] on the blocking thread pool (argon2 takes tens of milliseconds of CPU).
+pub async fn hash_async(password: String) -> Result<String, PasswordError> {
+    tokio::task::spawn_blocking(move || hash(&password))
+        .await
+        .map_err(|e| PasswordError(e.to_string()))?
+}
+
+/// [`verify`] on the blocking thread pool. `stored_hash: None` verifies against the dummy
+/// hash (and always fails), so unknown accounts take as long as existing ones.
+pub async fn verify_async(password: String, stored_hash: Option<String>) -> bool {
+    tokio::task::spawn_blocking(move || match stored_hash {
+        Some(stored) => verify(&password, &stored),
+        None => {
+            let _ = verify(&password, &DUMMY_HASH);
+            false
+        }
+    })
+    .await
+    .unwrap_or(false)
+}

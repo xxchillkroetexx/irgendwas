@@ -7,7 +7,10 @@ use leptos_router::path;
 
 use crate::components::Layout;
 use crate::i18n::{provide_i18n, request_locale};
-use crate::pages::{ErrorPage, HomePage, NotFound};
+use crate::pages::auth::{
+    ForgotPasswordPage, LoginPage, RegisterConfirmPage, RegisterPage, ResetPasswordPage,
+};
+use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound};
 use crate::tz::use_timezone;
 
 const BOOTSTRAP_CSS: &str =
@@ -52,6 +55,12 @@ pub fn App() -> impl IntoView {
                 <ErrorBoundary fallback=|errors| view! { <ErrorPage errors/> }>
                     <Routes fallback=|| view! { <NotFound/> }>
                         <Route path=path!("/") view=HomePage/>
+                        <Route path=path!("/auth/login") view=LoginPage/>
+                        <Route path=path!("/auth/register") view=RegisterPage/>
+                        <Route path=path!("/auth/register/confirm/:token") view=RegisterConfirmPage/>
+                        <Route path=path!("/auth/forgot-password") view=ForgotPasswordPage/>
+                        <Route path=path!("/auth/reset-password/:token") view=ResetPasswordPage/>
+                        <Route path=path!("/user/dashboard") view=DashboardPage/>
                     </Routes>
                 </ErrorBoundary>
             </Layout>

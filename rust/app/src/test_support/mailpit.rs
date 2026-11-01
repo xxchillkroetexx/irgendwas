@@ -173,6 +173,28 @@ impl Mailpit {
         }
     }
 
+    /// Polls until at least `count` messages to `address` exist; returns them newest first
+    /// (full bodies). Panics after [`WAIT_TIMEOUT`].
+    pub async fn wait_for_count(&self, address: &str, count: usize) -> Vec<Mail> {
+        let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+        loop {
+            let list = self.messages_for(address).await;
+            if list.len() >= count {
+                let mut mails = Vec::with_capacity(list.len());
+                for summary in list {
+                    mails.push(self.message(&summary.id).await);
+                }
+                return mails;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "expected {count} mails to {address} within {WAIT_TIMEOUT:?}, got {}",
+                list.len()
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
     /// Deletes every message to `address`.
     pub async fn delete_for(&self, address: &str) {
         let ids: Vec<String> = self

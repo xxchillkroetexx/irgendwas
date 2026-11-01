@@ -4,8 +4,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
 use crate::auth::{CurrentUser, SessionResource, get_session_info};
+use crate::auth_api::Logout;
 use crate::components::FlashMessages;
-use crate::flash::Toasts;
+use crate::components::guard::full_navigation;
+use crate::flash::{FlashMessage, Toasts, use_toasts};
 use crate::i18n::{Locale, use_i18n};
 
 /// Wraps every page. Owns the session resource (current user + flash messages), which is
@@ -111,10 +113,7 @@ fn NavLinks(user: Option<CurrentUser>) -> impl IntoView {
                         <hr class="dropdown-divider"/>
                     </li>
                     <li>
-                        // Placeholder: the auth slice replaces this with a POST (server fn) form.
-                        <a class="dropdown-item" href="/auth/logout" rel="external">
-                            {i18n.t("auth.logout")}
-                        </a>
+                        <LogoutButton/>
                     </li>
                 </ul>
             </li>
@@ -165,6 +164,25 @@ fn NavLinks(user: Option<CurrentUser>) -> impl IntoView {
                 </ul>
             </li>
         </ul>
+    }
+}
+
+/// Logout is a POST (the `logout` server fn). Afterwards the start page is loaded as a new
+/// document, so every piece of per-user state is gone.
+#[component]
+fn LogoutButton() -> impl IntoView {
+    let i18n = use_i18n();
+    let action = ServerAction::<Logout>::new();
+    let toasts = use_toasts();
+    Effect::new(move |_| match action.value().get() {
+        Some(Ok(())) => full_navigation("/"),
+        Some(Err(err)) => toasts.push(FlashMessage::error(err.message_key())),
+        None => {}
+    });
+    view! {
+        <ActionForm action>
+            <button type="submit" class="dropdown-item">{i18n.t("auth.logout")}</button>
+        </ActionForm>
     }
 }
 

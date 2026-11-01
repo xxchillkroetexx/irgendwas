@@ -1,9 +1,11 @@
 //! Reusable UI components.
 
 mod flash;
+pub mod guard;
 mod layout;
 
 pub use flash::{FlashAlert, FlashMessages};
+pub use guard::{ClientRedirect, RedirectIfLoggedIn, RequireUser};
 pub use layout::{Footer, Layout, NavBar};
 
 /// Reads an attribute of the `<html>` element (client only; `None` on the server).

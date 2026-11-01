@@ -1,6 +1,8 @@
 //! Helpers shared by the integration tests.
 #![allow(dead_code)]
 
+pub mod auth;
+
 use app::server::{AppState, Config};
 use axum::Router;
 use axum::body::Body;

@@ -37,6 +37,13 @@ pub async fn get_session_info() -> Result<SessionInfo, AppError> {
     Ok(SessionInfo { user, flash })
 }
 
+/// The logged-in user, or `None`. Read-only (does not take flash messages); used by the
+/// page guards (`components::guard`).
+#[server(prefix = "/api", endpoint = "current_user")]
+pub async fn get_current_user() -> Result<Option<CurrentUser>, AppError> {
+    crate::server::auth::current_user().await
+}
+
 /// The layout's session resource, available to every page through context.
 #[derive(Clone, Copy)]
 pub struct SessionResource(pub Resource<Result<SessionInfo, AppError>>);

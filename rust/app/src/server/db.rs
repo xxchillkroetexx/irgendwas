@@ -64,3 +64,33 @@ pub async fn ping(pool: &MySqlPool) -> Result<(), sqlx::Error> {
         .await
         .map(|_| ())
 }
+
+/// A description of `err` that is safe to log: the error kind and, for database errors,
+/// the SQLSTATE and server error number. Never the message, which can quote values
+/// (e.g. `Duplicate entry 'alice@example.com' for key 'email'`).
+pub fn redacted(err: &sqlx::Error) -> String {
+    match err {
+        sqlx::Error::Database(db) => {
+            let number = db
+                .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+                .map(|e| e.number().to_string())
+                .unwrap_or_else(|| "?".to_string());
+            format!(
+                "database error (sqlstate {}, number {number}, kind {:?})",
+                db.code().as_deref().unwrap_or("?"),
+                db.kind()
+            )
+        }
+        sqlx::Error::RowNotFound => "row not found".to_string(),
+        sqlx::Error::PoolTimedOut => "pool timed out".to_string(),
+        sqlx::Error::PoolClosed => "pool closed".to_string(),
+        sqlx::Error::Io(e) => format!("io error ({:?})", e.kind()),
+        sqlx::Error::Tls(_) => "tls error".to_string(),
+        sqlx::Error::Protocol(_) => "protocol error".to_string(),
+        sqlx::Error::ColumnNotFound(_) | sqlx::Error::ColumnIndexOutOfBounds { .. } => {
+            "column error".to_string()
+        }
+        sqlx::Error::ColumnDecode { .. } | sqlx::Error::Decode(_) => "decode error".to_string(),
+        _ => "other database error".to_string(),
+    }
+}

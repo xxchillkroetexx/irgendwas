@@ -2,8 +2,9 @@
 //!
 //! [`load_user`] is the single choke point that turns a session into a [`CurrentUser`].
 //! Every other helper (and every later check such as a `users.session_epoch` comparison)
-//! goes through it. A session whose user no longer exists, or whose user id cannot be read,
-//! counts as logged out and is cleared.
+//! goes through it. A session whose user no longer exists, whose user id cannot be read, or
+//! whose `session_epoch` differs from `users.session_epoch` (password reset/change) counts
+//! as logged out and is cleared.
 
 use sqlx::{FromRow, MySqlPool};
 use tower_sessions::Session;
@@ -14,12 +15,15 @@ use crate::i18n::LOCALE_KEY;
 
 /// Session key holding the logged-in user's id (`i32`).
 pub const USER_ID_KEY: &str = "user_id";
+/// Session key holding `users.session_epoch` at login (`u32`; missing counts as 0).
+pub const SESSION_EPOCH_KEY: &str = "session_epoch";
 
 #[derive(FromRow)]
 struct UserRow {
     id: i32,
     email: String,
     name: String,
+    session_epoch: u32,
 }
 
 /// The request's [`Session`] inside a server fn (or during SSR).
@@ -45,13 +49,34 @@ pub async fn load_user(
         Err(err) => return Err(err.into()),
     };
 
-    let row = sqlx::query_as::<_, UserRow>("SELECT id, email, name FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+    let epoch = match session.get::<u32>(SESSION_EPOCH_KEY).await {
+        Ok(epoch) => epoch.unwrap_or(0),
+        Err(tower_sessions::session::Error::SerdeJson(err)) => {
+            tracing::warn!(error = %err, "unreadable session epoch, clearing the session");
+            session.flush().await?;
+            return Ok(None);
+        }
+        Err(err) => return Err(err.into()),
+    };
+
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, email, name, session_epoch FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
 
     match row {
-        Some(UserRow { id, email, name }) => Ok(Some(CurrentUser { id, email, name })),
+        Some(row) if row.session_epoch == epoch => Ok(Some(CurrentUser {
+            id: row.id,
+            email: row.email,
+            name: row.name,
+        })),
+        Some(_) => {
+            tracing::info!(user_id, "session epoch is outdated, clearing the session");
+            session.flush().await?;
+            Ok(None)
+        }
         None => {
             tracing::info!(user_id, "session refers to a deleted user, clearing it");
             session.flush().await?;
@@ -72,10 +97,18 @@ pub async fn require_user() -> Result<CurrentUser, AppError> {
     current_user().await?.ok_or(AppError::Unauthorized)
 }
 
-/// Marks `session` as logged in as `user_id`. Issues a new session id (prevents fixation).
+/// Marks `session` as logged in as `user_id` at session epoch 0 (a new account). Issues a
+/// new session id (prevents fixation). Existing accounts use [`login_with_epoch`].
 pub async fn login(session: &Session, user_id: i32) -> Result<(), AppError> {
+    login_with_epoch(session, user_id, 0).await
+}
+
+/// Marks `session` as logged in as `user_id` with the user's current `users.session_epoch`.
+/// Issues a new session id (prevents fixation).
+pub async fn login_with_epoch(session: &Session, user_id: i32, epoch: u32) -> Result<(), AppError> {
     session.cycle_id().await?;
     session.insert(USER_ID_KEY, user_id).await?;
+    session.insert(SESSION_EPOCH_KEY, epoch).await?;
     Ok(())
 }
 

@@ -21,6 +21,7 @@ async fn migrations_create_schema_and_store_utc(pool: MySqlPool) {
             "gift_assignments",
             "group_members",
             "groups",
+            "pending_registrations",
             "sessions",
             "users",
             "wishlist_items",

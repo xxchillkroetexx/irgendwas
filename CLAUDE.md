@@ -9,6 +9,7 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 - Implement from approved specs in `docs/rewrite/specs/`. If a spec is `status: draft` or missing, stop and say so.
 - Fresh start: no production data is migrated, and the PHP schema is only a reference. Schema changes are new SQLx migrations in `rust/migrations/` (don't edit one that's already committed; dev DBs would break). Migration numbers in specs are placeholders: use the next free number at implementation time.
 - Name columns explicitly in queries; no `SELECT *`.
+- Columns compared for identity (emails, tokens, invite codes) use `COLLATE utf8mb4_bin`, with values normalised in Rust before storing/looking up; the table default `utf8mb4_unicode_ci` is case- and accent-insensitive. Mails go to the address stored in the DB, never the one the caller typed.
 - Server-only dependencies (sqlx, lettre, argon2, tower-sessions) live behind the `ssr` feature.
 - All mutations are Leptos server functions (POST). Every server fn that touches a group checks membership/admin through the shared authorization helper; never trust IDs from the client.
 - Never expose another user's gift assignment. Not to admins either.

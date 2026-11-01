@@ -12,6 +12,7 @@
 
 mod app;
 pub mod auth;
+pub mod auth_api;
 pub mod components;
 pub mod error;
 pub mod flash;
@@ -20,6 +21,7 @@ pub mod i18n;
 pub mod pages;
 pub mod paths;
 pub mod tz;
+pub mod validation;
 
 #[cfg(feature = "ssr")]
 pub mod server;
