@@ -39,7 +39,7 @@ pub fn FlashMessages() -> impl IntoView {
 pub fn FlashAlert(message: FlashMessage) -> impl IntoView {
     let i18n = use_i18n();
     let visible = RwSignal::new(true);
-    let text = i18n.t_with(&message.key, &message.params);
+    let text = message.text(&i18n);
     let class = format!("alert {} alert-dismissible", message.kind.alert_class());
     let close_label = i18n.t("common.close");
 

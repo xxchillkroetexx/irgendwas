@@ -43,7 +43,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 #[component]
 pub fn App() -> impl IntoView {
     provide_meta_context();
-    let i18n = provide_i18n(request_locale());
+    let i18n = provide_i18n(request_locale(), use_timezone());
 
     view! {
         <Title text=i18n.t("app.name")/>

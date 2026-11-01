@@ -8,8 +8,9 @@
 //! The catalogs are embedded with `include_str!`, so server and client resolve exactly the
 //! same strings (no hydration mismatch). Lookup falls back to English, then to the key.
 //!
-//! Locale of a request: session value `locale`, then cookie `locale`, then `APP_LOCALE`
-//! (resolved by the server middleware, see `server::i18n`). The server writes it into
+//! Locale of a request: session value `locale`, then cookie `locale`, then
+//! `Accept-Language`, then `APP_LOCALE` (resolved by the server middleware with
+//! [`resolve_locale`]). The server writes it into
 //! `<html lang>`, and the client reads it back from there during hydration. The locale is
 //! fixed for one page load; switching language is a full navigation.
 //!
@@ -67,13 +68,6 @@ impl Locale {
             _ => None,
         }
     }
-
-    fn catalog(self) -> &'static HashMap<String, String> {
-        match self {
-            Locale::En => &EN,
-            Locale::De => &DE,
-        }
-    }
 }
 
 impl std::fmt::Display for Locale {
@@ -82,36 +76,134 @@ impl std::fmt::Display for Locale {
     }
 }
 
-/// Picks the first valid locale of: session value, cookie value, configured default.
-pub fn resolve_locale(session: Option<&str>, cookie: Option<&str>, default: Locale) -> Locale {
+/// Picks the first valid locale of: session value, cookie value, `Accept-Language`, default.
+///
+/// Invalid values are skipped, not fatal.
+pub fn resolve_locale(
+    session: Option<&str>,
+    cookie: Option<&str>,
+    accept_language_header: Option<&str>,
+    default: Locale,
+) -> Locale {
     session
         .and_then(Locale::from_code)
         .or_else(|| cookie.and_then(Locale::from_code))
+        .or_else(|| accept_language_header.and_then(accept_language))
         .unwrap_or(default)
 }
 
-fn parse_catalog(name: &str, json: &str) -> HashMap<String, String> {
-    serde_json::from_str(json).unwrap_or_else(|err| panic!("locales/{name}.json is invalid: {err}"))
+/// First supported locale of an `Accept-Language` header value.
+///
+/// Items are `tag[;q=v]`; `q` defaults to 1, a malformed `q` or one outside `0..=1` drops
+/// the item, `q=0` and `*` are ignored. Items are ordered by `q` (descending, stable for
+/// ties) and the first tag [`Locale::from_code`] understands wins.
+pub fn accept_language(header: &str) -> Option<Locale> {
+    let mut items: Vec<(f64, &str)> = header
+        .split(',')
+        .filter_map(|item| {
+            let mut parts = item.split(';').map(str::trim);
+            let tag = parts.next()?;
+            if tag.is_empty() || tag == "*" {
+                return None;
+            }
+            let mut q = 1.0;
+            for param in parts {
+                let Some((name, value)) = param.split_once('=') else {
+                    continue;
+                };
+                if name.trim().eq_ignore_ascii_case("q") {
+                    q = value.trim().parse::<f64>().ok()?;
+                }
+            }
+            if !(q > 0.0 && q <= 1.0) {
+                return None;
+            }
+            Some((q, tag))
+        })
+        .collect();
+    // `sort_by` is stable: equal weights keep header order.
+    items.sort_by(|a, b| b.0.total_cmp(&a.0));
+    items
+        .into_iter()
+        .find_map(|(_, tag)| Locale::from_code(tag))
 }
 
-static EN: LazyLock<HashMap<String, String>> =
-    LazyLock::new(|| parse_catalog("en", include_str!("../../locales/en.json")));
-static DE: LazyLock<HashMap<String, String>> =
-    LazyLock::new(|| parse_catalog("de", include_str!("../../locales/de.json")));
+type Catalog = HashMap<String, String>;
 
-/// Raw catalog of a locale (for tests and tooling).
+/// One flat catalog per locale: the embedded ones, or synthetic ones for tests.
+#[derive(PartialEq, Eq)]
+pub struct Catalogs {
+    en: Catalog,
+    de: Catalog,
+}
+
+impl std::fmt::Debug for Catalogs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Catalogs")
+            .field("en", &self.en.len())
+            .field("de", &self.de.len())
+            .finish()
+    }
+}
+
+static EMBEDDED: LazyLock<Catalogs> = LazyLock::new(|| {
+    Catalogs::from_json(
+        include_str!("../../locales/en.json"),
+        include_str!("../../locales/de.json"),
+    )
+    .unwrap_or_else(|err| panic!("locales/{{en,de}}.json is invalid: {err}"))
+});
+
+impl Catalogs {
+    /// The catalogs compiled into the binary (`rust/locales/{en,de}.json`).
+    pub fn embedded() -> &'static Catalogs {
+        &EMBEDDED
+    }
+
+    pub fn from_json(en: &str, de: &str) -> Result<Catalogs, serde_json::Error> {
+        Ok(Catalogs {
+            en: serde_json::from_str(en)?,
+            de: serde_json::from_str(de)?,
+        })
+    }
+
+    pub fn catalog(&self, locale: Locale) -> &Catalog {
+        match locale {
+            Locale::En => &self.en,
+            Locale::De => &self.de,
+        }
+    }
+
+    /// `key` in `locale`, else in English.
+    fn lookup(&self, locale: Locale, key: &str) -> Option<&str> {
+        self.catalog(locale)
+            .get(key)
+            .or_else(|| self.en.get(key))
+            .map(String::as_str)
+    }
+
+    /// `key` in `locale`, else in English, else the key itself.
+    fn translate(&self, locale: Locale, key: &str) -> String {
+        self.lookup(locale, key).unwrap_or(key).to_string()
+    }
+}
+
+/// Replaces every `{name}` placeholder in `message`.
+fn fill<K: AsRef<str>, V: AsRef<str>>(mut message: String, params: &[(K, V)]) -> String {
+    for (name, value) in params {
+        message = message.replace(&format!("{{{}}}", name.as_ref()), value.as_ref());
+    }
+    message
+}
+
+/// Raw embedded catalog of a locale (for tests and tooling).
 pub fn catalog(locale: Locale) -> &'static HashMap<String, String> {
-    locale.catalog()
+    Catalogs::embedded().catalog(locale)
 }
 
-/// Translates `key`; falls back to English, then to the key itself.
+/// Translates `key` with the embedded catalogs; falls back to English, then to the key.
 pub fn translate(locale: Locale, key: &str) -> String {
-    locale
-        .catalog()
-        .get(key)
-        .or_else(|| Locale::En.catalog().get(key))
-        .cloned()
-        .unwrap_or_else(|| key.to_string())
+    Catalogs::embedded().translate(locale, key)
 }
 
 /// Translates `key` and replaces every `{name}` placeholder with its value.
@@ -120,34 +212,75 @@ where
     K: AsRef<str>,
     V: AsRef<str>,
 {
-    let mut message = translate(locale, key);
-    for (name, value) in params {
-        message = message.replace(&format!("{{{}}}", name.as_ref()), value.as_ref());
-    }
-    message
+    fill(translate(locale, key), params)
 }
 
-/// Translator handed to components through context. Cheap to copy.
+/// Translator handed to components through context: locale, time zone and catalogs of
+/// the page. Cheap to copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct I18n {
     locale: Locale,
+    tz: chrono_tz::Tz,
+    catalogs: &'static Catalogs,
 }
 
 impl I18n {
-    pub fn new(locale: Locale) -> Self {
-        Self { locale }
+    pub fn new(locale: Locale, tz: chrono_tz::Tz) -> Self {
+        Self::with_catalogs(locale, tz, Catalogs::embedded())
+    }
+
+    /// Meant for tests: synthetic catalogs (e.g. `Box::leak(Box::new(Catalogs::from_json(..)))`).
+    pub fn with_catalogs(locale: Locale, tz: chrono_tz::Tz, catalogs: &'static Catalogs) -> Self {
+        Self {
+            locale,
+            tz,
+            catalogs,
+        }
     }
 
     pub fn locale(&self) -> Locale {
         self.locale
     }
 
-    pub fn t(&self, key: &str) -> String {
-        translate(self.locale, key)
+    pub fn tz(&self) -> chrono_tz::Tz {
+        self.tz
     }
 
+    /// Translates `key`: current locale, then English, then the key itself.
+    pub fn t(&self, key: &str) -> String {
+        self.catalogs.translate(self.locale, key)
+    }
+
+    /// [`I18n::t`] plus `{name}` placeholders.
     pub fn t_with<K: AsRef<str>, V: AsRef<str>>(&self, key: &str, params: &[(K, V)]) -> String {
-        translate_with(self.locale, key, params)
+        fill(self.t(key), params)
+    }
+
+    /// `<base>.one` if `n == 1`, else `<base>.other`, each with the usual fallback.
+    /// `n` only selects the form; placeholders come from `params`.
+    pub fn t_plural<K: AsRef<str>, V: AsRef<str>>(
+        &self,
+        base: &str,
+        n: i64,
+        params: &[(K, V)],
+    ) -> String {
+        let form = if n == 1 { "one" } else { "other" };
+        self.t_with(&format!("{base}.{form}"), params)
+    }
+
+    /// [`crate::format::date`] with this locale and time zone.
+    pub fn date(&self, dt: chrono::DateTime<chrono::Utc>) -> String {
+        crate::format::date(self.locale, self.tz, dt)
+    }
+
+    /// [`crate::format::datetime`] with this locale and time zone.
+    pub fn datetime(&self, dt: chrono::DateTime<chrono::Utc>) -> String {
+        crate::format::datetime(self.locale, self.tz, dt)
+    }
+
+    /// [`crate::format::number`] with this locale.
+    pub fn number(&self, n: i128) -> String {
+        crate::format::number(self.locale, n)
     }
 }
 
@@ -158,20 +291,38 @@ macro_rules! t {
         $i18n.t($key)
     };
     ($i18n:expr, $key:expr, $($name:ident = $value:expr),+ $(,)?) => {
-        $i18n.t_with($key, &[$((stringify!($name), ($value).to_string())),+])
+        $i18n.t_with(
+            $key,
+            &[$((stringify!($name), $crate::format::MessageArg::render(&($value), &$i18n))),+],
+        )
+    };
+}
+
+/// `t_plural!(i18n, "base", n, count = n)`: `<base>.one` if `n == 1`, else `<base>.other`.
+#[macro_export]
+macro_rules! t_plural {
+    ($i18n:expr, $base:expr, $n:expr) => {
+        $i18n.t_plural::<&str, &str>($base, $n, &[])
+    };
+    ($i18n:expr, $base:expr, $n:expr, $($name:ident = $value:expr),+ $(,)?) => {
+        $i18n.t_plural(
+            $base,
+            $n,
+            &[$((stringify!($name), $crate::format::MessageArg::render(&($value), &$i18n))),+],
+        )
     };
 }
 
 /// Puts the translator for `locale` into the reactive context.
-pub fn provide_i18n(locale: Locale) -> I18n {
-    let i18n = I18n::new(locale);
+pub fn provide_i18n(locale: Locale, tz: chrono_tz::Tz) -> I18n {
+    let i18n = I18n::new(locale, tz);
     provide_context(i18n);
     i18n
 }
 
 /// The translator of the current page. Falls back to the request locale if no context exists.
 pub fn use_i18n() -> I18n {
-    use_context::<I18n>().unwrap_or_else(|| I18n::new(request_locale()))
+    use_context::<I18n>().unwrap_or_else(|| I18n::new(request_locale(), crate::tz::use_timezone()))
 }
 
 /// Locale resolved by the server middleware for the current request (request extension).

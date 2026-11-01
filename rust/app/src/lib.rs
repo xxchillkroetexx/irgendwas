@@ -15,8 +15,10 @@ pub mod auth;
 pub mod components;
 pub mod error;
 pub mod flash;
+pub mod format;
 pub mod i18n;
 pub mod pages;
+pub mod paths;
 pub mod tz;
 
 #[cfg(feature = "ssr")]

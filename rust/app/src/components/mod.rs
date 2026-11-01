@@ -3,7 +3,7 @@
 mod flash;
 mod layout;
 
-pub use flash::FlashMessages;
+pub use flash::{FlashAlert, FlashMessages};
 pub use layout::{Footer, Layout, NavBar};
 
 /// Reads an attribute of the `<html>` element (client only; `None` on the server).

@@ -60,7 +60,7 @@ Stop PHP → deploy Rust with a new, empty database → smoke test. Users regist
 
 | # | Slice | Scope (PHP reference) | Spec | Tests | Impl | Review |
 |---|---|---|---|---|---|---|
-| 0 | i18n-foundation | format helpers, plurals, locale detection order, `users.locale` + mail locale, `safe_return_path`, key-coverage test (split from i18n-polish; runs before auth) | approved | – | – | – |
+| 0 | i18n-foundation | format helpers, plurals, locale detection order, `users.locale` + mail locale, `safe_return_path`, key-coverage test (split from i18n-polish; runs before auth) | approved | done | done | approved |
 | 1 | auth | register, login, logout, forgot/reset password (`AuthController`, `Auth`, `UserRepository`) | approved | – | – | – |
 | 2 | account | dashboard, profile, change password, email change + verify (`UserController`) | approved | – | – | – |
 | 3 | groups | create/edit/delete, list, show, join via code, leave, regenerate invite (`GroupController`) | approved | – | – | – |
@@ -132,3 +132,7 @@ Append one line per decision: `YYYY-MM-DD | slice | decision | why`.
 - 2026-10-31 | i18n | Unused keys fail the coverage test; catalogs cut to the keys in use, each slice adds keys with the code that uses them (reused texts are copied from the PHP catalogs, which stay until slice 7 is done) | user
 - 2026-10-31 | i18n-polish | Language switch is a POST server fn with a validated `next`; a logged-in switch also updates `users.locale` | replaces PHP's Referer open redirect
 - 2026-10-31 | draw | No "only one possible draw" admin warning; the small-group hint covers n = 2/3 | user
+- 2026-11-01 | i18n-foundation | `generate_route_list(App)` is cached in a `OnceLock` (`server/src/lib.rs` `route_list()`) | Leptos sets a process-wide SuppressResourceLoad flag while building the route list; parallel tests that each built a router hung on concurrent renders (likely the Phase 1 one-off hang). Don't render resource-holding components via bare `to_html` concurrently with the first router build
+- 2026-11-01 | i18n-foundation | `disable-erase-components = true` in the leptos metadata | debug builds otherwise emit `<!>` markers after dynamic text, so `cargo leptos test`/e2e saw different markup than release; release builds unaffected. Cost: slower debug compiles; revisit if later slices hit compile-time/type-length problems
+- 2026-11-01 | i18n-foundation | Catalogs cut to the 23 keys in use; migration 0003 adds `users.locale VARCHAR(8) NULL`; locale cookie `Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly` (+ Secure on https) | spec
+- 2026-11-01 | i18n-foundation | Slice done (review round 2 APPROVE). Deferred nits: coverage scanner C9 only checks the first `{}` child block (`<p>{"a"}{"b"}</p>` passes), C9 ignores `value=`/`content=`/`attr:*`, C10 misses `.format(CONST)`, C5 misses typo namespaces; `I18n` PartialEq could use `ptr::eq`; `append_set_cookie` could `debug_assert!` | non-blocking; tighten when a slice touches the scanner

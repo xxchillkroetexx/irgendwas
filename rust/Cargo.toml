@@ -66,3 +66,6 @@ bin-default-features = false
 lib-features = []
 lib-default-features = false
 lib-profile-release = "wasm-release"
+# Debug builds render the same HTML as release builds (erase_components adds `<!>` markers
+# after dynamic text, so `cargo leptos test` would see different markup than production).
+disable-erase-components = true

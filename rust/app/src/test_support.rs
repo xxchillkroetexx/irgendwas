@@ -39,6 +39,16 @@ pub async fn create_user(pool: &MySqlPool, name: &str, email: &str) -> i32 {
     i32::try_from(result.last_insert_id()).expect("user id fits i32")
 }
 
+/// Sets `users.locale` (the account language) of `user_id`.
+pub async fn set_user_locale(pool: &MySqlPool, user_id: i32, locale: Option<&str>) {
+    sqlx::query("UPDATE users SET locale = ? WHERE id = ?")
+        .bind(locale)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .expect("set user locale");
+}
+
 /// Inserts a group administered by `admin_id` and adds the admin as a member
 /// (as the PHP app does). Returns the group id.
 pub async fn create_group(pool: &MySqlPool, admin_id: i32, name: &str) -> i32 {

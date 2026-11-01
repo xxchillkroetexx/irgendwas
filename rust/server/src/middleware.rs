@@ -7,13 +7,14 @@ use app::server::AppState;
 use app::server::config::normalize_origin;
 use app::server::i18n::{cookie_locale, session_locale};
 use axum::extract::{Request, State};
-use axum::http::header::{COOKIE, ORIGIN};
+use axum::http::header::{ACCEPT_LANGUAGE, COOKIE, ORIGIN};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tower_sessions::Session;
 
-/// Resolves the request locale (session → `locale` cookie → `APP_LOCALE`) and stores it as
+/// Resolves the request locale (session → `locale` cookie → `Accept-Language` (all headers
+/// joined with `,`) → `APP_LOCALE`) and stores it as
 /// a [`RequestLocale`] request extension, which SSR reads synchronously.
 pub async fn locale(
     State(state): State<AppState>,
@@ -28,9 +29,17 @@ pub async fn locale(
         .iter()
         .filter_map(|v| v.to_str().ok())
         .find_map(cookie_locale);
+    let accept_language = req
+        .headers()
+        .get_all(ACCEPT_LANGUAGE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect::<Vec<_>>()
+        .join(",");
     let locale = resolve_locale(
         from_session.map(|l| l.code()),
         from_cookie.map(|l| l.code()),
+        Some(accept_language.as_str()),
         state.config.app_locale,
     );
     req.extensions_mut().insert(RequestLocale(locale));

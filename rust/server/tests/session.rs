@@ -45,7 +45,7 @@ fn test_routes() -> Router<AppState> {
         .route(
             "/test/flash",
             route(|session: Session| async move {
-                flash::push(&session, FlashMessage::success("flash.success.logged_in"))
+                flash::push(&session, FlashMessage::info("error.forbidden"))
                     .await
                     .unwrap();
                 "ok"
@@ -114,12 +114,12 @@ async fn session_login_current_user_and_flash(pool: MySqlPool) {
     send(&app, get("/test/flash", Some(&cookie))).await;
     let html = body_string(send(&app, get("/", Some(&cookie))).await).await;
     assert!(
-        html.contains("You have successfully logged in"),
+        html.contains("You are not allowed to do that."),
         "flash missing"
     );
     let html = body_string(send(&app, get("/", Some(&cookie))).await).await;
     assert!(
-        !html.contains("You have successfully logged in"),
+        !html.contains("You are not allowed to do that."),
         "flash shown twice"
     );
 

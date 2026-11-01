@@ -7,7 +7,7 @@
 //! The server writes the configured zone into `<html data-timezone>`; the client reads it
 //! back, so server and client render identical wall-clock times.
 
-use chrono::{DateTime, LocalResult, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
 /// Default zone when `APP_TIMEZONE` is not set.
@@ -37,6 +37,29 @@ pub fn format_local(dt: DateTime<Utc>, tz: Tz, fmt: &str) -> String {
 /// Value for `<input type="datetime-local">` (`YYYY-MM-DDTHH:MM`) in `tz`.
 pub fn to_input_value(dt: DateTime<Utc>, tz: Tz) -> String {
     format_local(dt, tz, INPUT_FORMAT)
+}
+
+/// Format used by `<input type="date">`.
+pub const DATE_INPUT_FORMAT: &str = "%Y-%m-%d";
+
+/// Value for `<input type="date">` (`YYYY-MM-DD`, the local date in `tz`).
+pub fn to_date_input_value(dt: DateTime<Utc>, tz: Tz) -> String {
+    format_local(dt, tz, DATE_INPUT_FORMAT)
+}
+
+/// Parses a `YYYY-MM-DD` date input value (trimmed; a real calendar date).
+pub fn parse_date_input(value: &str) -> Result<NaiveDate, TzError> {
+    let value = value.trim();
+    // chrono's `%m` / `%d` also accept one digit; an input value always has two.
+    let shaped = value.len() == 10
+        && value.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        });
+    if !shaped {
+        return Err(TzError::Invalid);
+    }
+    NaiveDate::parse_from_str(value, DATE_INPUT_FORMAT).map_err(|_| TzError::Invalid)
 }
 
 /// Wall-clock time in `tz` → UTC instant.

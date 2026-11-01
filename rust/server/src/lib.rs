@@ -8,7 +8,7 @@ pub mod middleware;
 pub mod session_store;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use app::server::mail::{MailError, Mailer};
@@ -17,7 +17,7 @@ use app::{App, shell};
 use axum::Router;
 use axum::routing::get;
 use leptos::config::LeptosOptions;
-use leptos_axum::{LeptosRoutes, generate_route_list};
+use leptos_axum::{AxumRouteListing, LeptosRoutes, generate_route_list};
 use sqlx::MySqlPool;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -42,6 +42,17 @@ pub fn session_layer(pool: MySqlPool, config: &Config) -> SessionManagerLayer<My
         .with_always_save(true)
 }
 
+/// The app's route list, generated once per process.
+///
+/// `generate_route_list` renders `App` with resource loading suppressed through a
+/// process-wide flag (`leptos_server::SuppressResourceLoad`). Generating it again for every
+/// router would make a page rendered concurrently on another thread (parallel tests that each
+/// build a router) wait forever on its resources.
+fn route_list() -> Vec<AxumRouteListing> {
+    static ROUTES: OnceLock<Vec<AxumRouteListing>> = OnceLock::new();
+    ROUTES.get_or_init(|| generate_route_list(App)).clone()
+}
+
 /// The complete application router (pages, server fns, static files, `/health`), behind
 /// the Origin check ([`middleware::origin_check`]) and the session and locale layers.
 pub fn router(state: AppState) -> Router {
@@ -51,7 +62,7 @@ pub fn router(state: AppState) -> Router {
 /// [`router`] plus `extra` routes, which run inside the session and locale layers.
 /// Used by integration tests to exercise session helpers directly.
 pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
-    let routes = generate_route_list(App);
+    let routes = route_list();
     let session_layer = session_layer(state.pool.clone(), &state.config);
     let leptos_options = state.leptos_options.clone();
     let app_origin: Arc<str> = state.config.app_origin().into();
