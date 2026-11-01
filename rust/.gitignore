@@ -1,0 +1,13 @@
+# build output
+/target/
+
+# local configuration (copy .env.example to .env, compose.env.example to prod.env)
+.env
+*.env
+
+# Playwright / end2end artifacts
+/end2end/node_modules/
+/end2end/playwright-report/
+/end2end/test-results/
+/end2end/blob-report/
+/end2end/playwright/.cache/

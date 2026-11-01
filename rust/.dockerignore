@@ -1,0 +1,9 @@
+# Keep the build context small and free of secrets.
+target/
+end2end/node_modules/
+end2end/playwright-report/
+end2end/test-results/
+end2end/blob-report/
+.env
+*.env
+!.env.example

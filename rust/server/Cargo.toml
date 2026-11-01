@@ -1,0 +1,36 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[dependencies]
+app = { workspace = true, features = ["ssr"] }
+leptos = { workspace = true, features = ["ssr"] }
+leptos_axum.workspace = true
+axum.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+tower-sessions.workspace = true
+async-trait.workspace = true
+time.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+app = { workspace = true, features = ["ssr", "test-support"] }
+http-body-util = "0.1"
+tower.workspace = true
+argon2.workspace = true
+chrono-tz.workspace = true
+ipnet = "2"
