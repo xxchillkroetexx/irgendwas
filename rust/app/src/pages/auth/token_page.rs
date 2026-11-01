@@ -1,5 +1,5 @@
 //! What the two token pages (`/auth/register/confirm/:token`, `/auth/reset-password/:token`)
-//! share: no-referrer/no-store headers, the token from the URL, and the "invalid link"
+//! share: same-origin referrer policy and no-store headers, the token from the URL, and the "invalid link"
 //! redirect with a flash message.
 
 use leptos::prelude::*;
@@ -8,7 +8,7 @@ use leptos_router::hooks::use_params_map;
 use crate::auth::SessionResource;
 use crate::flash::{FlashMessage, Toasts};
 
-/// Sends `Referrer-Policy: no-referrer` and `Cache-Control: no-store` (SSR only).
+/// Sends `Referrer-Policy: same-origin` and `Cache-Control: no-store` (SSR only).
 pub fn token_page_headers() {
     #[cfg(feature = "ssr")]
     crate::server::respond::token_page_headers();

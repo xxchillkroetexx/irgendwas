@@ -5,7 +5,7 @@ use axum::http::{HeaderValue, StatusCode, request::Parts};
 use leptos::prelude::use_context;
 use leptos_axum::ResponseOptions;
 
-use crate::auth_api::AuthError;
+use crate::error::HttpStatus;
 
 fn response() -> Option<ResponseOptions> {
     let response = use_context::<ResponseOptions>();
@@ -27,9 +27,9 @@ fn accepts_html() -> bool {
         .unwrap_or(false)
 }
 
-/// Gives an auth server fn's error response its status (instead of the default 500). Not
+/// Gives a server fn's error response the error's status (instead of the default 500). Not
 /// for plain HTML form posts: leptos answers those with a redirect back to the form.
-pub fn with_error_status<T>(result: Result<T, AuthError>) -> Result<T, AuthError> {
+pub fn with_error_status<T, E: HttpStatus>(result: Result<T, E>) -> Result<T, E> {
     if let Err(err) = &result
         && !accepts_html()
         && let (Some(response), Ok(status)) = (
@@ -70,10 +70,26 @@ pub fn redirect_document(path: &str) {
     }
 }
 
-/// Pages whose URL carries a secret token: never sent as a referrer, never cached.
+/// Whether the current server fn call is a plain HTML form post (JavaScript disabled or
+/// not hydrated yet), as opposed to the server fn client.
+pub fn is_plain_form_post() -> bool {
+    accepts_html()
+}
+
+/// Pages whose URL carries a secret token: the URL never goes to another origin as a
+/// referrer (`same-origin` still lets a no-JS form post carry the real `Origin`; with
+/// `no-referrer` browsers send `Origin: null`, which the Origin check rejects), and the
+/// page is never cached.
 pub fn token_page_headers() {
     if let Some(response) = response() {
-        response.insert_header(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+        response.insert_header(REFERRER_POLICY, HeaderValue::from_static("same-origin"));
+        response.insert_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+}
+
+/// Pages with personal data that no cache should keep (`Cache-Control: no-store`).
+pub fn no_store() {
+    if let Some(response) = response() {
         response.insert_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
 }

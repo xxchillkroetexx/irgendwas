@@ -193,3 +193,106 @@ impl Clock for ManualClock {
         *self.0.lock().expect("clock lock")
     }
 }
+
+// --------------------------------------------------------------- account fixtures
+
+/// Every column of `users` the account slice reads or writes (not `updated_at`, which
+/// changes on every write).
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct UserRow {
+    pub id: i32,
+    pub name: String,
+    pub email: String,
+    pub password: String,
+    pub pending_email: Option<String>,
+    pub email_verification_token: Option<String>,
+    pub email_verification_expires: Option<DateTime<Utc>>,
+    pub reset_token: Option<String>,
+    pub reset_token_expires: Option<DateTime<Utc>>,
+    pub session_epoch: u32,
+    pub locale: Option<String>,
+}
+
+/// The `users` row of `user_id`.
+pub async fn user_row(pool: &MySqlPool, user_id: i32) -> UserRow {
+    sqlx::query_as::<_, UserRow>(
+        "SELECT id, name, email, password, pending_email, email_verification_token, \
+         email_verification_expires, reset_token, reset_token_expires, session_epoch, locale \
+         FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .expect("select user")
+}
+
+/// All `users` rows, ordered by id (to assert that nothing changed anywhere).
+pub async fn user_rows(pool: &MySqlPool) -> Vec<UserRow> {
+    sqlx::query_as::<_, UserRow>(
+        "SELECT id, name, email, password, pending_email, email_verification_token, \
+         email_verification_expires, reset_token, reset_token_expires, session_epoch, locale \
+         FROM users ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("select users")
+}
+
+/// Starts a pending email change for `user_id`: `pending_email`, the token stored as
+/// `SHA2(token, 256)` (like the app does) and an expiry `expires_in_secs` from now
+/// (negative: already expired). `pending_email` is stored as given.
+pub async fn set_pending_email(
+    pool: &MySqlPool,
+    user_id: i32,
+    pending_email: &str,
+    token: &str,
+    expires_in_secs: i64,
+) {
+    sqlx::query(
+        "UPDATE users SET pending_email = ?, email_verification_token = SHA2(?, 256), \
+         email_verification_expires = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND) \
+         WHERE id = ?",
+    )
+    .bind(pending_email)
+    .bind(token)
+    .bind(expires_in_secs)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("set pending email");
+}
+
+/// Like [`set_pending_email`] with a fixed expiry instant.
+pub async fn set_pending_email_at(
+    pool: &MySqlPool,
+    user_id: i32,
+    pending_email: &str,
+    token: &str,
+    expires_at: DateTime<Utc>,
+) {
+    sqlx::query(
+        "UPDATE users SET pending_email = ?, email_verification_token = SHA2(?, 256), \
+         email_verification_expires = ? WHERE id = ?",
+    )
+    .bind(pending_email)
+    .bind(token)
+    .bind(expires_at)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("set pending email");
+}
+
+/// Moves the expiry of `user_id`'s pending change to `secs_from_now` (a request issued
+/// `24h - secs_from_now` ago).
+pub async fn set_pending_expiry(pool: &MySqlPool, user_id: i32, secs_from_now: i64) {
+    sqlx::query(
+        "UPDATE users SET email_verification_expires = \
+         DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND) WHERE id = ?",
+    )
+    .bind(secs_from_now)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .expect("set pending expiry");
+}

@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { collectPageErrors, waitForHydration } from "./support/app";
-import { firstUrlWithPath, latestFor, uniqueEmail, waitForLatest } from "./support/mailpit";
+import { deleteFor, firstUrlWithPath, latestFor, uniqueEmail, waitForLatest } from "./support/mailpit";
 
 /**
  * auth slice acceptance tests (docs/rewrite/specs/auth.md). Only the main journeys and
@@ -301,6 +301,52 @@ test.describe("auth", () => {
 
       expect(errors).toEqual([]);
     });
+  });
+
+  test("token pages work without JavaScript (no Origin: null 403): register confirm, reset password", async ({
+    browser,
+  }) => {
+    const email = uniqueEmail("nojs");
+    const setup = await browser.newContext();
+    const setupPage = await setup.newPage();
+    const link = await startRegistration(setupPage, email);
+
+    // Registration completion as a plain form post.
+    const plain = await browser.newContext({ javaScriptEnabled: false });
+    const p = await plain.newPage();
+    await p.goto(link);
+    await p.getByLabel("Full Name").fill("No JS");
+    await p.getByLabel("Password", { exact: true }).fill(PASSWORD);
+    await p.getByLabel("Confirm Password").fill(PASSWORD);
+    await p.locator("main form button[type=submit]").click();
+    await expect(p).toHaveURL(new RegExp(`${DASHBOARD}$`));
+    await expect(p.locator("nav").getByText("No JS")).toBeVisible();
+
+    // Password reset as a plain form post: success, back on the login page.
+    // Clear the inbox first: the registration mail is still there, and the reset mail is
+    // sent off the request path, so `waitForLatest` would otherwise return the old one.
+    await deleteFor(email);
+    await setupPage.goto("/auth/forgot-password");
+    await waitForHydration(setupPage);
+    await setupPage.getByLabel("Email").fill(email);
+    await setupPage.getByRole("button", { name: "Send Reset Link" }).click();
+    await expect(setupPage).toHaveURL(/\/auth\/login/);
+    const resetMail = await waitForLatest(email);
+    const resetLink = firstUrlWithPath(resetMail, "/auth/reset-password/")!;
+    expect(resetLink).toBeTruthy();
+
+    const fresh = "brand-new-password-2";
+    const q = await (await browser.newContext({ javaScriptEnabled: false })).newPage();
+    await q.goto(resetLink);
+    await q.getByLabel("New Password", { exact: true }).fill(fresh);
+    await q.getByLabel("Confirm New Password").fill(fresh);
+    await q.getByRole("button", { name: "Reset Password" }).click();
+    await expect(q).toHaveURL(/\/auth\/login/);
+    await expect(q.getByText(T.resetDone)).toBeVisible();
+
+    await q.context().close();
+    await plain.close();
+    await setup.close();
   });
 
   test("auth pages render and hydrate without errors", async ({ page }) => {

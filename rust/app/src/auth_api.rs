@@ -159,6 +159,12 @@ impl AuthError {
     }
 }
 
+impl crate::error::HttpStatus for AuthError {
+    fn status_code(&self) -> u16 {
+        AuthError::status_code(self)
+    }
+}
+
 impl FromServerFnError for AuthError {
     type Encoder = JsonEncoding;
 

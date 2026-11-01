@@ -55,6 +55,13 @@ pub const MAIL_PER_IP: Limit = Limit {
     window: TimeDelta::minutes(60),
 };
 
+/// Current-password checks in change_password + request_email_change
+/// (`account:pw:<user_id>`): 10 per 15 minutes (spec: account AC40).
+pub const ACCOUNT_PASSWORD: Limit = Limit {
+    max: 10,
+    window: TimeDelta::minutes(15),
+};
+
 /// Purge expired entries once the map holds this many keys.
 const PURGE_THRESHOLD: usize = 1024;
 
@@ -211,4 +218,9 @@ pub fn mail_email_key(email: &str) -> String {
 /// `mail:ip:<sha256(ip)>`.
 pub fn mail_ip_key(ip: &str) -> String {
     key("mail:ip:", ip)
+}
+
+/// `account:pw:<user_id>` (a user id is no secret: not hashed).
+pub fn account_password_key(user_id: i32) -> String {
+    format!("account:pw:{user_id}")
 }

@@ -12,9 +12,12 @@
 //! - [`rate_limit`]: in-memory limiter with an injectable clock.
 //! - [`token`]: random link tokens, stored as SHA-256.
 //! - [`respond`]: redirects and headers from server fns and SSR renders.
+//! - [`account_flow`], [`account_mail`]: the account server fn bodies and their mails.
 //! - [`auth_flow`], [`auth_mail`]: the auth server fn bodies and their mails.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
+pub mod account_flow;
+pub mod account_mail;
 pub mod auth;
 pub mod auth_flow;
 pub mod auth_mail;

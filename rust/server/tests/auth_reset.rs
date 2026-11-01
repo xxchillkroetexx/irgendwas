@@ -179,7 +179,7 @@ async fn ac36_reset_sets_the_new_password_and_consumes_the_token(pool: MySqlPool
     assert_eq!(page.status, 200);
     assert_eq!(
         page.header("referrer-policy").as_deref(),
-        Some("no-referrer")
+        Some("same-origin")
     );
     assert!(
         page.header("cache-control")

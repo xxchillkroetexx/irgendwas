@@ -10,6 +10,7 @@ Login, logout, registration and password reset are covered by the `auth` slice. 
 Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Both mails use the account language (`users.locale` via `mail_i18n`) instead of the request locale; the pending-change expiry is formatted with `app::format`. AC27 was revised; AC38 and AC39 were added.
+Revised 2026-11-01 (review): current-password attempts are rate limited (AC40); no-JS confirm works and token pages use `Referrer-Policy: same-origin` (AC41); `no-store` on profile/verify (AC42); per-recipient mail limit (AC43); no-JS profile forms show their result as a flash (AC44).
 
 ## Current PHP behaviour
 
@@ -241,6 +242,11 @@ No migration in this slice:
 **Mail language and formatting** (added 2026-10-31, i18n-foundation)
 - AC38: Given Alice's `users.locale = 'de'` and she is on an English page, when she requests an email change and the link is then confirmed from a browser with an English page, then the verification mail and the email-changed notice are both German. Given Bob's `users.locale` is NULL and `APP_LOCALE=en`, when he requests a change from a German page, then the verification mail is English.
 - AC39: Given a pending change with `email_verification_expires = 2099-12-01 10:00:00 UTC` (a fixed future instant), when the profile is shown in English, then the pending box shows `1 Dec 2099, 11:00`; in German `01.12.2099 11:00`.
+- AC40 (added 2026-11-01, review): Given Alice is logged in, when `change_password` or `request_email_change` is called with a wrong current password 10 times within 15 minutes (any mix of the two fns, also concurrently), then the next call returns `TooManyAttempts { minutes }` without verifying the password, even if it is correct, and nothing is changed. The limiter key is `account:pw:<user_id>` (10 / 15 min, reserved atomically before argon2 like auth's login limiter, cleared on a successful verification). It is independent of the login limiter. Validation failures are not counted.
+- AC41 (added 2026-11-01, review): Given JavaScript is disabled (or the button is pressed before hydration), when Alice opens a valid verification link and presses Confirm, then the change is applied (no 403: the page sends `Referrer-Policy: same-origin`, so the form POST carries the real Origin), and the browser ends on `/user/profile` with a flash for the result (success or the error's message). The verify page never sends its URL to another origin.
+- AC42 (added 2026-11-01, review): `/user/profile` and `/user/verify-email/<token>` respond with `Cache-Control: no-store`.
+- AC43 (added 2026-11-01, review): The verification mail is subject to auth's per-recipient limit `mail:email:<normalised new email>`. When it is exceeded, no mail is sent, the pending columns are unchanged, and the call returns `EmailChangeTooSoon`.
+- AC44 (added 2026-11-01, user): Given JavaScript is disabled, when Alice submits any profile form (`update_name`, `change_password`, `request_email_change`, cancel pending change), then the browser ends on `/user/profile` and shows that form's success message, or the error's message, as a flash rendered by the server. With JavaScript enabled the per-card messages stay as they are.
 
 ## Open questions
 

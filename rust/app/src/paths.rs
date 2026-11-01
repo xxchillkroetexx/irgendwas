@@ -30,6 +30,9 @@ pub fn safe_return_path(raw: &str) -> Option<String> {
 /// Where a logged-in user lands by default (the account slice owns the page).
 pub const DASHBOARD_PATH: &str = "/user/dashboard";
 
+/// The profile page (account slice).
+pub const PROFILE_PATH: &str = "/user/profile";
+
 /// [`safe_return_path`] plus: not `/auth` and not under `/auth/`, so a redirect never loops
 /// into an auth page or a server fn endpoint (spec: auth, `safe_next`). `None` means the
 /// caller falls back to [`DASHBOARD_PATH`].

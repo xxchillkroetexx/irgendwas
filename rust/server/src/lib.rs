@@ -15,10 +15,12 @@ use app::server::mail::{MailError, Mailer};
 use app::server::{AppState, Config, db};
 use app::{App, shell};
 use axum::Router;
+use axum::handler::Handler;
 use axum::routing::get;
 use leptos::config::LeptosOptions;
 use leptos_axum::{AxumRouteListing, LeptosRoutes, generate_route_list};
 use sqlx::MySqlPool;
+use tower_http::services::ServeDir;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
 
@@ -67,11 +69,25 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
     let leptos_options = state.leptos_options.clone();
     let app_origin: Arc<str> = state.config.app_origin().into();
 
+    // Static files (wasm, js, css, assets) are served by `ServeDir` directly; anything
+    // that is not a file gets leptos' 404 page. Not `file_and_error_handler` for files: it
+    // looks up `ResponseOptions` in a fresh `Owner`, which on a worker thread that is still
+    // rendering another page (leptos' SSR root owner stays the thread's current owner while
+    // that response streams) is a child of *that* request's owner. The file response then
+    // took over the other page's status and headers (seen: `/pkg/irgendwas.wasm` answered
+    // with the 302 of a guarded page, so the browser never hydrated).
+    let not_found =
+        leptos_axum::file_and_error_handler::<AppState, _>(shell).with_state(state.clone());
+    let files = ServeDir::new(state.leptos_options.site_root.as_ref())
+        .precompressed_gzip()
+        .precompressed_br()
+        .fallback(not_found);
+
     Router::new()
         .route("/health", get(health::health))
         .merge(extra)
         .leptos_routes(&state, routes, move || shell(leptos_options.clone()))
-        .fallback(leptos_axum::file_and_error_handler::<AppState, _>(shell))
+        .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::locale,

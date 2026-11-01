@@ -256,7 +256,7 @@ async fn ac24_the_confirmation_page_shows_the_email_and_does_not_consume_the_tok
         // Token pages must not leak the token or be cached.
         assert_eq!(
             page.header("referrer-policy").as_deref(),
-            Some("no-referrer")
+            Some("same-origin")
         );
         assert!(
             page.header("cache-control")

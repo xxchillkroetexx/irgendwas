@@ -68,12 +68,27 @@ impl FromServerFnError for AppError {
     }
 }
 
+/// The HTTP status of a server fn error response (see `server::respond::with_error_status`).
+pub trait HttpStatus {
+    fn status_code(&self) -> u16;
+}
+
+impl HttpStatus for AppError {
+    fn status_code(&self) -> u16 {
+        AppError::status_code(self)
+    }
+}
+
 #[cfg(feature = "ssr")]
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match err {
             sqlx::Error::RowNotFound => AppError::NotFound,
-            other => AppError::internal(other),
+            // Never the message: it can quote values (`Duplicate entry '<email>' ...`).
+            other => {
+                tracing::error!(error = %crate::server::db::redacted(&other), "database error");
+                AppError::Internal
+            }
         }
     }
 }

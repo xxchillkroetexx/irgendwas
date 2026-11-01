@@ -4,7 +4,8 @@
 #
 # - Inside the Playwright image (CI job container): runs Playwright directly.
 # - Elsewhere (dev host without npm): runs it in mcr.microsoft.com/playwright via podman,
-#   with host networking so the browser reaches the server on localhost.
+#   with host networking so the browser reaches the server on localhost. The whole `rust/`
+#   directory is mounted (as in CI), so specs can read e.g. `../../locales/en.json`.
 #
 # Environment: BASE_URL (default http://localhost:3000, must match APP_URL's origin),
 # MAILPIT_URL, PLAYWRIGHT_IMAGE, CONTAINER_ENGINE (default podman).
@@ -23,6 +24,6 @@ if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "${PLAYWRIGHT_BROWSERS_PATH}" 
 fi
 
 exec "$ENGINE" run --rm --init --network host --ipc host \
-    -v "$PWD:/work" -w /work \
+    -v "$PWD/..:/work" -w /work/end2end \
     -e CI -e BASE_URL -e MAILPIT_URL \
     "$IMAGE" sh -c "$INSTALL && exec npx playwright test \"\$@\"" playwright "$@"

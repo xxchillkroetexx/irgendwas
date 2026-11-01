@@ -13,8 +13,8 @@ pub fn app_link(config: &Config, path: &str) -> String {
     format!("{}{path}", config.app_url.trim_end_matches('/'))
 }
 
-/// One block of a mail body.
-enum Block {
+/// One block of a mail body (shared with `account_mail`).
+pub(crate) enum Block {
     Heading(String),
     Paragraph(String),
     /// A button-like link: (label, url).
@@ -23,8 +23,8 @@ enum Block {
     Fallback(String, String),
 }
 
-/// Renders `blocks` as (html, text).
-fn render(i18n: &I18n, subject: &str, blocks: &[Block]) -> (String, String) {
+/// Renders `blocks` as (html, text): every interpolated value is HTML-escaped.
+pub(crate) fn render(i18n: &I18n, subject: &str, blocks: &[Block]) -> (String, String) {
     let mut html = format!(
         "<!DOCTYPE html>\n<html lang=\"{}\">\n<head><meta charset=\"utf-8\"><title>{}</title></head>\n\
          <body style=\"font-family: Arial, sans-serif; line-height: 1.5; color: #212529; max-width: 600px; margin: 0 auto; padding: 16px;\">\n",

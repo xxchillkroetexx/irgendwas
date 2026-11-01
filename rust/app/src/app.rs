@@ -3,14 +3,14 @@
 use leptos::prelude::*;
 use leptos_meta::{MetaTags, Title, provide_meta_context};
 use leptos_router::components::{Route, Router, Routes};
-use leptos_router::path;
+use leptos_router::{SsrMode, path};
 
 use crate::components::Layout;
 use crate::i18n::{provide_i18n, request_locale};
 use crate::pages::auth::{
     ForgotPasswordPage, LoginPage, RegisterConfirmPage, RegisterPage, ResetPasswordPage,
 };
-use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound};
+use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound, ProfilePage, VerifyEmailPage};
 use crate::tz::use_timezone;
 
 const BOOTSTRAP_CSS: &str =
@@ -53,14 +53,20 @@ pub fn App() -> impl IntoView {
         <Router>
             <Layout>
                 <ErrorBoundary fallback=|errors| view! { <ErrorPage errors/> }>
+                    // `Async`: the whole page is rendered before the response starts. Out-of-order
+                    // streaming would leave every pending Suspense (navbar, flash messages,
+                    // guarded pages) in `<template>` chunks that only JavaScript swaps in, and
+                    // the pages must work without JavaScript (account AC41, AC44).
                     <Routes fallback=|| view! { <NotFound/> }>
-                        <Route path=path!("/") view=HomePage/>
-                        <Route path=path!("/auth/login") view=LoginPage/>
-                        <Route path=path!("/auth/register") view=RegisterPage/>
-                        <Route path=path!("/auth/register/confirm/:token") view=RegisterConfirmPage/>
-                        <Route path=path!("/auth/forgot-password") view=ForgotPasswordPage/>
-                        <Route path=path!("/auth/reset-password/:token") view=ResetPasswordPage/>
-                        <Route path=path!("/user/dashboard") view=DashboardPage/>
+                        <Route path=path!("/") view=HomePage ssr=SsrMode::Async/>
+                        <Route path=path!("/auth/login") view=LoginPage ssr=SsrMode::Async/>
+                        <Route path=path!("/auth/register") view=RegisterPage ssr=SsrMode::Async/>
+                        <Route path=path!("/auth/register/confirm/:token") view=RegisterConfirmPage ssr=SsrMode::Async/>
+                        <Route path=path!("/auth/forgot-password") view=ForgotPasswordPage ssr=SsrMode::Async/>
+                        <Route path=path!("/auth/reset-password/:token") view=ResetPasswordPage ssr=SsrMode::Async/>
+                        <Route path=path!("/user/dashboard") view=DashboardPage ssr=SsrMode::Async/>
+                        <Route path=path!("/user/profile") view=ProfilePage ssr=SsrMode::Async/>
+                        <Route path=path!("/user/verify-email/:token") view=VerifyEmailPage ssr=SsrMode::Async/>
                     </Routes>
                 </ErrorBoundary>
             </Layout>

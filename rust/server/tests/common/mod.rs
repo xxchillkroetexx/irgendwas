@@ -1,6 +1,7 @@
 //! Helpers shared by the integration tests.
 #![allow(dead_code)]
 
+pub mod account;
 pub mod auth;
 
 use app::server::{AppState, Config};

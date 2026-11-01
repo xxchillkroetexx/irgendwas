@@ -118,7 +118,7 @@ All pages are public. "Logged in" means `current_user()` returns a user (see the
 | `/auth/reset-password/:token` | Reset password | Invalid/expired token → redirect `/auth/forgot-password` with flash `flash.error.reset_token_expired`. Accessible when logged in. |
 | `GET /auth/logout` | not routed (404) | Logout is the `logout` server fn only. |
 
-Token pages (`/auth/register/confirm/*`, `/auth/reset-password/*`) send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. Rendering them does not consume the token.
+Token pages (`/auth/register/confirm/*`, `/auth/reset-password/*`) send `Referrer-Policy: same-origin` and `Cache-Control: no-store` (revised 2026-11-01: `no-referrer` makes browsers send `Origin: null` on a no-JS form POST, which the Origin check rejects; `same-origin` still never sends the token URL to another origin). Rendering them does not consume the token.
 
 "Dashboard" means the shared constant `DASHBOARD_PATH` (currently `/user/dashboard`; the account slice owns the page).
 

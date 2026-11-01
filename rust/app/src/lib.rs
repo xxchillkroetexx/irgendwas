@@ -10,6 +10,7 @@
 
 #![recursion_limit = "256"]
 
+pub mod account_api;
 mod app;
 pub mod auth;
 pub mod auth_api;

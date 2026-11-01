@@ -34,3 +34,4 @@ Run **rewrite-reviewer**. For `CHANGES REQUIRED`, send the blocker and should-fi
 - Append the implementer's undocumented decisions to the decision log in `PLAN.md`, and set the slice's tracker row to `done`.
 - Report to the user: ACs covered, migrations added, review verdict, and anything deferred.
 - Propose a commit message for the slice. Commit only when the user approves.
+- After the commit, run `cargo clean` in `rust/` (debug test binaries pile up to tens of GB).
