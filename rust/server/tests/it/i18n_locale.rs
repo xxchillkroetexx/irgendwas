@@ -1,8 +1,7 @@
 //! i18n-foundation: locale resolution per request (AC10), cookie and session helpers
 //! (AC11), `users.locale` (AC12) and the account/mail locale helpers (AC13, AC14).
 
-mod common;
-
+use crate::common::*;
 use app::error::AppError;
 use app::i18n::{LOCALE_KEY, Locale, translate};
 use app::server::i18n::{
@@ -16,7 +15,6 @@ use axum::extract::{Path, State};
 use axum::http::{Request, header};
 use axum::response::IntoResponse;
 use axum::routing::get as route;
-use common::*;
 use sqlx::MySqlPool;
 use tower_sessions::Session;
 

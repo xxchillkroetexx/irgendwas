@@ -1,18 +1,16 @@
 //! CSRF defence: state-changing requests must come from the `APP_URL` origin
 //! (`server::middleware::origin_check`).
 
-mod common;
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::common::*;
 use app::server::AppState;
 use app::server::config::normalize_origin;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header};
 use axum::routing::post as route_post;
-use common::*;
 use server::middleware::check_origin;
 use sqlx::MySqlPool;
 

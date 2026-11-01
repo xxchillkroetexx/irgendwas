@@ -1,8 +1,8 @@
 //! account slice: requesting and cancelling an email change, and the verification mail
 //! (AC20-AC28, AC38). Mails are read from Mailpit; every address is unique per test.
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::{AccountError, ConfirmResult};
 use app::test_support::mailpit::{Mailpit, unique_email};
 use app::test_support::{
@@ -10,8 +10,6 @@ use app::test_support::{
     set_pending_expiry, set_user_locale, user_row, user_rows,
 };
 use chrono::{Duration, Utc};
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const PROFILE: &str = "/user/profile";

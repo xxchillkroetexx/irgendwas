@@ -6,8 +6,7 @@
 //! pages of AC6 do not exist yet, so the guard contract is checked on the one page every
 //! auth redirect already depends on.
 
-mod common;
-
+use crate::common::auth::*;
 use app::auth_api::AuthError;
 use app::flash::FlashMessage;
 use app::i18n::{I18n, Locale, translate};
@@ -16,7 +15,6 @@ use app::server::i18n::locale_cookie;
 use app::test_support::{
     ALICE_PASSWORD, BOB_PASSWORD, bob_last_login, create_alice, create_bob, set_user_locale,
 };
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const ALICE: &str = "alice@example.com";
@@ -356,7 +354,7 @@ async fn ac9_login_from_a_foreign_origin_is_rejected(pool: MySqlPool) {
         .await
         .unwrap();
     assert_eq!(sessions, 0, "no session created");
-    c.origin = common::TEST_ORIGIN.to_string();
+    c.origin = crate::common::TEST_ORIGIN.to_string();
     assert_eq!(c.whoami().await, None);
 }
 

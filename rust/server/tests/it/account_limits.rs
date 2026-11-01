@@ -2,10 +2,10 @@
 //! 10 per 15 min) and AC43 (per-recipient mail limit `mail:email:<new email>`, 3 per hour,
 //! shared with auth's register/forgot-password). Time moves through `ManualClock`.
 
-mod common;
-
 use std::sync::Arc;
 
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::AccountError;
 use app::auth_api::AuthError;
 use app::test_support::mailpit::{Mailpit, unique_email};
@@ -14,8 +14,6 @@ use app::test_support::{
     user_rows,
 };
 use chrono::Duration;
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const NEW: &str = "newpassword1";

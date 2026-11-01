@@ -1,11 +1,9 @@
 //! Mailer → Mailpit round trip, the Mailpit test client, and the mail helpers.
 //! Needs the dev compose's Mailpit (or `MAILPIT_URL` / `MAILPIT_SMTP_HOST` / `_PORT`).
 
-mod common;
-
+use crate::common::*;
 use app::server::mail::{MailError, Mailer, Message, escape_html};
 use app::test_support::mailpit::{Mailpit, first_url_with_path, smtp_vars, unique_email};
-use common::*;
 
 fn mailpit_config() -> app::server::Config {
     let vars = smtp_vars();

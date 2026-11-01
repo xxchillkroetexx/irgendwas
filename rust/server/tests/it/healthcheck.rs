@@ -1,10 +1,8 @@
 //! `server --healthcheck` probe against a real listening server.
 
-mod common;
-
 use std::net::SocketAddr;
 
-use common::*;
+use crate::common::*;
 use server::healthcheck::probe;
 use sqlx::MySqlPool;
 

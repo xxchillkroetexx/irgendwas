@@ -1,16 +1,14 @@
 //! auth slice, review round 1: email collation (accent variants must be different
 //! addresses), the login limiter under concurrency, and oversized login emails.
 
-mod common;
-
 use std::time::Duration;
 
+use crate::common::auth::*;
 use app::auth_api::AuthError;
 use app::test_support::mailpit::{Mailpit, unique_email};
 use app::test_support::{
     ALICE_PASSWORD, create_alice, insert_pending_registration, set_reset_token,
 };
-use common::auth::*;
 use sqlx::MySqlPool;
 
 fn tok(c: char) -> String {

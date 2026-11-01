@@ -1,16 +1,14 @@
 //! account slice: access and authorization (AC1-AC5) plus "no other user's data is
 //! reachable". The user id always comes from the session, never from arguments.
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
+use crate::common::{post_from, send};
 use app::account_api::{AccountError, ProfileView};
 use app::test_support::mailpit::{Mailpit, unique_email};
 use app::test_support::{
     ALICE_PASSWORD, BOB_PASSWORD, create_bob, set_pending_email, user_row, user_rows,
 };
-use common::account::*;
-use common::auth::*;
-use common::{post_from, send};
 use sqlx::MySqlPool;
 
 const DASHBOARD: &str = "/user/dashboard";

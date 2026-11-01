@@ -1,12 +1,10 @@
 //! account slice: name and password changes (AC10-AC19, AC37).
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::AccountError;
 use app::auth_api::AuthError;
 use app::test_support::{ALICE_PASSWORD, set_pending_email, set_reset_token, user_row, user_rows};
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const PROFILE: &str = "/user/profile";

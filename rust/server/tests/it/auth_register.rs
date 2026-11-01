@@ -2,10 +2,9 @@
 //! mail read it from Mailpit (unique recipient addresses); the others seed the pending
 //! registration directly so they stay fast.
 
-mod common;
-
 use std::time::Duration;
 
+use crate::common::auth::*;
 use app::auth_api::{AuthError, Field, FieldError};
 use app::flash::FlashMessage;
 use app::i18n::{Locale, translate, translate_with};
@@ -13,7 +12,6 @@ use app::paths::DASHBOARD_PATH;
 use app::server::password;
 use app::test_support::mailpit::{Mailpit, unique_email};
 use app::test_support::{create_alice, insert_pending_registration, set_user_locale};
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const CONFIRM: &str = "/auth/register/confirm/";

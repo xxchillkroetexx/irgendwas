@@ -1,8 +1,7 @@
 //! Sessions (MySQL store, cookie flags, inactivity expiry), current-user resolution,
 //! flash messages and locale, through the real router.
 
-mod common;
-
+use crate::common::*;
 use app::flash::FlashMessage;
 use app::server::{AppState, auth, flash};
 use app::test_support::create_user;
@@ -11,7 +10,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get as route;
 use chrono::{DateTime, Utc};
-use common::*;
 use sqlx::MySqlPool;
 use tower_sessions::Session;
 

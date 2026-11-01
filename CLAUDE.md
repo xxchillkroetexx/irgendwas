@@ -21,12 +21,12 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 ## Codebase conventions (from Phase 1A)
 
 - `app/src/server/` (ssr only) holds config, db, auth (`load_user` is the single session → user choke point), authz, password, flash, i18n, client_ip. `server/` holds only the session store, middleware, router and `main`.
-- **All ssr tests go in `server/tests/`.** `cargo leptos test` does not run unit tests inside `app`. Fixtures are in `app/src/test_support.rs` (feature `test-support`). Use `#[sqlx::test(migrations = "../migrations")]`, and `server::router_with(state, extra)` for HTTP-level tests.
+- **All ssr tests go in `server/tests/it/`, one integration binary** (`it`, entry `tests/it/main.rs`; a binary per file linked the whole app 25 times). A new slice's file is `tests/it/<slice>.rs`, registered with `mod <slice>;` in `main.rs`; shared helpers are `crate::common` (`use crate::common::auth::*;`, no `mod common;` in test files). Don't add `tests/*.rs` files. Tests share one process: no `set_var`, no per-test global state (`capture_logs()` routes by thread). `cargo leptos test` does not run unit tests inside `app`. Fixtures are in `app/src/test_support.rs` (feature `test-support`). Use `#[sqlx::test(migrations = "../migrations")]`, and `server::router_with(state, extra)` for HTTP-level tests.
 - `--all-features` compiles `app` with ssr and hydrate together: gate server-only code with `#[cfg(feature = "ssr")]` / `#[cfg(not(feature = "ssr"))]` pairs, not ssr/hydrate pairs.
 - i18n is custom and flat: `t!(i18n, "key", name = v)`, catalogs in `locales/{en,de}.json`; add every key to both.
 - Runtime SQL only (`sqlx::query_as::<_, Row>`), no compile-time macros. Errors are `AppError` (`Unauthorized`, `Forbidden`, `NotFound`, `Validation(key)`, `Internal`).
 - Nothing time-dependent or random during render (hydration). Locale and time zone come from `<html lang>` / `data-timezone`.
-- Tests: POST through `common::post(...)` (it sends the Origin; a POST without one gets 403). Mail tests send to `Mailpit::unique_email()` (one Mailpit is shared by parallel tests). In e2e, call `waitForHydration(page)` before interacting and `collectPageErrors(page)` to catch hydration panics.
+- Tests: POST through `crate::common::post(...)` (it sends the Origin; a POST without one gets 403). Mail tests send to `Mailpit::unique_email()` (one Mailpit is shared by parallel tests). In e2e, call `waitForHydration(page)` before interacting and `collectPageErrors(page)` to catch hydration panics.
 - Mail: `state()?.mailer.send(Message { to, subject, html, text })`; escape every interpolated value with `escape_html`; await `handle.outcome()` only when delivery status matters.
 - `rust/.env` must exist (copy `.env.example`); otherwise cargo-leptos picks up the PHP `.env` at the repo root.
 

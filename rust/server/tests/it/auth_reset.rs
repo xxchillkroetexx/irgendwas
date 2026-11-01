@@ -2,10 +2,9 @@
 //! (AC33-AC42, AC44, AC45, AC50). Tests that need a mail read it from Mailpit (unique
 //! recipient addresses); the others seed the reset token directly.
 
-mod common;
-
 use std::time::{Duration, Instant};
 
+use crate::common::auth::*;
 use app::auth_api::{AuthError, Field, FieldError};
 use app::flash::FlashMessage;
 use app::i18n::{Locale, translate};
@@ -15,7 +14,6 @@ use app::test_support::{
     ALICE_PASSWORD, ManualClock, create_alice, create_bob, create_user,
     insert_pending_registration, set_reset_token, set_user_locale,
 };
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const RESET: &str = "/auth/reset-password/";

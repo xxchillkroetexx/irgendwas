@@ -1,16 +1,14 @@
 //! account slice: the dashboard shell and the profile page as the server renders them
 //! (AC6-AC9, AC39). Interactions (forms, nav refresh) are in the e2e spec.
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::ProfileView;
 use app::i18n::{I18n, Locale, translate, translate_with};
 use app::test_support::{
     ALICE_PASSWORD, TEST_PASSWORD, create_user, set_pending_email, set_pending_email_at, user_row,
 };
 use chrono::{TimeZone, Utc};
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const DASHBOARD: &str = "/user/dashboard";

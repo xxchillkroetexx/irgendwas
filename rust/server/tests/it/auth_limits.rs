@@ -1,13 +1,11 @@
 //! auth slice: rate limiting and client IP (AC11-AC16, AC32, AC51). Time moves through the
 //! injectable limiter clock (`ManualClock`), never through sleeping.
 
-mod common;
-
+use crate::common::auth::*;
 use app::auth_api::AuthError;
 use app::i18n::{I18n, Locale};
 use app::test_support::{ALICE_PASSWORD, ManualClock, create_alice};
 use chrono::Duration;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 const ALICE: &str = "alice@example.com";

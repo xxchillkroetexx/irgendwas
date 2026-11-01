@@ -2,8 +2,8 @@
 //! change is seeded with a known token (stored as SHA-256 like the app does); the mail side
 //! of the request is covered in account_email.rs.
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::{AccountError, ConfirmResult, ProfileView};
 use app::auth_api::AuthError;
 use app::test_support::mailpit::{Mailpit, unique_email};
@@ -11,8 +11,6 @@ use app::test_support::{
     ALICE_PASSWORD, BOB_PASSWORD, create_bob, set_pending_email, set_reset_token, user_row,
     user_rows,
 };
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 /// Alice with a live pending change to a fresh address, verification token `tok('v')`.

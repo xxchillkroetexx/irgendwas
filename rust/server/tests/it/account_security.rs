@@ -2,8 +2,8 @@
 //! in logs, single use under concurrency, POST-only) and the i18n contract (error keys,
 //! catalog entries).
 
-mod common;
-
+use crate::common::account::*;
+use crate::common::auth::*;
 use app::account_api::{AccountError, ConfirmResult};
 use app::auth_api::AuthError;
 use app::i18n::{Locale, catalog};
@@ -11,8 +11,6 @@ use app::test_support::mailpit::{Mailpit, unique_email};
 use app::test_support::{
     ALICE_PASSWORD, BOB_PASSWORD, create_bob, set_pending_email, user_row, user_rows,
 };
-use common::account::*;
-use common::auth::*;
 use sqlx::MySqlPool;
 
 // ------------------------------------------------------ lookalike and variant addresses
