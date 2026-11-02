@@ -62,6 +62,13 @@ pub const ACCOUNT_PASSWORD: Limit = Limit {
     window: TimeDelta::minutes(15),
 };
 
+/// Invalid invitation codes per user (`invite:code:<user_id>`), counted by
+/// `preview_invitation` and `join_group` together: 10 per 10 minutes (spec: groups AC45).
+pub const INVITE_CODE: Limit = Limit {
+    max: 10,
+    window: TimeDelta::minutes(10),
+};
+
 /// Purge expired entries once the map holds this many keys.
 const PURGE_THRESHOLD: usize = 1024;
 
@@ -223,4 +230,9 @@ pub fn mail_ip_key(ip: &str) -> String {
 /// `account:pw:<user_id>` (a user id is no secret: not hashed).
 pub fn account_password_key(user_id: i32) -> String {
     format!("account:pw:{user_id}")
+}
+
+/// `invite:code:<user_id>` (a user id is no secret: not hashed).
+pub fn invite_code_key(user_id: i32) -> String {
+    format!("invite:code:{user_id}")
 }

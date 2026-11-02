@@ -17,9 +17,18 @@ pub fn Layout(children: Children) -> impl IntoView {
     let location = use_location();
     // Blocking: the server waits for it before sending the response head, so taking the
     // flash messages out of the session is persisted with that response.
+    // The pages only need the user's id and name: the email address stays out of the
+    // serialized page data (a page shows it only where it is content, e.g. the profile).
     let session = Resource::new_blocking(
         move || (location.pathname.get(), location.search.get()),
-        |_| get_session_info(),
+        |_| async move {
+            get_session_info().await.map(|mut info| {
+                if let Some(user) = info.user.as_mut() {
+                    user.email.clear();
+                }
+                info
+            })
+        },
     );
     provide_context(SessionResource(session));
     provide_context(Toasts(RwSignal::new(Vec::new())));

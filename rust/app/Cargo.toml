@@ -33,11 +33,12 @@ ipnet = { version = "2", optional = true }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "query"], optional = true }
 
 # client-only
-web-sys = { version = "0.3", optional = true, features = ["Document", "Element", "HtmlElement", "HtmlInputElement", "Location", "Window"] }
+web-sys = { version = "0.3", optional = true, features = ["Document", "Element", "HtmlElement", "HtmlInputElement", "Location", "Window", "Navigator", "Clipboard"] }
+wasm-bindgen-futures = { version = "0.4", optional = true }
 
 [features]
 default = []
-hydrate = ["leptos/hydrate", "dep:web-sys"]
+hydrate = ["leptos/hydrate", "dep:web-sys", "dep:wasm-bindgen-futures"]
 ssr = [
     "leptos/ssr",
     "leptos_meta/ssr",

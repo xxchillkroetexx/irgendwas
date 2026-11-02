@@ -18,6 +18,7 @@ pub mod components;
 pub mod error;
 pub mod flash;
 pub mod format;
+pub mod groups_api;
 pub mod i18n;
 pub mod pages;
 pub mod paths;

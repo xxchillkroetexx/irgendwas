@@ -10,6 +10,9 @@ use crate::i18n::{provide_i18n, request_locale};
 use crate::pages::auth::{
     ForgotPasswordPage, LoginPage, RegisterConfirmPage, RegisterPage, ResetPasswordPage,
 };
+use crate::pages::groups::{
+    GroupCreatePage, GroupEditPage, GroupPage, GroupsPage, JoinPage, JoinPreviewPage,
+};
 use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound, ProfilePage, VerifyEmailPage};
 use crate::tz::use_timezone;
 
@@ -67,6 +70,12 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/user/dashboard") view=DashboardPage ssr=SsrMode::Async/>
                         <Route path=path!("/user/profile") view=ProfilePage ssr=SsrMode::Async/>
                         <Route path=path!("/user/verify-email/:token") view=VerifyEmailPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups") view=GroupsPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/new") view=GroupCreatePage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id") view=GroupPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id/edit") view=GroupEditPage ssr=SsrMode::Async/>
+                        <Route path=path!("/join") view=JoinPage ssr=SsrMode::Async/>
+                        <Route path=path!("/join/:code") view=JoinPreviewPage ssr=SsrMode::Async/>
                     </Routes>
                 </ErrorBoundary>
             </Layout>

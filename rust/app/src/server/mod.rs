@@ -14,6 +14,8 @@
 //! - [`respond`]: redirects and headers from server fns and SSR renders.
 //! - [`account_flow`], [`account_mail`]: the account server fn bodies and their mails.
 //! - [`auth_flow`], [`auth_mail`]: the auth server fn bodies and their mails.
+//! - [`groups_flow`]: the groups server fn bodies; [`invite`]: invitation codes;
+//!   [`membership`]: what leaving a group deletes.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod account_flow;
@@ -26,8 +28,11 @@ pub mod client_ip;
 pub mod config;
 pub mod db;
 pub mod flash;
+pub mod groups_flow;
 pub mod i18n;
+pub mod invite;
 pub mod mail;
+pub mod membership;
 pub mod password;
 pub mod rate_limit;
 pub mod respond;

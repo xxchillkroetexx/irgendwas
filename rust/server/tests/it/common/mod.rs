@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod auth;
+pub mod groups;
 
 use app::server::{AppState, Config};
 use axum::Router;

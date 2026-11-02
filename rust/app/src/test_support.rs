@@ -296,3 +296,242 @@ pub async fn set_pending_expiry(pool: &MySqlPool, user_id: i32, secs_from_now: i
     .await
     .expect("set pending expiry");
 }
+
+// ---------------------------------------------------------------- groups fixtures
+
+/// Password of the "Carol" fixture (groups spec).
+pub const CAROL_PASSWORD: &str = "carolpassword1";
+/// Password of the "Dave" fixture (groups spec).
+pub const DAVE_PASSWORD: &str = "davepassword12";
+
+static CAROL_HASH: LazyLock<String> =
+    LazyLock::new(|| password::hash(CAROL_PASSWORD).expect("hash carol password"));
+static DAVE_HASH: LazyLock<String> =
+    LazyLock::new(|| password::hash(DAVE_PASSWORD).expect("hash dave password"));
+
+/// User "Carol": password [`CAROL_PASSWORD`].
+pub async fn create_carol(pool: &MySqlPool, email: &str) -> i32 {
+    insert_user(pool, "Carol", email, &CAROL_HASH, None).await
+}
+
+/// User "Dave": password [`DAVE_PASSWORD`].
+pub async fn create_dave(pool: &MySqlPool, email: &str) -> i32 {
+    insert_user(pool, "Dave", email, &DAVE_HASH, None).await
+}
+
+/// Like [`create_group`] with a chosen invitation code (a valid one is 8 characters of
+/// `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`).
+pub async fn create_group_with_code(
+    pool: &MySqlPool,
+    admin_id: i32,
+    name: &str,
+    code: &str,
+) -> i32 {
+    let group_id = create_group(pool, admin_id, name).await;
+    set_invitation_code(pool, group_id, code).await;
+    group_id
+}
+
+/// Overwrites the invitation code as given (no normalisation).
+pub async fn set_invitation_code(pool: &MySqlPool, group_id: i32, code: &str) {
+    sqlx::query("UPDATE `groups` SET invitation_code = ? WHERE id = ?")
+        .bind(code)
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .expect("set invitation code");
+}
+
+/// The stored invitation code.
+pub async fn group_code(pool: &MySqlPool, group_id: i32) -> String {
+    sqlx::query_scalar("SELECT invitation_code FROM `groups` WHERE id = ?")
+        .bind(group_id)
+        .fetch_one(pool)
+        .await
+        .expect("select invitation code")
+}
+
+/// Sets the registration deadline and the draw date (UTC instants, `None` = NULL).
+pub async fn set_group_dates(
+    pool: &MySqlPool,
+    group_id: i32,
+    registration_deadline: Option<DateTime<Utc>>,
+    draw_date: Option<DateTime<Utc>>,
+) {
+    sqlx::query("UPDATE `groups` SET registration_deadline = ?, draw_date = ? WHERE id = ?")
+        .bind(registration_deadline)
+        .bind(draw_date)
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .expect("set group dates");
+}
+
+/// Marks the group as drawn (no assignments are created; see [`add_assignment`]).
+pub async fn set_drawn(pool: &MySqlPool, group_id: i32) {
+    sqlx::query("UPDATE `groups` SET is_drawn = 1 WHERE id = ?")
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .expect("set drawn");
+}
+
+/// Sets `groups.created_at`.
+pub async fn set_group_created_at(pool: &MySqlPool, group_id: i32, at: DateTime<Utc>) {
+    sqlx::query("UPDATE `groups` SET created_at = ? WHERE id = ?")
+        .bind(at)
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .expect("set created_at");
+}
+
+/// A `groups` row as the groups slice stores it.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct GroupRow {
+    pub id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub admin_id: i32,
+    pub invitation_code: String,
+    pub registration_deadline: Option<DateTime<Utc>>,
+    pub draw_date: Option<DateTime<Utc>>,
+    pub is_drawn: Option<bool>,
+}
+
+/// The `groups` row, if it exists.
+pub async fn find_group(pool: &MySqlPool, group_id: i32) -> Option<GroupRow> {
+    sqlx::query_as::<_, GroupRow>(
+        "SELECT id, name, description, admin_id, invitation_code, registration_deadline, \
+         draw_date, is_drawn FROM `groups` WHERE id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(pool)
+    .await
+    .expect("select group")
+}
+
+/// The `groups` row (panics if missing).
+pub async fn group_row(pool: &MySqlPool, group_id: i32) -> GroupRow {
+    find_group(pool, group_id).await.expect("group exists")
+}
+
+/// User ids of the members of `group_id`, ordered by id.
+pub async fn member_ids(pool: &MySqlPool, group_id: i32) -> Vec<i32> {
+    sqlx::query_scalar("SELECT user_id FROM group_members WHERE group_id = ? ORDER BY user_id")
+        .bind(group_id)
+        .fetch_all(pool)
+        .await
+        .expect("select members")
+}
+
+/// Creates the user's wishlist for the group with one item per title. Returns its id.
+pub async fn create_wishlist(
+    pool: &MySqlPool,
+    group_id: i32,
+    user_id: i32,
+    titles: &[&str],
+) -> i32 {
+    let result = sqlx::query("INSERT INTO wishlists (user_id, group_id) VALUES (?, ?)")
+        .bind(user_id)
+        .bind(group_id)
+        .execute(pool)
+        .await
+        .expect("insert wishlist");
+    let id = i32::try_from(result.last_insert_id()).expect("wishlist id fits i32");
+    for title in titles {
+        sqlx::query("INSERT INTO wishlist_items (wishlist_id, title) VALUES (?, ?)")
+            .bind(id)
+            .bind(title)
+            .execute(pool)
+            .await
+            .expect("insert wishlist item");
+    }
+    id
+}
+
+/// Inserts the rule "`user_id` must not give to `excluded_user_id`".
+pub async fn add_exclusion(pool: &MySqlPool, group_id: i32, user_id: i32, excluded_user_id: i32) {
+    sqlx::query(
+        "INSERT INTO exclusion_rules (group_id, user_id, excluded_user_id) VALUES (?, ?, ?)",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .bind(excluded_user_id)
+    .execute(pool)
+    .await
+    .expect("insert exclusion");
+}
+
+/// Inserts a gift assignment row (does not touch `is_drawn`).
+pub async fn add_assignment(pool: &MySqlPool, group_id: i32, giver_id: i32, receiver_id: i32) {
+    sqlx::query("INSERT INTO gift_assignments (group_id, giver_id, receiver_id) VALUES (?, ?, ?)")
+        .bind(group_id)
+        .bind(giver_id)
+        .bind(receiver_id)
+        .execute(pool)
+        .await
+        .expect("insert assignment");
+}
+
+/// Everything the groups slice reads or writes, for "nothing changed" assertions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupsSnapshot {
+    pub groups: Vec<GroupRow>,
+    pub members: Vec<(i32, i32)>,
+    pub wishlists: Vec<(i32, i32, i32)>,
+    pub items: Vec<(i32, i32, String)>,
+    pub exclusions: Vec<(i32, i32, i32)>,
+    pub assignments: Vec<(i32, i32, i32)>,
+}
+
+/// The whole groups-related state of the database.
+pub async fn groups_snapshot(pool: &MySqlPool) -> GroupsSnapshot {
+    let groups = sqlx::query_as::<_, GroupRow>(
+        "SELECT id, name, description, admin_id, invitation_code, registration_deadline, \
+         draw_date, is_drawn FROM `groups` ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot groups");
+    let members = sqlx::query_as::<_, (i32, i32)>(
+        "SELECT group_id, user_id FROM group_members ORDER BY group_id, user_id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot members");
+    let wishlists = sqlx::query_as::<_, (i32, i32, i32)>(
+        "SELECT id, group_id, user_id FROM wishlists ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot wishlists");
+    let items = sqlx::query_as::<_, (i32, i32, String)>(
+        "SELECT id, wishlist_id, title FROM wishlist_items ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot items");
+    let exclusions = sqlx::query_as::<_, (i32, i32, i32)>(
+        "SELECT group_id, user_id, excluded_user_id FROM exclusion_rules \
+         ORDER BY group_id, user_id, excluded_user_id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot exclusions");
+    let assignments = sqlx::query_as::<_, (i32, i32, i32)>(
+        "SELECT group_id, giver_id, receiver_id FROM gift_assignments \
+         ORDER BY group_id, giver_id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("snapshot assignments");
+    GroupsSnapshot {
+        groups,
+        members,
+        wishlists,
+        items,
+        exclusions,
+        assignments,
+    }
+}

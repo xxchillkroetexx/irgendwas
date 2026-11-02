@@ -33,6 +33,11 @@ pub const DASHBOARD_PATH: &str = "/user/dashboard";
 /// The profile page (account slice).
 pub const PROFILE_PATH: &str = "/user/profile";
 
+/// The page of a group.
+pub fn group_path(group_id: i32) -> String {
+    format!("/groups/{group_id}")
+}
+
 /// [`safe_return_path`] plus: not `/auth` and not under `/auth/`, so a redirect never loops
 /// into an auth page or a server fn endpoint (spec: auth, `safe_next`). `None` means the
 /// caller falls back to [`DASHBOARD_PATH`].
