@@ -70,6 +70,7 @@ dependencies = [
  "tokio",
  "tower-sessions",
  "tracing",
+ "url",
  "wasm-bindgen-futures",
  "web-sys",
 ]

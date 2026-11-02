@@ -197,6 +197,8 @@ fn validate(
         errors.push((GroupField::Name, GroupFieldError::NameTooLong));
     }
 
+    // Browsers submit a line break as CRLF but count it as one character (maxlength).
+    let description = crate::validation::normalize_newlines(description);
     let description = description.trim();
     if description.chars().count() > DESCRIPTION_MAX {
         errors.push((GroupField::Description, GroupFieldError::DescriptionTooLong));

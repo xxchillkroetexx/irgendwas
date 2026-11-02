@@ -49,11 +49,20 @@ pub const MAIL_PER_EMAIL: Limit = Limit {
     max: 3,
     window: TimeDelta::minutes(60),
 };
-/// Register + forgot-password calls per client IP (`mail:ip:<ip>`): 20 per hour.
+/// Register + forgot-password calls per client IP (`mail:ip:<ip>`): 20 per hour. The
+/// count is configurable (`Config::mail_per_ip`, see [`mail_per_ip`]); this is the default.
 pub const MAIL_PER_IP: Limit = Limit {
     max: 20,
     window: TimeDelta::minutes(60),
 };
+
+/// [`MAIL_PER_IP`] with the configured count (`RATE_LIMIT_MAIL_PER_IP`).
+pub fn mail_per_ip(config: &super::Config) -> Limit {
+    Limit {
+        max: config.mail_per_ip,
+        ..MAIL_PER_IP
+    }
+}
 
 /// Current-password checks in change_password + request_email_change
 /// (`account:pw:<user_id>`): 10 per 15 minutes (spec: account AC40).

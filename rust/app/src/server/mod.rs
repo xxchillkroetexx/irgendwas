@@ -16,6 +16,7 @@
 //! - [`auth_flow`], [`auth_mail`]: the auth server fn bodies and their mails.
 //! - [`groups_flow`]: the groups server fn bodies; [`invite`]: invitation codes;
 //!   [`membership`]: what leaving a group deletes.
+//! - [`wishlists_flow`]: the wishlist server fn bodies (items, order, links).
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod account_flow;
@@ -37,6 +38,7 @@ pub mod password;
 pub mod rate_limit;
 pub mod respond;
 pub mod token;
+pub mod wishlists_flow;
 
 use std::sync::Arc;
 

@@ -104,6 +104,8 @@ jobs:
       MAIL_HOST: mailpit
       MAIL_PORT: "1025"
       MAIL_ENCRYPTION: none
+      # The whole suite registers from one IP; production keeps the default of 20.
+      RATE_LIMIT_MAIL_PER_IP: "1000"
       CI: "true"
     defaults:
       run:

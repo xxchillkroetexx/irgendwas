@@ -35,3 +35,8 @@ mod password;
 mod paths;
 mod session;
 mod tz;
+mod wishlists_concurrency;
+mod wishlists_edit;
+mod wishlists_reorder;
+mod wishlists_security;
+mod wishlists_view;

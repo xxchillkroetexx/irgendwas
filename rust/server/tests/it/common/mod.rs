@@ -4,6 +4,7 @@
 pub mod account;
 pub mod auth;
 pub mod groups;
+pub mod wishlists;
 
 use app::server::{AppState, Config};
 use axum::Router;

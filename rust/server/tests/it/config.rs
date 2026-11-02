@@ -102,3 +102,18 @@ fn trusted_proxies_accept_spaces_and_commas() {
         ]
     );
 }
+
+#[test]
+fn mail_per_ip_defaults_to_20_and_accepts_positive_numbers() {
+    assert_eq!(config(&[("DB_PASSWORD", "pw")]).unwrap().mail_per_ip, 20);
+    let c = config(&[("DB_PASSWORD", "pw"), ("RATE_LIMIT_MAIL_PER_IP", "1000")]).unwrap();
+    assert_eq!(c.mail_per_ip, 1000);
+}
+
+#[test]
+fn mail_per_ip_rejects_zero_negative_and_garbage() {
+    for bad in ["0", "-1", "abc", "1.5", "99999999999"] {
+        let result = config(&[("DB_PASSWORD", "pw"), ("RATE_LIMIT_MAIL_PER_IP", bad)]);
+        assert!(result.is_err(), "{bad:?} must be a config error");
+    }
+}

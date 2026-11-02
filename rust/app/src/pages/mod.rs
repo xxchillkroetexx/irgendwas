@@ -7,6 +7,7 @@ pub mod groups;
 mod home;
 mod profile;
 mod verify_email;
+pub mod wishlists;
 
 pub use dashboard::DashboardPage;
 pub use error::{ErrorPage, Forbidden, NotFound, ServerError};

@@ -14,6 +14,7 @@ use crate::groups_api::{
     RegenerateInvitation, RemoveMember, TransferAdmin, get_group,
 };
 use crate::i18n::use_i18n;
+use crate::pages::wishlists::{PanelData, PanelResource, WishlistPanel, panel_resource};
 use crate::t;
 
 type GroupResource = Resource<Result<GroupDetail, GroupError>>;
@@ -33,9 +34,11 @@ pub fn GroupPage() -> impl IntoView {
             }
         },
     );
+    // The wishlists slice's card (its data is page-level like the group's).
+    let panel = panel_resource(id);
     view! {
         <RequireUser>
-            <GroupShow group/>
+            <GroupShow group panel/>
         </RequireUser>
     }
 }
@@ -52,7 +55,7 @@ struct Actions {
 }
 
 #[component]
-fn GroupShow(group: GroupResource) -> impl IntoView {
+fn GroupShow(group: GroupResource, panel: PanelResource) -> impl IntoView {
     let session = use_session_resource().0;
     let toasts = use_toasts();
     let actions = Actions {
@@ -71,6 +74,7 @@ fn GroupShow(group: GroupResource) -> impl IntoView {
             session.refetch();
         }
         group.refetch();
+        panel.refetch();
     };
     Effect::new(move |_| {
         if let Some(result) = actions.regenerate.value().get() {
@@ -103,8 +107,11 @@ fn GroupShow(group: GroupResource) -> impl IntoView {
     view! {
         <Transition fallback=|| ()>
             {move || Suspend::new(async move {
+                // Both resources are awaited here, whatever the outcome, so the page is only
+                // sent once both have resolved (no late data chunk).
+                let panel = panel.await.ok();
                 match group.await {
-                    Ok(detail) => view! { <GroupDetailView detail actions/> }.into_any(),
+                    Ok(detail) => view! { <GroupDetailView detail actions panel/> }.into_any(),
                     Err(error) => view! { <GroupErrorView error/> }.into_any(),
                 }
             })}
@@ -113,7 +120,11 @@ fn GroupShow(group: GroupResource) -> impl IntoView {
 }
 
 #[component]
-fn GroupDetailView(detail: GroupDetail, actions: Actions) -> impl IntoView {
+fn GroupDetailView(
+    detail: GroupDetail,
+    actions: Actions,
+    panel: Option<PanelData>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let id = detail.id;
     let header_actions = if detail.is_admin {
@@ -159,6 +170,7 @@ fn GroupDetailView(detail: GroupDetail, actions: Actions) -> impl IntoView {
             </div>
             <div class="col-lg-6">
                 <MembersCard group_id=id members is_admin is_drawn actions/>
+                {panel.map(|data| view! { <WishlistPanel group_id=id data/> })}
             </div>
         </div>
     }

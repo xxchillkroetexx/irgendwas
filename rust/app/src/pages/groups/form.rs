@@ -7,7 +7,7 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::{GroupErrorView, group_path, route_group_id, when_logged_in};
-use crate::components::RequireUser;
+use crate::components::{RequireUser, TextArea};
 use crate::groups_api::{CreateGroup, GroupError, GroupField, UpdateGroup, get_group};
 use crate::i18n::use_i18n;
 use crate::tz;
@@ -224,15 +224,14 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
         </div>
         <div class="mb-3">
             <label for="group-description" class="form-label">{i18n.t("group.form.description")}</label>
-            <textarea
+            <TextArea
                 id="group-description"
                 name="description"
                 rows="3"
-                class=control_class(error, GroupField::Description)
-                aria-describedby="group-description-help"
-            >
-                {values.description}
-            </textarea>
+                class=Signal::derive(control_class(error, GroupField::Description))
+                aria_describedby="group-description-help"
+                value=values.description
+            />
             <FieldFeedback field=GroupField::Description error/>
             <div id="group-description-help" class="form-text">
                 {i18n.t("group.form.descriptionHelp")}

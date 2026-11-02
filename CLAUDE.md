@@ -12,6 +12,8 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 - Columns compared for identity (emails, tokens, invite codes) use `COLLATE utf8mb4_bin`, with values normalised in Rust before storing/looking up; the table default `utf8mb4_unicode_ci` is case- and accent-insensitive. Mails go to the address stored in the DB, never the one the caller typed.
 - Server-only dependencies (sqlx, lettre, argon2, tower-sessions) live behind the `ssr` feature.
 - Server fn bodies read only `Parts`, `ResponseOptions` and `AppState` from the Leptos context (via `state()`, `session()`, `request_locale`, `client_ip`, `respond`). Never `use_i18n`, `SessionResource`, router hooks, resources or views inside a server fn: leptos leaves another request's page owner as the thread's current owner, so other contexts silently resolve to *another visitor's* data. Build mail i18n with `mail_i18n`/`account_locale`.
+- Transactions that rely on REPEATABLE READ (gap locks, a repeatable snapshot) set their isolation level explicitly: wishlist writes use READ COMMITTED, and a pooled connection can carry a pending level if a request is dropped between `SET TRANSACTION` and `BEGIN`.
+- Never put user text as children of `<textarea>` directly: tachys renders textarea children unescaped during SSR (like `<script>`), so `</textarea><script>` breaks out. Use the shared `TextArea` component.
 - New routes use `ssr=SsrMode::Async` (no-JS pages otherwise lack their Suspense content).
 - All mutations are Leptos server functions (POST). Every server fn that touches a group checks membership/admin through the shared authorization helper; never trust IDs from the client.
 - Never expose another user's gift assignment. Not to admins either.

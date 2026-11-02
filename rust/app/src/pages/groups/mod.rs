@@ -80,12 +80,14 @@ fn confirmed(message: &str) -> bool {
 }
 
 /// A submit button that asks `confirm` first; a dismissed dialog cancels the submission.
-/// Without JavaScript the form posts directly.
+/// Without JavaScript the form posts directly. `aria_label` names the button for assistive
+/// technology when the visible label alone is ambiguous (e.g. one per list row).
 #[component]
-fn ConfirmSubmit(
+pub(crate) fn ConfirmSubmit(
     #[prop(into)] label: String,
     #[prop(into)] confirm: String,
     class: &'static str,
+    #[prop(optional, into)] aria_label: Option<String>,
 ) -> impl IntoView {
     let on_click = move |ev: leptos::ev::MouseEvent| {
         if !confirmed(&confirm) {
@@ -93,7 +95,7 @@ fn ConfirmSubmit(
         }
     };
     view! {
-        <button type="submit" class=class on:click=on_click>
+        <button type="submit" class=class aria-label=aria_label on:click=on_click>
             {label}
         </button>
     }
