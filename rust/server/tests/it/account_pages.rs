@@ -72,12 +72,8 @@ async fn ac6_dashboard_has_no_placeholder_for_the_later_slices(pool: MySqlPool) 
     let page = w.c.get(DASHBOARD).await;
     assert_eq!(page.status, 200);
     // Until the groups and draw slices land, their columns are not rendered at all.
-    for text in [
-        "You aren't a member of any Secret Santa groups yet.",
-        "You don't have any gift assignments yet.",
-    ] {
-        assert!(!html_contains(&page.body, text), "no placeholder: {text}");
-    }
+    let text = "You aren't a member of any Secret Santa groups yet.";
+    assert!(!html_contains(&page.body, text), "no placeholder: {text}");
     assert!(!page.body.contains("user.dashboard."), "no raw keys");
 }
 

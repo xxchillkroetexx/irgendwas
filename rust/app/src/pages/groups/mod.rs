@@ -4,7 +4,7 @@
 //! Every page is behind [`RequireUser`](crate::components::RequireUser). Its data resource is
 //! created synchronously at page level (never inside the guard's async children) and only
 //! calls the protected server fn for a logged-in visitor. Hooks for later slices (wishlist
-//! panel, exclusions link, draw panel) are added by those slices.
+//! panel, exclusions link, draw panel) come from those slices' page modules.
 
 mod form;
 mod join;
@@ -67,7 +67,7 @@ fn GroupErrorView(error: GroupError) -> impl IntoView {
 }
 
 /// Asks the browser's confirm dialog; `true` without JavaScript (never runs on the server).
-fn confirmed(message: &str) -> bool {
+pub(crate) fn confirmed(message: &str) -> bool {
     #[cfg(feature = "hydrate")]
     {
         window().confirm_with_message(message).unwrap_or(false)

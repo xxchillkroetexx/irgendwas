@@ -395,9 +395,9 @@ async fn ac15_a_future_deadline_keeps_the_group_open(pool: MySqlPool) {
 }
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac15_a_null_is_drawn_counts_as_not_drawn(pool: MySqlPool) {
+async fn ac15_an_explicitly_undrawn_group_is_shown_as_not_drawn(pool: MySqlPool) {
     let w = world(&pool).await;
-    sqlx::query("UPDATE `groups` SET is_drawn = NULL WHERE id = ?")
+    sqlx::query("UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL WHERE id = ?")
         .bind(w.g)
         .execute(&pool)
         .await
@@ -441,8 +441,18 @@ async fn ac16_get_group_never_contains_assignment_data(pool: MySqlPool) {
     ts::add_assignment(&pool, w.g, w.bob, w.carol).await;
     ts::add_assignment(&pool, w.g, w.carol, w.alice).await;
     ts::set_drawn(&pool, w.g).await;
+    crate::common::draw::set_drawn_at(&pool, w.g, "2026-11-01 10:00:00").await;
 
-    for mut c in [w.alice().await, w.bob().await, w.carol().await] {
+    for (who, mut c) in [
+        (w.alice, w.alice().await),
+        (w.bob, w.bob().await),
+        (w.carol, w.carol().await),
+    ] {
+        let own = match who {
+            x if x == w.alice => w.bob,
+            x if x == w.bob => w.carol,
+            _ => w.alice,
+        };
         let reply = get_group(&mut c, w.g).await;
         let d: GroupDetail = reply.value();
         assert!(d.is_drawn);
@@ -452,8 +462,8 @@ async fn ac16_get_group_never_contains_assignment_data(pool: MySqlPool) {
         }
         let page = c.get(&format!("/groups/{}", w.g)).await;
         assert_eq!(page.status, 200);
-        let html = page.body.to_lowercase();
-        assert!(!html.contains("giver_id") && !html.contains("receiver_id"));
+        // The page carries the draw panel: only the caller's own assignment, nobody else's.
+        crate::common::draw::assert_only_own_assignment(&page.body, own, "group page");
     }
 }
 

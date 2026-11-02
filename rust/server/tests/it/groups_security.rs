@@ -234,12 +234,17 @@ async fn no_assignment_is_reachable_through_any_groups_fn_even_for_the_admin(poo
     ts::add_assignment(&pool, w.g, w.bob, w.alice).await;
     ts::add_assignment(&pool, w.g, w.carol, w.bob).await;
     ts::set_drawn(&pool, w.g).await;
+    crate::common::draw::set_drawn_at(&pool, w.g, "2026-11-01 10:00:00").await;
     let mut alice = w.alice().await;
+
+    // The group page carries the draw panel: the admin's own assignment (Alice -> Carol)
+    // and no other.
+    let group_page = alice.get(&format!("/groups/{}", w.g)).await.body;
+    crate::common::draw::assert_only_own_assignment(&group_page, w.carol, "admin group page");
 
     let mut bodies = vec![
         get_group(&mut alice, w.g).await.body,
         list_my_groups(&mut alice).await.body,
-        alice.get(&format!("/groups/{}", w.g)).await.body,
         alice.get("/groups").await.body,
         alice.get(&format!("/groups/{}/edit", w.g)).await.body,
     ];

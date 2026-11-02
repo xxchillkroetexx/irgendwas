@@ -156,3 +156,84 @@ fn url_extraction() {
         Some("http://h/join/ABC?next=%2Fg&x=1")
     );
 }
+
+// ------------------------------------------------- S5: SMTP errors never log addresses
+
+/// A one-connection-at-a-time SMTP server that rejects every recipient with a reply that
+/// quotes the address, as real servers do.
+async fn rejecting_smtp_server() -> u16 {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                let (read, mut write) = stream.into_split();
+                let mut lines = BufReader::new(read).lines();
+                if write.write_all(b"220 stub ESMTP\r\n").await.is_err() {
+                    return;
+                }
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let upper = line.to_uppercase();
+                    let reply = if upper.starts_with("EHLO") || upper.starts_with("HELO") {
+                        "250 stub\r\n".to_string()
+                    } else if upper.starts_with("RCPT TO") {
+                        let addr = line
+                            .split_once(':')
+                            .map(|(_, a)| a.trim().to_string())
+                            .unwrap_or_default();
+                        format!("550 5.1.1 {addr}: Recipient address rejected\r\n")
+                    } else if upper.starts_with("QUIT") {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        return;
+                    } else {
+                        "250 OK\r\n".to_string()
+                    };
+                    if write.write_all(reply.as_bytes()).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+#[tokio::test]
+async fn a_rejected_recipient_is_not_logged_with_its_address() {
+    let port = rejecting_smtp_server().await;
+    let port = port.to_string();
+    let config = config_with(&[
+        ("MAIL_HOST", "127.0.0.1"),
+        ("MAIL_PORT", &port),
+        ("MAIL_ENCRYPTION", "none"),
+        ("MAIL_FROM_ADDRESS", "santa@mail.test"),
+    ]);
+    let mailer = Mailer::new(&config.mail).expect("mailer");
+    let local = "victim-4711-secret";
+    let to = format!("{local}@example.com");
+    let (log, _guard) = crate::common::auth::capture_logs();
+
+    let result = mailer
+        .send(Message {
+            to: to.clone(),
+            subject: "s".into(),
+            html: "<p>x</p>".into(),
+            text: "x".into(),
+        })
+        .outcome()
+        .await;
+    assert!(result.is_err(), "the server rejects the recipient");
+
+    let log = log.contents();
+    assert!(log.contains("mail failed"), "failure not logged: {log}");
+    assert!(!log.contains(&to), "address in log: {log}");
+    assert!(!log.contains(local), "local part in log: {log}");
+    assert!(
+        log.contains("550") || log.contains("kind"),
+        "no error kind or reply code in log: {log}"
+    );
+}

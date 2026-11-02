@@ -14,6 +14,7 @@ use crate::groups_api::{
     RegenerateInvitation, RemoveMember, TransferAdmin, get_group,
 };
 use crate::i18n::use_i18n;
+use crate::pages::draw::{DrawActions, DrawPanel, DrawPanelData, DrawResource, draw_resource};
 use crate::pages::exclusions::ExclusionsLink;
 use crate::pages::wishlists::{PanelData, PanelResource, WishlistPanel, panel_resource};
 use crate::t;
@@ -37,9 +38,11 @@ pub fn GroupPage() -> impl IntoView {
     );
     // The wishlists slice's card (its data is page-level like the group's).
     let panel = panel_resource(id);
+    // The draw slice's panel: the caller's own assignment and, for the admin, the status.
+    let draw = draw_resource(id, group);
     view! {
         <RequireUser>
-            <GroupShow group panel/>
+            <GroupShow group panel draw/>
         </RequireUser>
     }
 }
@@ -53,10 +56,11 @@ struct Actions {
     leave: ServerAction<LeaveGroup>,
     remove: ServerAction<RemoveMember>,
     transfer: ServerAction<TransferAdmin>,
+    draw: DrawActions,
 }
 
 #[component]
-fn GroupShow(group: GroupResource, panel: PanelResource) -> impl IntoView {
+fn GroupShow(group: GroupResource, panel: PanelResource, draw: DrawResource) -> impl IntoView {
     let session = use_session_resource().0;
     let toasts = use_toasts();
     let actions = Actions {
@@ -65,6 +69,7 @@ fn GroupShow(group: GroupResource, panel: PanelResource) -> impl IntoView {
         leave: ServerAction::new(),
         remove: ServerAction::new(),
         transfer: ServerAction::new(),
+        draw: DrawActions::new(),
     };
 
     // Staying actions: the server stored the flash; read it and the new state.
@@ -76,7 +81,33 @@ fn GroupShow(group: GroupResource, panel: PanelResource) -> impl IntoView {
         }
         group.refetch();
         panel.refetch();
+        draw.refetch();
     };
+    // The draw actions stay too; an error can carry two messages (DrawImpossible).
+    let after_draw = move |result: Result<(), crate::draw_api::DrawApiError>| {
+        match result {
+            Ok(()) => session.refetch(),
+            Err(err) => err.flashes().into_iter().for_each(|f| toasts.push(f)),
+        }
+        group.refetch();
+        panel.refetch();
+        draw.refetch();
+    };
+    Effect::new(move |_| {
+        if let Some(result) = actions.draw.perform.value().get() {
+            after_draw(result);
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(result) = actions.draw.reset.value().get() {
+            after_draw(result);
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(result) = actions.draw.resend.value().get() {
+            after_draw(result.map(|_| ()));
+        }
+    });
     Effect::new(move |_| {
         if let Some(result) = actions.regenerate.value().get() {
             after_stay(result.map(|_| ()), GroupOp::Other);
@@ -111,8 +142,9 @@ fn GroupShow(group: GroupResource, panel: PanelResource) -> impl IntoView {
                 // Both resources are awaited here, whatever the outcome, so the page is only
                 // sent once both have resolved (no late data chunk).
                 let panel = panel.await.ok();
+                let draw = draw.await.ok();
                 match group.await {
-                    Ok(detail) => view! { <GroupDetailView detail actions panel/> }.into_any(),
+                    Ok(detail) => view! { <GroupDetailView detail actions panel draw/> }.into_any(),
                     Err(error) => view! { <GroupErrorView error/> }.into_any(),
                 }
             })}
@@ -125,6 +157,7 @@ fn GroupDetailView(
     detail: GroupDetail,
     actions: Actions,
     panel: Option<PanelData>,
+    draw: Option<DrawPanelData>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let id = detail.id;
@@ -167,6 +200,7 @@ fn GroupDetailView(
         <div class="row">
             <div class="col-lg-6">
                 <DetailsCard detail/>
+                <DrawPanel group_id=id is_admin is_drawn data=draw actions=actions.draw/>
                 {invitation}
             </div>
             <div class="col-lg-6">

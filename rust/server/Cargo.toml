@@ -35,6 +35,7 @@ tower.workspace = true
 argon2.workspace = true
 chrono-tz.workspace = true
 ipnet = "2"
+rand.workspace = true
 # i18n_coverage.rs: static scan of the sources and catalogs
 proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = "2"

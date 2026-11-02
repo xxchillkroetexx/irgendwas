@@ -16,7 +16,6 @@ async fn migrations_create_schema_and_store_utc(pool: MySqlPool) {
     assert_eq!(
         tables,
         [
-            "email_templates",
             "exclusion_rules",
             "gift_assignments",
             "group_members",

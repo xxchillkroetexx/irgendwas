@@ -2,6 +2,7 @@
 
 pub mod auth;
 mod dashboard;
+pub mod draw;
 mod error;
 pub mod exclusions;
 pub mod groups;

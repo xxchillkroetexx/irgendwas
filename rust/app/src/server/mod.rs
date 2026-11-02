@@ -18,6 +18,8 @@
 //!   [`membership`]: what leaving a group deletes.
 //! - [`wishlists_flow`]: the wishlist server fn bodies (items, order, links).
 //! - [`exclusions`]: the exclusion server fn bodies and `load_rules` (the draw's input).
+//! - [`draw`]: the pure draw algorithm; [`draw_flow`], [`draw_mail`]: the draw server fn
+//!   bodies and their mails; [`draw_worker`]: the in-process draw mail worker.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod account_flow;
@@ -29,6 +31,10 @@ pub mod authz;
 pub mod client_ip;
 pub mod config;
 pub mod db;
+pub mod draw;
+pub mod draw_flow;
+pub mod draw_mail;
+pub mod draw_worker;
 pub mod exclusions;
 pub mod flash;
 pub mod groups_flow;
@@ -59,6 +65,7 @@ pub struct AppState {
     pub pool: MySqlPool,
     pub config: Arc<Config>,
     pub mailer: mail::Mailer,
+    pub draw_worker: draw_worker::DrawWorker,
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
 }
 

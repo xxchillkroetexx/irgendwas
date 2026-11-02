@@ -11,6 +11,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use app::server::draw_worker::{self, DrawWorker};
 use app::server::mail::{MailError, Mailer};
 use app::server::{AppState, Config, db};
 use app::{App, shell};
@@ -101,18 +102,27 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
         .with_state(state)
 }
 
-/// Builds the state from already-loaded parts (the mailer from `config.mail`).
+/// Builds the state from already-loaded parts (the mailer from `config.mail`) and starts the
+/// draw mail worker (call inside a Tokio runtime).
 pub fn app_state(
     leptos_options: LeptosOptions,
     pool: MySqlPool,
     config: Config,
 ) -> Result<AppState, MailError> {
     let mailer = Mailer::new(&config.mail)?;
+    let config = Arc::new(config);
+    let draw_worker = DrawWorker::new(
+        pool.clone(),
+        config.clone(),
+        Arc::new(mailer.clone()),
+        draw_worker::default_retry_delays(),
+    );
     Ok(AppState {
         leptos_options,
         pool,
-        config: Arc::new(config),
+        config,
         mailer,
+        draw_worker,
         rate_limiter: Arc::new(app::server::rate_limit::RateLimiter::system()),
     })
 }
@@ -141,7 +151,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     MySqlSessionStore::new(pool.clone()).spawn_cleanup(Duration::from_secs(300));
 
-    let app = router(app_state(leptos_options, pool, config)?);
+    let state = app_state(leptos_options, pool, config)?;
+    // Draw mails a stopped server left unsent (spec: draw, "Startup recovery").
+    if let Err(err) = state.draw_worker.recover().await {
+        tracing::error!(?err, "draw mail recovery failed");
+    }
+    let app = router(state);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("listening on http://{addr}");
     axum::serve(

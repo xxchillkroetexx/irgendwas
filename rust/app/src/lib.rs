@@ -16,6 +16,7 @@ pub mod auth;
 pub mod auth_api;
 pub mod components;
 pub mod domain;
+pub mod draw_api;
 pub mod error;
 pub mod exclusions_api;
 pub mod flash;
