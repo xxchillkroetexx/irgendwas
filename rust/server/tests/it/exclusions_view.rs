@@ -370,13 +370,16 @@ async fn ac19_a_non_member_a_missing_group_and_a_bad_id_give_the_same_404_page(p
     let missing = eve.get(&ex_path(999_999)).await;
     assert_eq!(foreign.status, 404);
     assert_eq!(missing.status, 404);
-    assert_eq!(without_nonce(&foreign.body), without_nonce(&missing.body));
+    assert_eq!(
+        comparable(&foreign.body, &ex_path(x.g())),
+        comparable(&missing.body, &ex_path(999_999))
+    );
     for bad in ["abc", "0", "-1", "1.5", "99999999999999999999"] {
         let page = eve.get(&format!("/groups/{bad}/exclusions")).await;
         assert_eq!(page.status, 404, "{bad}");
         assert_eq!(
-            without_nonce(&page.body),
-            without_nonce(&missing.body),
+            comparable(&page.body, &format!("/groups/{bad}/exclusions")),
+            comparable(&missing.body, &ex_path(999_999)),
             "{bad}"
         );
         let mut member = x.w.bob().await;

@@ -78,8 +78,9 @@ No migration. Writes `users.locale` (column from i18n-foundation).
 <form method="post" action="/api/set_locale" class="d-inline">
   <input type="hidden" name="locale" value="de">
   <input type="hidden" name="next" value="<current path + query>">
-  <button type="submit" class="btn btn-sm btn-outline-light" lang="de"
-          aria-label="<language.switchTo with language = Deutsch>">Deutsch</button>
+  <button type="submit" class="btn btn-sm btn-outline-light"
+          aria-label="<language.switchTo with language = Deutsch>"><span lang="de">Deutsch</span></button>
+  <!-- revised 2026-11-02 (user): `lang` only on the native name, so the page-language aria-label isn't read with German pronunciation -->
 </form>
 ```
 - The visible label is `Locale::native_name()` (not translated, by design) with `lang` set to that locale.

@@ -43,6 +43,8 @@ mod i18n;
 mod i18n_coverage;
 mod i18n_format;
 mod i18n_locale;
+mod i18n_polish;
+mod i18n_polish_home;
 mod mail;
 mod migrations;
 mod origin;

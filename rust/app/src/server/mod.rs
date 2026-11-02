@@ -8,7 +8,7 @@
 //! - [`authz`]: group membership / admin checks. **Every** server fn that takes a group id
 //!   must go through these.
 //! - [`flash`]: session-backed flash messages.
-//! - [`i18n`]: session/cookie locale helpers.
+//! - [`i18n`]: session/cookie locale helpers; [`locale_flow`]: the language switch body.
 //! - [`rate_limit`]: in-memory limiter with an injectable clock.
 //! - [`token`]: random link tokens, stored as SHA-256.
 //! - [`respond`]: redirects and headers from server fns and SSR renders.
@@ -40,6 +40,7 @@ pub mod flash;
 pub mod groups_flow;
 pub mod i18n;
 pub mod invite;
+pub mod locale_flow;
 pub mod mail;
 pub mod membership;
 pub mod password;

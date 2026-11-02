@@ -157,7 +157,10 @@ async fn ac20_the_edit_page_is_a_403_for_a_member_and_a_404_for_anyone_else(pool
     let missing = dave.get("/groups/999999/edit").await;
     assert_eq!(outsider.status, 404);
     assert_eq!(missing.status, 404);
-    assert_eq!(without_nonce(&outsider.body), without_nonce(&missing.body));
+    assert_eq!(
+        comparable(&outsider.body, &url),
+        comparable(&missing.body, "/groups/999999/edit")
+    );
     assert!(!outsider.body.contains("Family"));
 
     assert_eq!(w.alice().await.get(&url).await.status, 200);

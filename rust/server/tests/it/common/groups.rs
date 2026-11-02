@@ -304,3 +304,52 @@ pub fn without_nonce(body: &str) -> String {
         None => body.to_string(),
     }
 }
+
+/// The page with the language switch forms' hidden `next` value (the requester's own
+/// path + query) blanked, so pages of different URLs can be compared byte for byte.
+/// Every blanked value must equal `path` (the requested path + query). Only inputs named `next` inside forms that post to `/api/set_locale` are touched.
+pub fn without_switch_next(body: &str, path: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for (i, chunk) in body.split("<form").enumerate() {
+        if i == 0 {
+            out.push_str(chunk);
+            continue;
+        }
+        out.push_str("<form");
+        let form_end = chunk.find("</form>").unwrap_or(chunk.len());
+        let (form, rest) = chunk.split_at(form_end);
+        if form.contains("/api/set_locale") {
+            for (j, part) in form.split("<input").enumerate() {
+                if j == 0 {
+                    out.push_str(part);
+                    continue;
+                }
+                out.push_str("<input");
+                let tag_end = part.find('>').unwrap_or(part.len());
+                let (tag, tail) = part.split_at(tag_end);
+                match tag.find("value=\"") {
+                    Some(at) if tag.contains("name=\"next\"") => {
+                        let start = at + "value=\"".len();
+                        let len = tag[start..].find('"').unwrap_or(0);
+                        let value = tag[start..start + len].replace("&amp;", "&");
+                        assert_eq!(value, path, "switch form `next` is the requested URL");
+                        out.push_str(&tag[..start]);
+                        out.push_str("NEXT");
+                        out.push_str(&tag[start + len..]);
+                    }
+                    _ => out.push_str(tag),
+                }
+                out.push_str(tail);
+            }
+        } else {
+            out.push_str(form);
+        }
+        out.push_str(rest);
+    }
+    out
+}
+
+/// [`without_nonce`] and [`without_switch_next`]: for comparing two pages byte for byte.
+pub fn comparable(body: &str, path: &str) -> String {
+    without_nonce(&without_switch_next(body, path))
+}

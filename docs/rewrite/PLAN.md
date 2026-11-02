@@ -67,7 +67,7 @@ Stop PHP → deploy Rust with a new, empty database → smoke test. Users regist
 | 4 | wishlists | edit own list, add/update/delete/reorder items, view others' lists (`WishlistController`) | approved | done | done | approved |
 | 5 | exclusions | manage exclusion rules (`ExclusionController`) | approved | done | done | approved |
 | 6 | draw | draw algorithm, assignment reveal, notifications (`GroupRepository::performDraw`, `EmailService`) | approved | done | done | approved |
-| 7 | i18n-polish | no-JS language switch, landing page, final key scan | approved | – | – | – |
+| 7 | i18n-polish | no-JS language switch, landing page, final key scan | approved | done | done | approved |
 
 Status values: `–` not started, `draft`, `approved`, `wip`, `done`.
 
@@ -189,3 +189,7 @@ Append one line per decision: `YYYY-MM-DD | slice | decision | why`.
 - 2026-11-02 | all | `MailError::Smtp` carries only class + SMTP reply code (e.g. "permanent, code 550"); logs add `MailError::kind()` | lettre's error text quotes the server reply, which can name the recipient address (S5; review; tested with an in-process SMTP stub)
 - 2026-11-02 | draw | Each mail-worker job runs in its own awaited task; a panic is logged with job kind and id only, `outstanding` is decremented and the worker continues | one bad job must not stop all draw mails
 - 2026-11-02 | draw | Slice done (review round 2 APPROVE; no secrecy leak found). Residual: if a worker job panics between `retrying.remove` and the delivery UPDATE, that row stays pending until the next restart's recovery (resend only touches rows with ≥3 attempts) | panic-only, not a secrecy issue
+- 2026-11-02 | i18n-polish | `set_locale(locale, next)` at /api/set_locale (no tracing instrumentation, `next` can hold a token): success via `respond::redirect_document` (plain form post → 302, server-fn client → Location without client redirect, page reloads since the locale is fixed per page load); an unsupported locale from a plain form post → 302 to the validated `next` (or `/`) with nothing changed (otherwise leptos would redirect to the Referer), JS client → 422 Validation; `load_user` runs before `remember_locale` (clearing a stale session would drop the new locale) | spec AC1–AC12
+- 2026-11-02 | i18n-polish | Every page renders native POST switch forms (before `.navbar-collapse`, visible at 375 px without JS) with hidden `next` = current path + query as a `value` attribute (`prop:` isn't rendered during SSR). Earlier byte-comparison tests (404 indistinguishability, /join?code prefill) normalise the `next` value | the echoed value is the requester's own URL, so no existence or code leak
+- 2026-11-02 | i18n-polish | set_locale's error type wraps AppError (same JSON); undeserialisable args → NotFound 404; every plain-form error is a 302 to the validated next (or "/"), never leptos' Referer fallback; users.locale is written before session + cookie | review: no Referer redirect, no 500, consistent state
+- 2026-11-02 | i18n-polish | Slice done (review APPROVE; nits fixed). Watch: `account_confirm::ac31_a_link_works_only_once` failed once in a full run, not reproducible (0/20 isolated, 0/5 full runs). Resolved (user): `lang` only on a `<span>` around the native name, aria-label stays on the button. Open: route paths partly still string literals instead of `paths.rs` constants | non-blocking

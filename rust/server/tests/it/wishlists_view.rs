@@ -143,8 +143,11 @@ async fn ac3_a_non_member_and_a_missing_group_give_the_same_404_page_and_notfoun
         assert_eq!(foreign.status, 404, "{suffix}");
         assert_eq!(missing.status, 404, "{suffix}");
         assert_eq!(
-            without_nonce(&foreign.body),
-            without_nonce(&missing.body),
+            comparable(
+                &foreign.body,
+                &format!("/groups/{}/wishlist{suffix}", f.w.g)
+            ),
+            comparable(&missing.body, &format!("/groups/999999/wishlist{suffix}")),
             "{suffix}"
         );
         for secret in ["Family", ITEM_A, "Bob", "Alice"] {
@@ -280,7 +283,8 @@ async fn ac5_results_do_not_depend_on_who_gives_to_whom(pool: MySqlPool) {
             let mut out = vec![];
             for target in [a, b, c] {
                 out.push(get_wishlist(&mut client, g, target).await.body);
-                out.push(without_nonce(&client.get(&view_path(g, target)).await.body));
+                let path = view_path(g, target);
+                out.push(comparable(&client.get(&path).await.body, &path));
             }
             out.push(get_wishlist_panel(&mut client, g).await.body);
             out

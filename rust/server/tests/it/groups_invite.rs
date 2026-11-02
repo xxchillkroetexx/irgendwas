@@ -163,7 +163,20 @@ async fn ac28_the_enter_code_page_prefills_nothing_from_the_query(pool: MySqlPoo
     let mut carol = w.carol().await;
     let page = carol.get(&format!("/join?code={CODE}")).await;
     assert_eq!(page.status, 200);
-    assert!(!page.body.contains(CODE));
+    // The code input stays empty: no value attribute (or an empty one).
+    let input = page
+        .body
+        .split("<input")
+        .skip(1)
+        .map(|t| t.split('>').next().unwrap_or_default())
+        .find(|t| t.contains("name=\"code\"") || t.contains("id=\"code\""))
+        .expect("code input");
+    assert!(
+        !input.contains("value=") || input.contains("value=\"\""),
+        "{input}"
+    );
+    // CODE appears only inside the switch forms' `next` values (the requester's own URL).
+    assert!(!without_switch_next(&page.body, &format!("/join?code={CODE}")).contains(CODE));
     assert!(
         ts::member_ids(&pool, w.g).await.len() == 2,
         "a GET never joins"

@@ -238,8 +238,8 @@ async fn ac13_a_non_member_and_a_missing_group_give_the_same_404(pool: MySqlPool
     assert_eq!(foreign.status, 404);
     assert_eq!(missing.status, 404);
     assert_eq!(
-        without_nonce(&foreign.body),
-        without_nonce(&missing.body),
+        comparable(&foreign.body, &format!("/groups/{}", w.g)),
+        comparable(&missing.body, "/groups/999999"),
         "the two 404 pages are identical"
     );
     assert!(!foreign.body.contains("Family"), "no group data leaks");

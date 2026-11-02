@@ -48,11 +48,15 @@ async fn a_non_member_cannot_tell_a_foreign_group_from_a_missing_one(pool: MySql
         assert_eq!(f.body, m.body, "{name}: same body");
     }
     for path in ["", "/edit"] {
-        let a = dave.get(&format!("/groups/{}{path}", w.g)).await;
-        let b = dave.get(&format!("/groups/{missing}{path}")).await;
+        let (pa, pb) = (
+            format!("/groups/{}{path}", w.g),
+            format!("/groups/{missing}{path}"),
+        );
+        let a = dave.get(&pa).await;
+        let b = dave.get(&pb).await;
         assert_eq!(
-            (a.status, without_nonce(&a.body)),
-            (b.status, without_nonce(&b.body)),
+            (a.status, comparable(&a.body, &pa)),
+            (b.status, comparable(&b.body, &pb)),
             "page {path:?}"
         );
         assert_eq!(a.status, 404);

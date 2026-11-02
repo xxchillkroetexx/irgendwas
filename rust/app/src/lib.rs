@@ -23,6 +23,7 @@ pub mod flash;
 pub mod format;
 pub mod groups_api;
 pub mod i18n;
+pub mod locale_api;
 pub mod pages;
 pub mod paths;
 pub mod tz;
