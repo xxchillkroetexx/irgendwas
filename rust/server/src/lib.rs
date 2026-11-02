@@ -171,7 +171,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn init_tracing() {
     use tracing_subscriber::EnvFilter;
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+    // Colours only on a terminal: container logs (podman logs, journald) get plain text.
+    let ansi = std::io::IsTerminal::is_terminal(&std::io::stdout());
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(ansi)
+        .try_init();
 }
 
 async fn shutdown_signal() {
