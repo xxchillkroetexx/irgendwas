@@ -35,7 +35,7 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 ## Commands (run from `rust/`)
 
 ```bash
-podman compose -f compose.dev.yml up -d      # mariadb + mailpit
+podman compose -f compose.dev.yml up -d      # mariadb (dev, :3307), mariadb-test (RAM, :3308, for #[sqlx::test]), mailpit
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo leptos test                             # unit + #[sqlx::test] integration tests

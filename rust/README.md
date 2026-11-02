@@ -70,7 +70,7 @@ database `_sqlx_test_database_N`, created from `DATABASE_URL`. The test binary f
 up from `server/`). The URL needs a user that may `CREATE DATABASE`; in dev that is root:
 
 ```
-DATABASE_URL=mysql://root:devrootpassword@127.0.0.1:3307/irgendwas_db
+DATABASE_URL=mysql://root:devrootpassword@127.0.0.1:3308/irgendwas_db
 ```
 
 Test-only HTTP routes can be mounted inside the session/locale layers with
