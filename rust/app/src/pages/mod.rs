@@ -3,6 +3,7 @@
 pub mod auth;
 mod dashboard;
 mod error;
+pub mod exclusions;
 pub mod groups;
 mod home;
 mod profile;

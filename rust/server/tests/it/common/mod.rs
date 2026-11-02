@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod auth;
+pub mod exclusions;
 pub mod groups;
 pub mod wishlists;
 

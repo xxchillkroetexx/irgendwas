@@ -319,6 +319,17 @@ pub async fn create_dave(pool: &MySqlPool, email: &str) -> i32 {
     insert_user(pool, "Dave", email, &DAVE_HASH, None).await
 }
 
+/// Password of the "Eve" fixture (exclusions spec: a user in none of the groups).
+pub const EVE_PASSWORD: &str = "evepassword123";
+
+static EVE_HASH: LazyLock<String> =
+    LazyLock::new(|| password::hash(EVE_PASSWORD).expect("hash eve password"));
+
+/// User "Eve": password [`EVE_PASSWORD`].
+pub async fn create_eve(pool: &MySqlPool, email: &str) -> i32 {
+    insert_user(pool, "Eve", email, &EVE_HASH, None).await
+}
+
 /// Like [`create_group`] with a chosen invitation code (a valid one is 8 characters of
 /// `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`).
 pub async fn create_group_with_code(

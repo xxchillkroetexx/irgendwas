@@ -17,6 +17,7 @@
 //! - [`groups_flow`]: the groups server fn bodies; [`invite`]: invitation codes;
 //!   [`membership`]: what leaving a group deletes.
 //! - [`wishlists_flow`]: the wishlist server fn bodies (items, order, links).
+//! - [`exclusions`]: the exclusion server fn bodies and `load_rules` (the draw's input).
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod account_flow;
@@ -28,6 +29,7 @@ pub mod authz;
 pub mod client_ip;
 pub mod config;
 pub mod db;
+pub mod exclusions;
 pub mod flash;
 pub mod groups_flow;
 pub mod i18n;

@@ -14,6 +14,7 @@ use crate::groups_api::{
     RegenerateInvitation, RemoveMember, TransferAdmin, get_group,
 };
 use crate::i18n::use_i18n;
+use crate::pages::exclusions::ExclusionsLink;
 use crate::pages::wishlists::{PanelData, PanelResource, WishlistPanel, panel_resource};
 use crate::t;
 
@@ -171,6 +172,7 @@ fn GroupDetailView(
             <div class="col-lg-6">
                 <MembersCard group_id=id members is_admin is_drawn actions/>
                 {panel.map(|data| view! { <WishlistPanel group_id=id data/> })}
+                <ExclusionsLink group_id=id is_drawn/>
             </div>
         </div>
     }

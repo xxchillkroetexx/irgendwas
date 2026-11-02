@@ -39,6 +39,7 @@ use sqlx::{FromRow, MySql, Transaction};
 use crate::error::AppError;
 use crate::flash::FlashMessage;
 use crate::paths::{login_url, wishlist_edit_path as edit_path};
+use crate::server::db::{self, IsolationLevel};
 use crate::server::{AppState, auth, authz, flash, respond};
 use crate::validation::normalize_newlines;
 use crate::wishlists_api::{
@@ -445,20 +446,13 @@ async fn connection(state: &AppState) -> Result<PoolConnection<MySql>, Fail> {
     state.pool.acquire().await.map_err(tx_error("acquire"))
 }
 
-/// Starts a READ COMMITTED transaction on `conn`. `SET TRANSACTION` (without `SESSION`)
-/// only applies to the next transaction, which `BEGIN` starts right away on the same
-/// connection, so the pooled connection keeps its default level afterwards. (`BEGIN` only
-/// fails when the connection itself is broken; the pool's ping then discards it.)
+/// Starts a READ COMMITTED transaction on `conn` ([`db::begin_with`]).
 ///
 /// READ COMMITTED takes no gap locks on searches: under REPEATABLE READ the `FOR UPDATE`
 /// scan of a new, empty list locked the gap after it (up to the supremum), and two members'
 /// first items deadlocked. The row locks still serialise every list.
 async fn begin(conn: &mut PoolConnection<MySql>) -> Result<Transaction<'_, MySql>, Fail> {
-    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
-        .execute(&mut **conn)
-        .await
-        .map_err(tx_error("isolation level"))?;
-    sqlx::Connection::begin(&mut **conn)
+    db::begin_with(conn, IsolationLevel::ReadCommitted)
         .await
         .map_err(tx_error("begin"))
 }

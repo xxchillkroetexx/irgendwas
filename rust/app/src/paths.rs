@@ -49,6 +49,11 @@ pub fn wishlist_view_path(group_id: i32, user_id: i32) -> String {
     format!("/groups/{group_id}/wishlist/{user_id}")
 }
 
+/// The caller's exclusion rules in a group (exclusions slice).
+pub fn exclusions_path(group_id: i32) -> String {
+    format!("/groups/{group_id}/exclusions")
+}
+
 /// [`safe_return_path`] plus: not `/auth` and not under `/auth/`, so a redirect never loops
 /// into an auth page or a server fn endpoint (spec: auth, `safe_next`). `None` means the
 /// caller falls back to [`DASHBOARD_PATH`].
