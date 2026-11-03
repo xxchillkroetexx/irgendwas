@@ -47,6 +47,12 @@ async fn copies_selected_own_items_preserving_source_and_order(pool: MySqlPool) 
     for title in ["First", "Skip", "Last"] {
         add(&mut client, old, title).await;
     }
+    // A fixed old timestamp detects accidental source writes even within the same second.
+    sqlx::query("UPDATE wishlists SET updated_at='2020-01-01 00:00:00' WHERE group_id=?")
+        .bind(old)
+        .execute(&pool)
+        .await
+        .unwrap();
     let original = list(&mut client, old).await;
     let before: String =
         sqlx::query_scalar("SELECT CAST(updated_at AS CHAR) FROM wishlists WHERE group_id=?")
