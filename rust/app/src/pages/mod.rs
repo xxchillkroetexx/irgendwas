@@ -14,3 +14,5 @@ pub use home::HomePage;
 pub use install::InstallPage;
 pub use profile::ProfilePage;
 pub use verify_email::VerifyEmailPage;
+
+pub mod wishlist;

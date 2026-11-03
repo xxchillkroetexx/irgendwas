@@ -23,6 +23,7 @@ pub mod pages;
 pub mod paths;
 pub mod tz;
 pub mod validation;
+pub mod wishlist_api;
 
 #[cfg(feature = "ssr")]
 pub mod server;
