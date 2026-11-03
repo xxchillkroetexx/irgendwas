@@ -171,5 +171,20 @@
   "validation.wishlist.item_invalid": "Gib einen Titel (bis 255 Zeichen), eine Beschreibung (bis 2000) und optional einen HTTP(S)-Link (bis 2048) ein.",
   "validation.wishlist.too_many_items": "Eine Wunschliste kann höchstens 50 Wünsche enthalten. Es wurden keine Wünsche hinzugefügt.",
   "validation.wishlist.selection_required": "Wähle mindestens einen Wunsch aus einer anderen Wunschliste aus.",
-  "flash.success.wishlist_saved": "Wünsche wurden deiner Liste hinzugefügt."
+  "flash.success.wishlist_saved": "Wünsche wurden deiner Liste hinzugefügt.",
+  "share.title": "Geteilten Link hinzufügen",
+  "share.intro": "Wählen Sie eine Wunschliste und prüfen Sie die Produktdetails vor dem Speichern. Hier können Sie auch einen kopierten Link einfügen.",
+  "share.list": "Wunschliste",
+  "share.item_title": "Titel des Wunsches",
+  "share.link": "Produktlink",
+  "share.description": "Beschreibung",
+  "share.confirm": "Wunsch hinzufügen",
+  "share.review_help": "Verwenden Sie einen Titel mit höchstens 255 Zeichen, eine Beschreibung mit höchstens 2000 Zeichen und einen HTTP- oder HTTPS-Link mit höchstens 2048 Zeichen. Erst Ihre Bestätigung speichert den Wunsch.",
+  "share.no_lists": "Es ist noch keine Wunschliste verfügbar. Treten Sie zuerst einer Gruppe bei und kehren Sie anschließend zurück, um Ihren Wunsch hinzuzufügen.",
+  "share.start_again": "Mit einem neuen Link beginnen",
+  "share.iphone.title": "Teilen auf iPhone und iPad",
+  "share.iphone.help": "Safari auf iPhone und iPad kann diese PWA nicht als Ziel im systemweiten Teilen-Menü anbieten. Kopieren Sie den Produktlink, öffnen Sie diese App, wählen Sie „Geteilten Link hinzufügen“, fügen Sie den Link ein, wählen Sie eine Wunschliste und bestätigen Sie.",
+  "share.install.title": "Produktlinks empfangen",
+  "share.install.support": "Nach der Installation mit einem unterstützten Chromium-Browser auf Android oder Desktop können Sie Secret Santa im Teilen-Menü einer anderen App auswählen. Die Verfügbarkeit hängt von Browser und Betriebssystem ab. Fehlt die App, kopieren Sie den Link und nutzen Sie das Formular unten.",
+  "share.too_large": "Der geteilte Inhalt ist zu lang. Fügen Sie stattdessen einen kürzeren Produktlink ein."
 }

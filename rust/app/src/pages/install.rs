@@ -17,5 +17,9 @@ pub fn InstallPage() -> impl IntoView {
         <h2>{i18n.t("app.install.desktop.title")}</h2>
         <p>{i18n.t("app.install.desktop.steps")}</p>
         <p>{i18n.t("app.install.help")}</p>
+        <h2>{i18n.t("share.install.title")}</h2>
+        <p>{i18n.t("share.install.support")}</p>
+        <p>{i18n.t("share.iphone.help")}</p>
+        <a href="/wishes/shared">{i18n.t("share.title")}</a>
     }
 }

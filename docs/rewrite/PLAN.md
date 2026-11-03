@@ -161,3 +161,5 @@ Append one line per decision: `YYYY-MM-DD | slice | decision | why`.
 - 2026-11-03 | wishlists | Issue #57 extends the approved spec with own-list copying; lock both groups and wishlist rows in ascending group-ID order, preserve source data, append atomically under the 50-item cap | user requested cross-list reuse; deterministic locks prevent reverse-copy deadlocks
 
 - 2026-11-03 | PWA #56 | Manifest with stable `/` identity and `/user/dashboard` launch URL, standalone display, opaque launcher icons, public localized installation help; no service worker or offline cache | user authorized PWA implementation; existing authentication retains the launch URL, and offline use is outside scope
+
+- 2026-11-03 | share-target #58 | GET intake stages bounded session drafts under random ids; the confirmed POST reuses wishlist authorization. Auth next paths contain no product data and stay below 512 bytes. iPhone uses a documented paste form because Safari lacks incoming Web Share Target support. | issue and implementation request

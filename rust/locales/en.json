@@ -171,5 +171,20 @@
   "validation.wishlist.item_invalid": "Enter a title (up to 255 characters), description (up to 2000), and an optional HTTP(S) link (up to 2048).",
   "validation.wishlist.too_many_items": "A wishlist can contain at most 50 wishes. No wishes were added.",
   "validation.wishlist.selection_required": "Select at least one wish from another wishlist.",
-  "flash.success.wishlist_saved": "Wishes added to your list."
+  "flash.success.wishlist_saved": "Wishes added to your list.",
+  "share.title": "Add a shared link",
+  "share.intro": "Choose a wishlist and review the product details before saving. You can also paste a copied link here.",
+  "share.list": "Wishlist",
+  "share.item_title": "Wish title",
+  "share.link": "Product link",
+  "share.description": "Description",
+  "share.confirm": "Add wish",
+  "share.review_help": "Use a title up to 255 characters, a description up to 2000 characters and an HTTP or HTTPS link up to 2048 characters. Nothing is saved until you confirm.",
+  "share.no_lists": "No wishlist is available yet. Join a group first, then return to add your wish.",
+  "share.start_again": "Start with a new link",
+  "share.iphone.title": "Sharing on iPhone and iPad",
+  "share.iphone.help": "Safari on iPhone and iPad cannot offer this PWA as a destination in the system share menu. Copy the product link, open this app, choose “Add a shared link”, paste the link, select a wishlist and confirm.",
+  "share.install.title": "Receive product links",
+  "share.install.support": "After installing with a supported Chromium browser on Android or desktop, choose Secret Santa in another app’s share menu. Availability depends on the browser and operating system. If the app is absent, copy the link and use the form below.",
+  "share.too_large": "The shared content is too long. Paste a shorter product link instead."
 }

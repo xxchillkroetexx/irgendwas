@@ -7,7 +7,15 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const baseURL = process.env.BASE_URL ?? "http://localhost:3000";
 
+const workers = process.env.PLAYWRIGHT_WORKERS === undefined
+  ? undefined
+  : Number(process.env.PLAYWRIGHT_WORKERS);
+if (workers !== undefined && (!Number.isInteger(workers) || workers < 1)) {
+  throw new Error("PLAYWRIGHT_WORKERS must be a positive integer");
+}
+
 export default defineConfig({
+  workers,
   testDir: "./tests",
   globalSetup: "./tests/support/global-setup.ts",
   fullyParallel: true,

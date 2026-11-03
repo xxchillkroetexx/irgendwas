@@ -6,6 +6,7 @@ pub mod health;
 pub mod healthcheck;
 pub mod middleware;
 pub mod session_store;
+mod share;
 
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
@@ -85,6 +86,7 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
 
     Router::new()
         .route("/health", get(health::health))
+        .route("/share-target", get(share::receive))
         .merge(extra)
         .leptos_routes(&state, routes, move || shell(leptos_options.clone()))
         .fallback_service(files)

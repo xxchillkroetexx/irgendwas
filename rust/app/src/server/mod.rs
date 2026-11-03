@@ -31,6 +31,7 @@ pub mod mail;
 pub mod password;
 pub mod rate_limit;
 pub mod respond;
+pub mod share;
 pub mod token;
 pub mod wishlist;
 

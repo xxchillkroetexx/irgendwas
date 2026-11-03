@@ -40,7 +40,7 @@ test("installation help is linked, localized and available without JavaScript", 
   await page.goto("/");
   await page.getByRole("link", { name: "App installieren" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("App installieren");
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["iPhone und iPad", "Android", "Desktop"]);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["iPhone und iPad", "Android", "Desktop", "Produktlinks empfangen"]);
   await expect(page.getByText(/Zum Home-Bildschirm und Hinzufügen/)).toBeVisible();
   await expect(page.getByText(/Eine Internetverbindung wird benötigt/)).toBeVisible();
   await context.close();

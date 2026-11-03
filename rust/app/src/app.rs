@@ -7,6 +7,7 @@ use leptos_router::{SsrMode, path};
 
 use crate::components::Layout;
 use crate::i18n::{provide_i18n, request_locale};
+use crate::pages::SharedWishPage;
 use crate::pages::auth::{
     ForgotPasswordPage, LoginPage, RegisterConfirmPage, RegisterPage, ResetPasswordPage,
 };
@@ -64,6 +65,7 @@ pub fn App() -> impl IntoView {
                     // the pages must work without JavaScript (account AC41, AC44).
                     <Routes fallback=|| view! { <NotFound/> }>
                         <Route path=path!("/") view=HomePage ssr=SsrMode::Async/>
+                        <Route path=path!("/wishes/shared") view=SharedWishPage ssr=SsrMode::Async/>
                         <Route path=path!("/install") view=crate::pages::InstallPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/login") view=LoginPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/register") view=RegisterPage ssr=SsrMode::Async/>

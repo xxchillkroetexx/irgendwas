@@ -50,6 +50,7 @@ pub fn WishlistPage() -> impl IntoView {
                         Err(err) => view! { <div class="alert alert-danger" role="alert">{i18n.t(err.message_key())}</div> }.into_any(),
                         Ok((list,sources,selected)) => view! {
                             <h1>{i18n.t("wishlist.edit.title")}</h1>
+                            <p><a href="/wishes/shared">{i18n.t("share.title")}</a></p>
                             <h2 class="h4">{list.group_name}</h2>
                             <p>{i18n.t("wishlist.edit.visibility")}</p>
                             <form method="post" action="/api/add_wishlist_item" class="card card-body mb-4">
@@ -119,6 +120,7 @@ pub fn WishlistsPage() -> impl IntoView {
     view! {
         <RequireUser>
             <h1>{i18n.t("wishlist.edit.title")}</h1>
+            <p><a href="/wishes/shared">{i18n.t("share.title")}</a></p>
             <Suspense fallback=|| ()>
                 {move || Suspend::new(async move {
                     match groups.await {
