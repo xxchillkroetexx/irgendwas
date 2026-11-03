@@ -7,7 +7,7 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 
 - PHP code is a **reference only**. Do not modify it; it is deleted at cutover.
 - Implement from approved specs in `docs/rewrite/specs/`. If a spec is `status: draft` or missing, stop and say so.
-- Fresh start: no production data is migrated, and the PHP schema is only a reference. Schema changes are new SQLx migrations in `rust/migrations/` (don't edit one that's already committed; dev DBs would break). Migration numbers in specs are placeholders: use the next free number at implementation time.
+- The PHP data is migrated once at cutover by `rust/scripts/migrate-php-data.sh` (it inserts named columns into the current schema); otherwise the PHP schema is only a reference. A new migration that adds a NOT NULL column without a default, or changes what a migrated row must look like, also updates that script. Schema changes are new SQLx migrations in `rust/migrations/` (don't edit one that's already committed; dev DBs would break). Migration numbers in specs are placeholders: use the next free number at implementation time.
 - Name columns explicitly in queries; no `SELECT *`.
 - Columns compared for identity (emails, tokens, invite codes) use `COLLATE utf8mb4_bin`, with values normalised in Rust before storing/looking up; the table default `utf8mb4_unicode_ci` is case- and accent-insensitive. Mails go to the address stored in the DB, never the one the caller typed.
 - Server-only dependencies (sqlx, lettre, argon2, tower-sessions) live behind the `ssr` feature.

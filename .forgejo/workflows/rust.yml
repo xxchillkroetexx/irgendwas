@@ -1,5 +1,14 @@
 # CI for the Rust/Leptos rewrite in rust/.
 # `runs-on: docker` must match a label of your Forgejo runner (container jobs).
+#
+# check and e2e keep their cargo target dir on a runner host directory, so dependencies are
+# compiled once and later runs rebuild only the workspace crates (the runner's cache server
+# would tar and upload several GB per run). Runner config.yml needs:
+#   container:
+#     valid_volumes:
+#       - /var/cache/irgendwas-ci
+# and the directory on the host (created by the runner's user; ~10-20 GB). Each job uses
+# its own subdirectory and wipes it above $TARGET_CACHE_MAX_MB.
 name: rust
 
 on:
@@ -18,6 +27,7 @@ env:
   # Keep the runner's disk usage down: no debuginfo, no incremental cache in CI.
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_INCREMENTAL: "0"
+  TARGET_CACHE_MAX_MB: "20000"
   IMAGE: git.scheissndreck.de/irgendwas/irgendwas
   # Test services (job containers reach services by their name).
   DATABASE_URL: mysql://root:ci-root-password@mariadb:3306/irgendwas_db
@@ -30,6 +40,8 @@ jobs:
     runs-on: docker
     container:
       image: docker.io/library/rust:1.99.1-slim-trixie
+      volumes:
+        - /var/cache/irgendwas-ci:/ci-cache
     services:
       mariadb:
         image: docker.io/library/mariadb:11.8
@@ -60,14 +72,8 @@ jobs:
         run: |
           rustup toolchain install
           sh scripts/install-cargo-leptos.sh
-      - name: Cache cargo registry
-        # Registry only: the runner's cache server stores caches on the runner host's disk,
-        # and rust/target is several GB.
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/cargo/registry
-          key: rust-registry-${{ hashFiles('rust/Cargo.lock') }}
-          restore-keys: rust-registry-
+      - name: Persistent target dir
+        run: sh scripts/ci-target-dir.sh /ci-cache/target-check
       - name: Configuration
         run: cp .env.example .env
       - name: Format
@@ -90,6 +96,8 @@ jobs:
     container:
       # run.sh detects this image (PLAYWRIGHT_BROWSERS_PATH) and runs Playwright directly.
       image: mcr.microsoft.com/playwright:v1.64.1-noble
+      volumes:
+        - /var/cache/irgendwas-ci:/ci-cache
     services:
       mariadb:
         image: docker.io/library/mariadb:11.8
@@ -131,6 +139,8 @@ jobs:
         run: |
           rustup toolchain install
           sh scripts/install-cargo-leptos.sh
+      - name: Persistent target dir
+        run: sh scripts/ci-target-dir.sh /ci-cache/target-e2e
       - name: Configuration
         run: cp .env.example .env
       - name: Wait for MariaDB

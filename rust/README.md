@@ -25,11 +25,14 @@ caddy/Caddyfile     Caddy config for compose.yml
 deploy/traefik/     production edge: Traefik (host network, file provider) in front of Caddy
 deploy/caddy-edge/  overlay for the alternative "Caddy is the TLS edge" (publishes 443)
 deploy/rehearsal/   overlays, nginx and Traefik configs for the local release rehearsal
-scripts/            install-cargo-leptos.sh (Dockerfile + CI), rehearsal.sh (see "Release rehearsal")
+scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh (CI), rehearsal.sh
+                    (see "Release rehearsal"), migrate-php-data.sh (see "Migrating the PHP data")
 ```
 
 CI: `../.forgejo/workflows/rust.yml` (fmt, clippy, `cargo leptos test` with MariaDB and
-Mailpit services, release build; e2e in a separate job in the Playwright image).
+Mailpit services; e2e in a separate job in the Playwright image; on pushes to `main` the
+release image is built and pushed). check and e2e keep `target/` on a runner host volume;
+the runner setup is in the workflow's header comment.
 
 ## Setup
 
@@ -189,6 +192,30 @@ Migrations are embedded and run at startup.
 Services: `caddy` (published HTTP port, on network `edge` with the fixed address
 `CADDY_IP`, default `172.31.250.10` in `EDGE_SUBNET` `172.31.250.0/24`), `app` (port 3000,
 not published; networks `edge` and `database`), `mariadb` 11.8 (internal network only).
+
+### Migrating the PHP data
+
+One-off, at cutover. From the PHP host's data volume (`mariadb_data`, archived as a tarball
+or as a directory) to an SQL file with the data in the Rust schema:
+
+```bash
+scripts/migrate-php-data.sh ~/wichteln_mariadb_data.tar.gz php-data-migrated.sql
+```
+
+It needs podman only; the old data is opened by a throwaway MariaDB of its own version
+without network, the result is checked against every migration in a second throwaway
+MariaDB. The output is mode 600 (personal data, password hashes). Import it after the app's
+first start (migrations applied) and before anyone registers:
+
+```bash
+podman compose --env-file prod.env exec -T mariadb sh -c \
+  'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"' < php-data-migrated.sql
+```
+
+The file refuses to load into a database with users or groups, or at a different migration
+version (then regenerate it with the deployed `migrations/`). Migrated users log in after
+"forgot password" (PHP's bcrypt hashes are not accepted). What gets transformed is listed in
+the script's header.
 
 ### Traefik
 
