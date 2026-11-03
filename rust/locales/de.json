@@ -147,5 +147,14 @@
     "email.verifyEmail.expiry": "Dieser Link ist 24 Stunden gültig.",
     "email.verifyEmail.ignore": "Falls Sie diese Änderung nicht angefordert haben, können Sie diese E-Mail ignorieren. Ihre aktuelle E-Mail-Adresse bleibt unverändert.",
     "email.emailChanged.subject": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde geändert",
-    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin."
+    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin.",
+    "app.install.title": "App installieren",
+    "app.install.intro": "Lege Secret Santa auf deinem Home-Bildschirm ab und öffne die App in einem eigenen Fenster. Eine Internetverbindung wird benötigt.",
+    "app.install.iphone.title": "iPhone und iPad",
+    "app.install.iphone.steps": "Öffne diese Seite in Safari, tippe auf Teilen, dann auf Zum Home-Bildschirm und Hinzufügen. Falls angezeigt, lasse Als Web-App öffnen aktiviert. Starte die App anschließend über das neue Symbol auf dem Home-Bildschirm.",
+    "app.install.android.title": "Android",
+    "app.install.android.steps": "Öffne diese Seite in Chrome. Wähle im Browsermenü App installieren oder Zum Startbildschirm hinzufügen und bestätige. Öffne die App anschließend über ihr Symbol.",
+    "app.install.desktop.title": "Desktop",
+    "app.install.desktop.steps": "Nutze in Chrome oder Edge das Installationssymbol in der Adressleiste oder Diese Seite als App installieren im Browsermenü. In Safari auf dem Mac wähle Ablage → Zum Dock hinzufügen. Die verfügbaren Befehle hängen vom Browser ab.",
+    "app.install.help": "Falls die Installation nicht angeboten wird, öffne die Seite in einem unterstützten Browser. Du kannst sie auch weiterhin im Browser nutzen."
 }

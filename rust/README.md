@@ -197,3 +197,18 @@ TRUSTED_PROXIES_CIDR=<outer proxy address as Caddy sees it>
 
 `CADDY_AUTO_HTTPS` accepts `on`, `off` and `disable_redirects` (anything else makes Caddy
 refuse to start). Scheme/HTTPS detection in the app uses `APP_URL` only.
+
+## Install as an app
+
+Open `/install` for English/German installation instructions (also linked in the
+footer). Use HTTPS in production. iPhone/iPad: Safari → Share → Add to Home Screen
+(keep Open as Web App enabled). Android: Chrome → Install app/Add to Home screen.
+Desktop: Chrome/Edge's install command, or Safari on Mac → File → Add to Dock.
+Launch from the installed icon to open in a standalone window. Browser support
+and menu wording vary; regular browser use remains available.
+
+The manifest is `/manifest.webmanifest`; its dashboard launch URL uses the normal
+login flow. An internet connection is required: no offline cache is provided.
+Icons use the app's existing red/green colors and a gift symbol; regenerate with
+`python3 scripts/generate-app-icons.py` (standard library only).
+See `../docs/rewrite/specs/pwa.md` for the contract and platform references.

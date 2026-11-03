@@ -29,6 +29,11 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <link rel="manifest" href="/manifest.webmanifest"/>
+                <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png"/>
+                <meta name="theme-color" content="#dc3545"/>
+                <meta name="apple-mobile-web-app-capable" content="yes"/>
+                <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
                 <script defer src=BOOTSTRAP_JS></script>
@@ -59,6 +64,7 @@ pub fn App() -> impl IntoView {
                     // the pages must work without JavaScript (account AC41, AC44).
                     <Routes fallback=|| view! { <NotFound/> }>
                         <Route path=path!("/") view=HomePage ssr=SsrMode::Async/>
+                        <Route path=path!("/install") view=crate::pages::InstallPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/login") view=LoginPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/register") view=RegisterPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/register/confirm/:token") view=RegisterConfirmPage ssr=SsrMode::Async/>
