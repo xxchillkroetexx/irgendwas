@@ -147,5 +147,20 @@
     "email.verifyEmail.expiry": "Dieser Link ist 24 Stunden gültig.",
     "email.verifyEmail.ignore": "Falls Sie diese Änderung nicht angefordert haben, können Sie diese E-Mail ignorieren. Ihre aktuelle E-Mail-Adresse bleibt unverändert.",
     "email.emailChanged.subject": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde geändert",
-    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin."
+    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin.",
+    "wishlist.edit.title": "Deine Wunschliste",
+    "wishlist.edit.visibility": "Alle Mitglieder dieser Gruppe können diese Liste sehen.",
+    "wishlist.edit.itemTitle": "Titel",
+    "wishlist.edit.itemDescription": "Beschreibung",
+    "wishlist.edit.link": "Produktlink",
+    "wishlist.edit.addItem": "Wunsch hinzufügen",
+    "wishlist.copy.title": "Bestehende Wünsche übernehmen",
+    "wishlist.copy.help": "Wähle Wünsche aus einer deiner anderen Listen. Die ursprüngliche Liste bleibt unverändert.",
+    "wishlist.copy.source": "Quell-Wunschliste",
+    "wishlist.copy.choose": "Wünsche anzeigen",
+    "wishlist.copy.submit": "Ausgewählte Wünsche übernehmen",
+    "validation.wishlist.item_invalid": "Gib einen Titel (bis 255 Zeichen), eine Beschreibung (bis 2000) und optional einen HTTP(S)-Link (bis 2048) ein.",
+    "validation.wishlist.too_many_items": "Eine Wunschliste kann höchstens 50 Wünsche enthalten. Es wurden keine Wünsche hinzugefügt.",
+    "validation.wishlist.selection_required": "Wähle mindestens einen Wunsch aus einer anderen Wunschliste aus.",
+    "flash.success.wishlist_saved": "Wünsche wurden deiner Liste hinzugefügt."
 }

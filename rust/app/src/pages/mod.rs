@@ -12,3 +12,5 @@ pub use error::{ErrorPage, NotFound};
 pub use home::HomePage;
 pub use profile::ProfilePage;
 pub use verify_email::VerifyEmailPage;
+
+pub mod wishlist;

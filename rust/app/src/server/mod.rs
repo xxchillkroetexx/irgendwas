@@ -32,6 +32,7 @@ pub mod password;
 pub mod rate_limit;
 pub mod respond;
 pub mod token;
+pub mod wishlist;
 
 use std::sync::Arc;
 

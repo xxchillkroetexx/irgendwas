@@ -37,6 +37,7 @@ fn Dashboard() -> impl IntoView {
             })}
         </Transition>
         <p class="lead text-muted mb-4">{i18n.t("user.dashboard.subtitle")}</p>
+        <p><a href="/wishlists">{i18n.t("wishlist.edit.title")}</a></p>
         <div class="row">
             <div class="col-lg-4 mb-4">
                 <div class="card h-100">
