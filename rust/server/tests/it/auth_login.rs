@@ -6,6 +6,7 @@
 //! pages of AC6 do not exist yet, so the guard contract is checked on the one page every
 //! auth redirect already depends on.
 
+use crate::common::account::tok;
 use crate::common::auth::*;
 use app::auth_api::AuthError;
 use app::flash::FlashMessage;
@@ -13,7 +14,8 @@ use app::i18n::{I18n, Locale, translate};
 use app::paths::DASHBOARD_PATH;
 use app::server::i18n::locale_cookie;
 use app::test_support::{
-    ALICE_PASSWORD, BOB_PASSWORD, bob_last_login, create_alice, create_bob, set_user_locale,
+    ALICE_PASSWORD, BOB_PASSWORD, bob_last_login, create_alice, create_bob, set_reset_token,
+    set_user_locale,
 };
 use sqlx::MySqlPool;
 
@@ -155,6 +157,45 @@ async fn ac3_unknown_email_and_wrong_password_look_identical(pool: MySqlPool) {
             .await
             .unwrap();
     assert_eq!(sessions_with_user, 0);
+}
+
+/// Accounts from the PHP data migration keep their bcrypt hash: the old password is
+/// rejected exactly like a wrong one (no error page, no tell), and a password reset makes
+/// the account usable. Timing: `password::foreign_hashes_cost_as_much_as_a_real_verification`.
+#[sqlx::test(migrations = "../migrations")]
+async fn ac3_migrated_php_account_is_rejected_like_a_wrong_password_until_reset(pool: MySqlPool) {
+    let alice = create_alice(&pool, ALICE).await;
+    sqlx::query("UPDATE users SET password = ? WHERE id = ?")
+        .bind("$2y$10$abcdefghijklmnopqrstuuJ5Z5nZQm2c1yS1V5gW8kq3yJ4bq7tWe")
+        .bind(alice)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let app = router(&pool, &[], Opts::default());
+
+    let mut unknown = Client::new(&app);
+    let a = unknown.login("nobody@example.com", ALICE_PASSWORD).await;
+    let mut migrated = Client::new(&app);
+    let b = migrated.login(ALICE, ALICE_PASSWORD).await;
+    assert_eq!(b.err(), AuthError::InvalidCredentials);
+    assert_eq!(a.status, b.status);
+    assert_eq!(a.body, b.body, "identical serialized response");
+    assert_eq!(migrated.whoami().await, None);
+
+    set_reset_token(&pool, alice, &tok('m'), 1800).await;
+    let new_password = "a brand new password";
+    migrated
+        .reset(&tok('m'), new_password, new_password)
+        .await
+        .ok();
+    migrated.login(ALICE, new_password).await.ok();
+    assert_eq!(migrated.whoami().await.as_deref(), Some(ALICE));
+    let stored: String = sqlx::query_scalar("SELECT password FROM users WHERE id = ?")
+        .bind(alice)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(stored.starts_with("$argon2id$"), "{stored}");
 }
 
 // ---------------------------------------------------------------------- AC4
