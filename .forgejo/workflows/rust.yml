@@ -160,12 +160,13 @@ jobs:
           name: playwright-report
           path: rust/end2end/playwright-report/
 
-  # Release image → Forgejo container registry. Only for pushes to main, after check and
-  # e2e passed. Rootless buildah (chroot isolation, vfs storage) needs neither the host's
-  # Docker socket nor privileged containers. Repo secrets: REGISTRY_USER and
+  # Image → Forgejo container registry, for pushes to dev (tag :dev) and main (tag
+  # :latest), after check and e2e passed; both also get :sha-<12 chars> of the commit.
+  # Rootless buildah (chroot isolation, vfs storage) needs neither the host's Docker
+  # socket nor privileged containers. Repo secrets: REGISTRY_USER and
   # REGISTRY_TOKEN (an access token with package write scope).
   image:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     needs: [check, e2e]
     runs-on: docker
     container:
@@ -182,7 +183,13 @@ jobs:
         working-directory: rust
         run: |
           short="${GITHUB_SHA::12}"
+          case "$GITHUB_REF" in
+            refs/heads/main) channel=latest ;;
+            refs/heads/dev) channel=dev ;;
+            *) echo "no image tag for $GITHUB_REF" >&2; exit 1 ;;
+          esac
           echo "SHORT_SHA=$short" >> "$GITHUB_ENV"
+          echo "CHANNEL=$channel" >> "$GITHUB_ENV"
           # --format docker keeps the HEALTHCHECK; the build runs `cargo leptos build --release`.
           buildah build \
             --format docker \
@@ -191,7 +198,7 @@ jobs:
             --label org.opencontainers.image.source=https://git.scheissndreck.de/irgendwas/irgendwas \
             --label org.opencontainers.image.revision="${GITHUB_SHA}" \
             -t "${IMAGE}:sha-${short}" \
-            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:${channel}" \
             -f Dockerfile .
       - name: Push
         env:
@@ -200,7 +207,7 @@ jobs:
         run: |
           printf '%s' "$REGISTRY_TOKEN" | buildah login -u "$REGISTRY_USER" --password-stdin git.scheissndreck.de
           buildah push "${IMAGE}:sha-${SHORT_SHA}"
-          buildah push "${IMAGE}:latest"
+          buildah push "${IMAGE}:${CHANNEL}"
           buildah logout git.scheissndreck.de
       - name: Free the runner's disk
         if: always()

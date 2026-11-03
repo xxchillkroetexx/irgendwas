@@ -30,9 +30,10 @@ scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh 
 ```
 
 CI: `../.forgejo/workflows/rust.yml` (fmt, clippy, `cargo leptos test` with MariaDB and
-Mailpit services; e2e in a separate job in the Playwright image; on pushes to `main` the
-release image is built and pushed). check and e2e keep `target/` on a runner host volume;
-the runner setup is in the workflow's header comment.
+Mailpit services; e2e in a separate job in the Playwright image; on pushes to `dev` and
+`main` the image is built and pushed as `:dev` or `:latest`, plus `:sha-<12>`). check and
+e2e keep `target/` on a runner host volume; the runner setup is in the workflow's header
+comment.
 
 ## Setup
 
