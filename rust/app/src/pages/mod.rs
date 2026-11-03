@@ -4,6 +4,7 @@ pub mod auth;
 mod dashboard;
 mod error;
 mod home;
+pub mod groups;
 mod profile;
 mod verify_email;
 

@@ -147,5 +147,10 @@
     "email.verifyEmail.expiry": "Dieser Link ist 24 Stunden gültig.",
     "email.verifyEmail.ignore": "Falls Sie diese Änderung nicht angefordert haben, können Sie diese E-Mail ignorieren. Ihre aktuelle E-Mail-Adresse bleibt unverändert.",
     "email.emailChanged.subject": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde geändert",
-    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin."
+    "email.emailChanged.body": "Die E-Mail-Adresse Ihres Wichtel-Kontos wurde in {email} geändert. Falls Sie das nicht waren, setzen Sie Ihr Passwort zurück und wenden Sie sich an den Gruppenadmin.",
+    "group.invitation.title": "Gruppeneinladung",
+    "group.invitation.closed": "Der Beitritt zu dieser Gruppe ist geschlossen.",
+    "group.invitation.invalid": "Dieser Einladungscode ist ungültig.",
+    "group.invitation.join": "Gruppe beitreten",
+    "group.invitation.tooManyAttempts": "Zu viele ungültige Einladungscodes. Bitte versuche es in zehn Minuten erneut."
 }

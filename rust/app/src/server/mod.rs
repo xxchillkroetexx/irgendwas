@@ -26,6 +26,7 @@ pub mod client_ip;
 pub mod config;
 pub mod db;
 pub mod flash;
+pub mod groups;
 pub mod i18n;
 pub mod mail;
 pub mod password;
