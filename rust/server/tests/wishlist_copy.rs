@@ -279,25 +279,53 @@ async fn concurrent_opposite_copies_finish_without_deadlock(pool: MySqlPool) {
 
 #[sqlx::test(migrations = "../migrations")]
 async fn html_copy_redirects_with_flash_and_empty_selection_has_no_side_effect(pool: MySqlPool) {
-    let user=create_alice(&pool,"alice@example.test").await;
-    let source=create_group(&pool,user,"Source").await;let target=create_group(&pool,user,"Target").await;
-    let app=router(&pool,&[],Opts::default());let mut client=Client::new(&app);client.login("alice@example.test",ALICE_PASSWORD).await.ok();
-    add(&mut client,source,"Wish").await;
-    let item=list(&mut client,source).await.items[0].id;
-    client.headers.push(("accept".into(),"text/html".into()));
-    let empty=client.call("copy_wishlist_items", &[("group_id",&target.to_string()),("source_group_id",&source.to_string())]).await;
-    assert_eq!(empty.status,axum::http::StatusCode::FOUND);
-    assert_eq!(empty.location(),Some(format!("/groups/{target}/wishlist")));
+    let user = create_alice(&pool, "alice@example.test").await;
+    let source = create_group(&pool, user, "Source").await;
+    let target = create_group(&pool, user, "Target").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    add(&mut client, source, "Wish").await;
+    let item = list(&mut client, source).await.items[0].id;
+    client.headers.push(("accept".into(), "text/html".into()));
+    let empty = client
+        .call(
+            "copy_wishlist_items",
+            &[
+                ("group_id", &target.to_string()),
+                ("source_group_id", &source.to_string()),
+            ],
+        )
+        .await;
+    assert_eq!(empty.status, axum::http::StatusCode::FOUND);
+    assert_eq!(empty.location(), Some(format!("/groups/{target}/wishlist")));
     client.headers.clear();
-    let info=client.session_info().await;
-    assert!(info.flash.iter().any(|f|f.key=="validation.wishlist.selection_required"));
-    assert!(list(&mut client,target).await.items.is_empty());
-    client.headers.push(("accept".into(),"text/html".into()));
-    let reply=client.call("copy_wishlist_items", &[("group_id",&target.to_string()),("source_group_id",&source.to_string()),("item_ids[0]",&item.to_string()),("item_ids[2]",&item.to_string())]).await;
-    assert_eq!(reply.status,axum::http::StatusCode::FOUND);
-    let html=client.get(&reply.location().unwrap()).await;
+    let info = client.session_info().await;
+    assert!(
+        info.flash
+            .iter()
+            .any(|f| f.key == "validation.wishlist.selection_required")
+    );
+    assert!(list(&mut client, target).await.items.is_empty());
+    client.headers.push(("accept".into(), "text/html".into()));
+    let reply = client
+        .call(
+            "copy_wishlist_items",
+            &[
+                ("group_id", &target.to_string()),
+                ("source_group_id", &source.to_string()),
+                ("item_ids[0]", &item.to_string()),
+                ("item_ids[2]", &item.to_string()),
+            ],
+        )
+        .await;
+    assert_eq!(reply.status, axum::http::StatusCode::FOUND);
+    let html = client.get(&reply.location().unwrap()).await;
     assert!(html.body.contains("Wish"));
     assert!(html.body.contains("Wishes added to your list."));
     client.headers.clear();
-    assert_eq!(list(&mut client,target).await.items.len(),1);
+    assert_eq!(list(&mut client, target).await.items.len(), 1);
 }
