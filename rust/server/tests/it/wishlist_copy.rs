@@ -124,7 +124,6 @@ async fn sources_are_own_nonempty_current_lists_including_historical_drawn_group
         .wl_value();
     assert_eq!(sources.len(), 1);
     assert_eq!(sources[0].id, f.w.g);
-    copy(&mut bob, f.h, f.w.g, &[f.a]).await.wl_ok();
     let page = bob
         .get(&format!("/groups/{}/wishlist?source={}", f.h, f.w.g))
         .await;
@@ -132,6 +131,7 @@ async fn sources_are_own_nonempty_current_lists_including_historical_drawn_group
     assert!(page.body.contains("copy-source"));
     assert!(page.body.contains(&format!("value=\"{}\"", f.a)));
     assert_no_raw_keys(&page.body, "copy editor");
+    copy(&mut bob, f.h, f.w.g, &[f.a]).await.wl_ok();
 }
 
 #[sqlx::test(migrations = "../migrations")]
