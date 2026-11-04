@@ -1,0 +1,64 @@
+# Traefik static configuration: the recommended production edge for irgendwas.
+# Traefik runs in the HOST network (compose.yml here), terminates TLS with Let's Encrypt
+# and forwards to Caddy's loopback port. Routes live in dynamic/ (file provider, no Docker
+# labels, no Docker/podman socket). See ../../README.md "Production".
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+  # Drop request headers that alias another header (X_Forwarded_For for X-Forwarded-For).
+  aliasHeadersStrategy: delete
+
+log:
+  level: INFO
+
+# Access log on stdout. ClientHost is the real client address (host network).
+accessLog: {}
+
+# No `api` section: the API and dashboard stay disabled.
+
+entryPoints:
+  web:
+    address: ":80"
+    # Defaults, spelled out: trust no X-Forwarded-* headers from anybody.
+    forwardedHeaders:
+      insecure: false
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    # Traefik is the edge: no `trustedIPs`, `insecure: false`. Traefik then drops the
+    # X-Forwarded-* headers a client sends and sets X-Forwarded-For to the address it
+    # sees and X-Forwarded-Proto to https. Only list trustedIPs if yet another proxy or a
+    # CDN sits in front of Traefik.
+    forwardedHeaders:
+      insecure: false
+    http:
+      tls:
+        certResolver: letsencrypt
+      # Reject encoded path characters the app never uses (path-traversal tricks).
+      encodedCharacters:
+        allowEncodedSlash: false
+        allowEncodedBackslash: false
+        allowEncodedNullCharacter: false
+    # HTTP/3 needs UDP 443 open as well:
+    # http3: {}
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@wichteln.example # placeholder: expiry notices go here
+      storage: /var/lib/traefik/acme.json
+      # HTTP-01 on port 80 (the redirect above does not affect the challenge path).
+      # Alternative without port 80: tlsChallenge: {}
+      httpChallenge:
+        entryPoint: web

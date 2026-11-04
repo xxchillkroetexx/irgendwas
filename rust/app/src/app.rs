@@ -7,9 +7,15 @@ use leptos_router::{SsrMode, path};
 
 use crate::components::Layout;
 use crate::i18n::{provide_i18n, request_locale};
+use crate::pages::SharedWishPage;
 use crate::pages::auth::{
     ForgotPasswordPage, LoginPage, RegisterConfirmPage, RegisterPage, ResetPasswordPage,
 };
+use crate::pages::exclusions::ExclusionsManagePage;
+use crate::pages::groups::{
+    GroupCreatePage, GroupEditPage, GroupPage, GroupsPage, JoinPage, JoinPreviewPage,
+};
+use crate::pages::wishlists::{WishlistEditPage, WishlistViewPage};
 use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound, ProfilePage, VerifyEmailPage};
 use crate::tz::use_timezone;
 
@@ -29,6 +35,11 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <link rel="manifest" href="/manifest.webmanifest"/>
+                <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png"/>
+                <meta name="theme-color" content="#dc3545"/>
+                <meta name="apple-mobile-web-app-capable" content="yes"/>
+                <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
                 <script defer src=BOOTSTRAP_JS></script>
@@ -59,6 +70,8 @@ pub fn App() -> impl IntoView {
                     // the pages must work without JavaScript (account AC41, AC44).
                     <Routes fallback=|| view! { <NotFound/> }>
                         <Route path=path!("/") view=HomePage ssr=SsrMode::Async/>
+                        <Route path=path!("/wishes/shared") view=SharedWishPage ssr=SsrMode::Async/>
+                        <Route path=path!("/install") view=crate::pages::InstallPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/login") view=LoginPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/register") view=RegisterPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/register/confirm/:token") view=RegisterConfirmPage ssr=SsrMode::Async/>
@@ -67,6 +80,15 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/user/dashboard") view=DashboardPage ssr=SsrMode::Async/>
                         <Route path=path!("/user/profile") view=ProfilePage ssr=SsrMode::Async/>
                         <Route path=path!("/user/verify-email/:token") view=VerifyEmailPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups") view=GroupsPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/new") view=GroupCreatePage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id") view=GroupPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id/edit") view=GroupEditPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id/wishlist") view=WishlistEditPage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id/exclusions") view=ExclusionsManagePage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/:id/wishlist/:user_id") view=WishlistViewPage ssr=SsrMode::Async/>
+                        <Route path=path!("/join") view=JoinPage ssr=SsrMode::Async/>
+                        <Route path=path!("/join/:code") view=JoinPreviewPage ssr=SsrMode::Async/>
                     </Routes>
                 </ErrorBoundary>
             </Layout>

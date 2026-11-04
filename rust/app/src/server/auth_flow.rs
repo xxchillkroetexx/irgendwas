@@ -10,8 +10,8 @@ use crate::flash::FlashMessage;
 use crate::i18n::{I18n, request_locale};
 use crate::paths::next_or_dashboard;
 use crate::server::rate_limit::{
-    self, LOGIN_PER_EMAIL, LOGIN_PER_IP, MAIL_PER_EMAIL, MAIL_PER_IP, login_email_key,
-    login_ip_key, mail_email_key, mail_ip_key,
+    self, LOGIN_PER_EMAIL, LOGIN_PER_IP, MAIL_PER_EMAIL, login_email_key, login_ip_key,
+    mail_email_key, mail_ip_key,
 };
 use crate::server::{AppState, auth, auth_mail, client_ip, flash, i18n, password, respond, token};
 use crate::validation::{
@@ -181,10 +181,10 @@ pub async fn logout() -> Result<(), AuthError> {
 pub async fn register(email: String, next: Option<String>) -> Result<(), AuthError> {
     let email = checked_email(&email)?;
     let state = state()?;
-    if !state
-        .rate_limiter
-        .try_acquire(&mail_ip_key(&ip_key_part()), MAIL_PER_IP)
-    {
+    if !state.rate_limiter.try_acquire(
+        &mail_ip_key(&ip_key_part()),
+        rate_limit::mail_per_ip(&state.config),
+    ) {
         return Err(AuthError::TooManyRequests);
     }
 
@@ -351,10 +351,10 @@ pub async fn complete_registration(
 pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
     let email = checked_email(&email)?;
     let state = state()?;
-    if !state
-        .rate_limiter
-        .try_acquire(&mail_ip_key(&ip_key_part()), MAIL_PER_IP)
-    {
+    if !state.rate_limiter.try_acquire(
+        &mail_ip_key(&ip_key_part()),
+        rate_limit::mail_per_ip(&state.config),
+    ) {
         return Err(AuthError::TooManyRequests);
     }
 

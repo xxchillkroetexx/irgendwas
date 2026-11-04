@@ -1,0 +1,24 @@
+# Rehearsal copy of deploy/traefik/dynamic/irgendwas.yml: host localhost, Caddy on
+# 127.0.0.1:18080, the script's test certificate as the default certificate.
+http:
+  routers:
+    irgendwas:
+      rule: Host(`localhost`)
+      entryPoints:
+        - websecure
+      service: irgendwas
+      tls: {}
+
+  services:
+    irgendwas:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://127.0.0.1:18080
+
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/localhost.crt
+        keyFile: /certs/localhost.key
