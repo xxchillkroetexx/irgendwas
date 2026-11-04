@@ -25,17 +25,24 @@ pub struct ShareDraft {
 /// Never interpret received content as HTML, script or a request to fetch a product.
 #[cfg(feature = "ssr")]
 pub fn prepare_share(input: ShareInput) -> ShareDraft {
-    let link = [&input.url, &input.text, &input.title]
-        .into_iter()
-        .flat_map(|field| field.split_whitespace())
-        .find_map(|candidate| {
-            let candidate = candidate.trim_matches(['<', '>', '"', '\'', ',', ')', ']']);
-            let parsed = url::Url::parse(candidate).ok()?;
-            (matches!(parsed.scheme(), "http" | "https")
-                && parsed.host_str().is_some()
-                && parsed.username().is_empty()
-                && parsed.password().is_none())
-            .then(|| parsed.to_string())
+    let safe_url = |candidate: &str| {
+        let parsed = url::Url::parse(candidate).ok()?;
+        (matches!(parsed.scheme(), "http" | "https")
+            && parsed.host_str().is_some()
+            && parsed.username().is_empty()
+            && parsed.password().is_none())
+        .then(|| parsed.to_string())
+    };
+    // A dedicated URL field is already structured data. Keep valid trailing URL
+    // characters (for example a product path ending in `)`), unlike prose wrappers.
+    let link = safe_url(input.url.trim())
+        .or_else(|| {
+            [&input.url, &input.text, &input.title]
+                .into_iter()
+                .flat_map(|field| field.split_whitespace())
+                .find_map(|candidate| {
+                    safe_url(candidate.trim_matches(['<', '>', '"', '\'', ',', ')', ']']))
+                })
         })
         .unwrap_or_default();
     ShareDraft {

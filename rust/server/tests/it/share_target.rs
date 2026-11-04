@@ -13,6 +13,14 @@ fn extracts_urls_from_android_text_and_rejects_active_or_credentialed_urls() {
         text: "Look at https://shop.example/product?a=1&b=2".into(),
         url: String::new(),
     });
+    assert_eq!(
+        prepare_share(ShareInput {
+            url: "https://shop.example/product(special)".into(),
+            ..Default::default()
+        })
+        .link,
+        "https://shop.example/product(special)"
+    );
     assert_eq!(draft.title, "A present");
     assert_eq!(draft.link, "https://shop.example/product?a=1&b=2");
     assert!(draft.description.starts_with("Look at"));

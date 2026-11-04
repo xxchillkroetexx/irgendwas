@@ -6,7 +6,7 @@ status: approved (implementation authorized by the issue and 2026-11-03 user req
 
 The installed PWA registers a GET `share_target` for title, text and URL. Android Chromium and supported Chromium desktop installations can offer it in the system share picker. Availability depends on browser, OS, installation and app updates; do not promise every desktop combination. iPhone/iPad Safari does **not** support receiving shares through this manifest member. `navigator.share()` is an outgoing API and does not solve this.
 
-Sources checked 2026-11-03:
+Sources checked 2026-11-04:
 - https://developer.chrome.com/docs/capabilities/web-apis/web-share-target (manifest, installation and Android often placing URLs in text).
 - https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/share_target (GET reception and compatibility).
 - https://bugs.webkit.org/show_bug.cgi?id=194593 (incoming Web Share Target implementation is still NEW, unresolved).
