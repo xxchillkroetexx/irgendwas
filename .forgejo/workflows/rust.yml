@@ -1,14 +1,16 @@
 # CI for the Rust/Leptos rewrite in rust/.
 # `runs-on: docker` must match a label of your Forgejo runner (container jobs).
 #
-# check and e2e keep their cargo target dir on a runner host directory, so dependencies are
-# compiled once and later runs rebuild only the workspace crates (the runner's cache server
-# would tar and upload several GB per run). Runner config.yml needs:
+# check and e2e keep their cargo target dir in the named volume irgendwas-ci-cache, so
+# dependencies are compiled once and later runs rebuild only the workspace crates (the
+# runner's cache server would tar and upload several GB per run). A named volume, not a
+# host path: the container engine creates and labels it itself (rootless podman, SELinux).
+# Runner config.yml needs:
 #   container:
 #     valid_volumes:
-#       - /var/cache/irgendwas-ci
-# and the directory on the host (created by the runner's user; ~10-20 GB). Each job uses
-# its own subdirectory and wipes it above $TARGET_CACHE_MAX_MB.
+#       - irgendwas-ci-cache
+# Each job uses its own subdirectory (~5-10 GB) and wipes it above $TARGET_CACHE_MAX_MB;
+# `podman volume rm irgendwas-ci-cache` on the runner host starts over.
 name: rust
 
 on:
@@ -41,7 +43,7 @@ jobs:
     container:
       image: docker.io/library/rust:1.99.1-slim-trixie
       volumes:
-        - /var/cache/irgendwas-ci:/ci-cache
+        - irgendwas-ci-cache:/ci-cache
     services:
       mariadb:
         image: docker.io/library/mariadb:11.8
@@ -102,7 +104,7 @@ jobs:
       # run.sh detects this image (PLAYWRIGHT_BROWSERS_PATH) and runs Playwright directly.
       image: mcr.microsoft.com/playwright:v1.64.1-noble
       volumes:
-        - /var/cache/irgendwas-ci:/ci-cache
+        - irgendwas-ci-cache:/ci-cache
     services:
       mariadb:
         image: docker.io/library/mariadb:11.8
