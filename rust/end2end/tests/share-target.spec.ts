@@ -51,6 +51,24 @@ test("a long shared product link survives login and registration without automat
   expect(draft.title).toBe("Birthday present");
   expect(draft.link).toBe(product);
   await expect(page.getByText("Safari on iPhone and iPad cannot offer this PWA", { exact: false })).toBeVisible();
+
+  // The current rewrite can create an actual target group. The draft survives
+  // leaving the review and only the explicit confirmation adds the wishlist item.
+  await page.goto("/groups/new");
+  await waitForHydration(page);
+  await page.getByLabel("Group Name", { exact: true }).fill("Shared products");
+  await page.getByRole("button", { name: "Create Group", exact: true }).click();
+  await expect(page).toHaveURL(/\/groups\/\d+$/);
+  const groupId = /\/groups\/(\d+)$/.exec(page.url())![1];
+  await page.goto(next);
+  await waitForHydration(page);
+  await expect(page.getByLabel("Wish title", { exact: true })).toHaveValue("Birthday present");
+  await page.getByLabel("Wishlist", { exact: true }).selectOption(groupId);
+  await page.getByRole("button", { name: "Add wish", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/groups/${groupId}/wishlist$`));
+  await waitForHydration(page);
+  await expect(page.getByText("Birthday present", { exact: true })).toBeVisible();
+  await expect(page.locator(`a[href="${product}"]`)).toBeVisible();
   expect(errors).toEqual([]);
 });
 

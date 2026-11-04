@@ -3,10 +3,10 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
 
 use crate::auth::get_current_user;
-use crate::components::RequireUser;
+use crate::components::{RequireUser, TextArea};
 use crate::i18n::use_i18n;
 use crate::share_api::{ShareDraft, get_shared_draft};
-use crate::wishlist_api::get_wishlist_groups;
+use crate::groups_api::{GroupError, list_my_groups};
 
 #[component]
 pub fn SharedWishPage() -> impl IntoView {
@@ -28,7 +28,11 @@ pub fn SharedWishPage() -> impl IntoView {
             } else {
                 get_shared_draft(id).await?
             };
-            Ok((draft, get_wishlist_groups().await?))
+            let groups = list_my_groups().await.map_err(|error| match error {
+                GroupError::Unauthorized => crate::AppError::Unauthorized,
+                _ => crate::AppError::Internal,
+            })?;
+            Ok((draft, groups))
         },
     );
     view! {
@@ -51,7 +55,7 @@ pub fn SharedWishPage() -> impl IntoView {
                                 <label for="share-group">{i18n.t("share.list")}</label>
                                 <select id="share-group" name="group_id" class="form-select mb-3" required>
                                     {groups.into_iter().map(|group| view! {
-                                        <option value=group.group_id>{group.group_name}</option>
+                                        <option value=group.id>{group.name}</option>
                                     }).collect_view()}
                                 </select>
                                 <label for="share-title">{i18n.t("share.item_title")}</label>
@@ -59,7 +63,7 @@ pub fn SharedWishPage() -> impl IntoView {
                                 <label for="share-link">{i18n.t("share.link")}</label>
                                 <input id="share-link" name="link" class="form-control mb-3" inputmode="url" maxlength="2048" value=draft.link/>
                                 <label for="share-description">{i18n.t("share.description")}</label>
-                                <textarea id="share-description" name="description" class="form-control mb-3" maxlength="2000">{draft.description}</textarea>
+                                <TextArea id="share-description" name="description" rows="4" class="form-control mb-3" maxlength="2000" value=draft.description/>
                                 <p class="form-text">{i18n.t("share.review_help")}</p>
                                 <button type="submit" class="btn btn-primary">{i18n.t("share.confirm")}</button>
                             </form>

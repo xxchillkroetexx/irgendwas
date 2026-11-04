@@ -78,8 +78,6 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/auth/forgot-password") view=ForgotPasswordPage ssr=SsrMode::Async/>
                         <Route path=path!("/auth/reset-password/:token") view=ResetPasswordPage ssr=SsrMode::Async/>
                         <Route path=path!("/user/dashboard") view=DashboardPage ssr=SsrMode::Async/>
-                        <Route path=path!("/wishlists") view=crate::pages::wishlist::WishlistsPage ssr=SsrMode::Async/>
-                        <Route path=path!("/groups/:id/wishlist") view=crate::pages::wishlist::WishlistPage ssr=SsrMode::Async/>
                         <Route path=path!("/user/profile") view=ProfilePage ssr=SsrMode::Async/>
                         <Route path=path!("/user/verify-email/:token") view=VerifyEmailPage ssr=SsrMode::Async/>
                         <Route path=path!("/groups") view=GroupsPage ssr=SsrMode::Async/>

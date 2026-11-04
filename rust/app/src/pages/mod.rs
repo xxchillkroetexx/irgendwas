@@ -21,4 +21,3 @@ pub use profile::ProfilePage;
 pub use share::SharedWishPage;
 pub use verify_email::VerifyEmailPage;
 
-pub mod wishlist;

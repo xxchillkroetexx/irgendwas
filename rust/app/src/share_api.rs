@@ -56,7 +56,7 @@ pub async fn add_shared_wish(
     title: String,
     description: String,
     link: String,
-) -> Result<(), AppError> {
+) -> Result<(), crate::wishlists_api::WishlistError> {
     crate::server::respond::with_error_status(
         crate::server::share::add_wish(id, group_id, title, description, link).await,
     )
