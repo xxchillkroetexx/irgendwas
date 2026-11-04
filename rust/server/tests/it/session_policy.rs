@@ -1,10 +1,9 @@
 //! #60: persistent long-lived sessions, sliding renewal and explicit per-device logout.
 
-
+use crate::common::auth::{Client, Opts, router};
 use app::paths::DASHBOARD_PATH;
 use app::test_support::{ALICE_PASSWORD, create_alice};
 use chrono::{DateTime, Utc};
-use crate::common::auth::{Client, Opts, router};
 use sqlx::MySqlPool;
 use tower_sessions::session::{Id, Record};
 use tower_sessions::session_store::SessionStore;
