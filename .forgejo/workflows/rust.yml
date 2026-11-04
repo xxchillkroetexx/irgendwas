@@ -1,16 +1,20 @@
 # CI for the Rust/Leptos rewrite in rust/.
-# `runs-on: docker` must match a label of your Forgejo runner (container jobs).
+# Runner: forgejo-runner 13 on Docker-in-Docker (docker:dind, DOCKER_HOST tcp). Every job
+# uses `runs-on: docker`: only that runner may carry the label `docker`, or jobs also land
+# on other runners (and their own, empty target cache).
 #
-# check and e2e keep their cargo target dir in the named volume irgendwas-ci-cache, so
-# dependencies are compiled once and later runs rebuild only the workspace crates (the
-# runner's cache server would tar and upload several GB per run). A named volume, not a
-# host path: the container engine creates and labels it itself (rootless podman, SELinux).
-# Runner config.yml needs:
+# runner-config.yml needs:
 #   container:
 #     valid_volumes:
 #       - irgendwas-ci-cache
-# Each job uses its own subdirectory (~5-10 GB) and wipes it above $TARGET_CACHE_MAX_MB;
-# `podman volume rm irgendwas-ci-cache` on the runner host starts over.
+#     options: "--security-opt seccomp=unconfined"   # buildah in the image job, see there
+#
+# check and e2e keep their cargo target dir in the named volume irgendwas-ci-cache, so
+# dependencies are compiled once and later runs rebuild only the workspace crates (the
+# runner's cache server would tar and upload several GB per run). The volume lives in the
+# dind engine, so it survives only if dind's /var/lib/docker is a volume itself. Each job
+# uses its own subdirectory (~5-10 GB) and wipes it above $TARGET_CACHE_MAX_MB;
+# `docker exec <dind container> docker volume rm irgendwas-ci-cache` starts over.
 name: rust
 
 on:
