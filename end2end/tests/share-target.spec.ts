@@ -81,3 +81,12 @@ test("iPhone fallback guidance is public and works without JavaScript", async ({
   await expect(page).toHaveURL(/\/auth\/login\?next=%2Fwishes%2Fshared/);
   await context.close();
 });
+
+test("German installation guidance names the app consistently", async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, locale: "de-DE" });
+  const page = await context.newPage();
+  await page.goto("/install");
+  await expect(page.locator("main")).toContainText("Wichteln im Teilen-Menü");
+  await expect(page.locator("main")).not.toContainText("Secret Santa");
+  await context.close();
+});
