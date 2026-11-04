@@ -47,7 +47,7 @@ services:
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_LOCALE: ${APP_LOCALE:-en}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
-      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-1200}
+      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-7776000}
       # Caddy's fixed edge address plus the proxies in front of Caddy.
       TRUSTED_PROXIES_CIDR: "${CADDY_IP:-172.31.250.10}/32 ${TRUSTED_PROXIES_CIDR:-}"
       DB_HOST: mariadb

@@ -123,6 +123,18 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
     await expect(page.locator("nav").getByText("Carol")).toBeVisible();
 
+    // #60: registration/login cookies persist when the browser/app is closed and reopened.
+    const stored = await page.context().storageState();
+    const session = stored.cookies.find((cookie) => cookie.name === "irgendwas_session");
+    expect(session).toBeTruthy();
+    expect(session!.expires).toBeGreaterThan(Date.now() / 1000 + 89 * 24 * 60 * 60);
+    const reopened = await page.context().browser()!.newContext({ storageState: stored });
+    const reopenedPage = await reopened.newPage();
+    await reopenedPage.goto(DASHBOARD);
+    await expect(reopenedPage).toHaveURL(new RegExp(`${DASHBOARD}$`));
+    await expect(reopenedPage.locator("nav").getByText("Carol")).toBeVisible();
+    await reopened.close();
+
     // Logout is a POST: back on the start page with the flash.
     await logout(page);
     await expect(page.getByText(T.loggedOut)).toBeVisible();
