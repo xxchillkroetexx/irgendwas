@@ -35,6 +35,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 time = "0.3"
 async-trait = "0.1"
+# The draw algorithm (RNG injected; production seeds it from the OS)
+rand = "0.9"
 
 # Shared
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "serde"] }

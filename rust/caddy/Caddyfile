@@ -28,6 +28,10 @@
 	import auto_https_{$CADDY_AUTO_HTTPS:off}
 	servers {
 		trusted_proxies static {$TRUSTED_PROXIES_CIDR}
+		# Read X-Forwarded-For from the right, like the app: the client is the first
+		# untrusted hop. Without it Caddy logs the leftmost (client-supplied) entry as
+		# `client_ip`, i.e. whatever a client forged.
+		trusted_proxies_strict
 	}
 }
 

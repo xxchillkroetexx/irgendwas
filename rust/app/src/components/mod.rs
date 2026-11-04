@@ -3,10 +3,12 @@
 mod flash;
 pub mod guard;
 mod layout;
+mod text_area;
 
 pub use flash::{FlashAlert, FlashMessages};
 pub use guard::{ClientRedirect, RedirectIfLoggedIn, RequireUser};
 pub use layout::{Footer, Layout, NavBar};
+pub use text_area::TextArea;
 
 /// Reads an attribute of the `<html>` element (client only; `None` on the server).
 pub fn document_attribute(name: &str) -> Option<String> {

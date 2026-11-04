@@ -38,6 +38,10 @@ pub struct Config {
     /// Reverse proxies whose `X-Forwarded-For` is trusted (`TRUSTED_PROXIES_CIDR`,
     /// separated by spaces and/or commas; spaces are what Caddy's `trusted_proxies` takes).
     pub trusted_proxies: Vec<IpNet>,
+    /// Registration and password-reset calls per client IP and hour
+    /// (`RATE_LIMIT_MAIL_PER_IP`, default 20). Raised only for the e2e/dev server, whose
+    /// whole test suite comes from one IP.
+    pub mail_per_ip: u32,
     pub db: DbConfig,
     pub mail: MailConfig,
 }
@@ -129,6 +133,13 @@ impl Config {
             })?,
         };
 
+        let mail_per_ip = match get("RATE_LIMIT_MAIL_PER_IP") {
+            None => crate::server::rate_limit::MAIL_PER_IP.max,
+            Some(v) => v.parse::<u32>().ok().filter(|n| *n > 0).ok_or_else(|| {
+                invalid("RATE_LIMIT_MAIL_PER_IP", &v, "expected a positive number")
+            })?,
+        };
+
         let trusted_proxies = match get("TRUSTED_PROXIES_CIDR") {
             None => Vec::new(),
             Some(v) => v
@@ -188,6 +199,7 @@ impl Config {
             app_timezone,
             inactivity_limit,
             trusted_proxies,
+            mail_per_ip,
             db,
             mail,
         })
@@ -292,6 +304,7 @@ impl fmt::Debug for Config {
             .field("app_timezone", &self.app_timezone)
             .field("inactivity_limit", &self.inactivity_limit)
             .field("trusted_proxies", &self.trusted_proxies)
+            .field("mail_per_ip", &self.mail_per_ip)
             .field("db", &self.db)
             .field("mail", &self.mail)
             .finish()

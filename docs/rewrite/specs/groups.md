@@ -10,6 +10,7 @@ Not in scope (hooks only): wishlists, exclusions and the draw (`GroupRepository:
 Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Dates are displayed with `app::format` and read/written through the `tz` date-input helpers; `group.memberCount` and `flash.error.too_many_code_attempts` are plural keys. AC5 was revised; AC46 and AC47 were added.
+Revised 2026-11-01 (implementation): a migration (next free number, 0005) changes `groups.invitation_code` to `utf8mb4_bin` (CLAUDE.md identity-column rule from the auth review; the baseline column is `utf8mb4_unicode_ci`). This replaces "no migration" for this slice.
 
 ## Current PHP behaviour
 
@@ -112,7 +113,7 @@ The router matches `:id` with `[^/]+`, and the handlers are typed `int $id`. `/g
 - **D8 `draw_date` is informational only.** Nothing is automatic. It is shown on the group page with a hint that the admin performs the draw.
 - **D9 Dates.** The UI uses a date picker (date only) in `APP_TIMEZONE` (default Europe/Berlin). For storage, the deadline date D becomes `D 23:59:59` in `APP_TIMEZONE` → UTC, and the draw date D becomes `D 12:00:00` in `APP_TIMEZONE` → UTC. For display, the UTC value is shown with the page's `I18n::date` (i18n-foundation `app::format`: converted to `APP_TIMEZONE`, date only; en `10 Dec 2026`, de `10.12.2026`). Form values come from `tz::to_date_input_value` and are parsed with `tz::parse_date_input`; no ad-hoc chrono formatting (foundation rule C10). An empty field **clears** the value (`NULL`). If both are set, the draw date must not be earlier than the deadline date. Past dates are allowed (no check), so editing an old group never fails because of its old dates.
 - **D10 Invitation code.** 8 characters drawn uniformly with a CSPRNG (`rand::rngs::OsRng` or `getrandom`) from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (32 symbols, 40 bits, repeated characters allowed). On a UNIQUE collision, retry up to 5 times, then return an internal error. Input normalisation: trim, remove spaces and `-`, uppercase. Lookup is exact on the normalised value.
-- **D11 Invitation link format.** The link is `{APP_URL}/join/{CODE}`, built from config and never from request headers. Only the admin sees the code and link. Opening the link **never joins on GET**: it shows a confirmation page with a POST button.
+- **D11 Invitation link format.** The link is `{APP_URL}/join/{CODE}`, built from config and never from request headers. Only the admin sees the code and link. Opening the link **never joins on GET**: existing members go directly to the group (#59); nonmembers see a confirmation page with a POST button.
 - **D12 Regenerating** the code invalidates the old one immediately. It is allowed at any time (admin only). Members who already joined stay; removal is a separate action (D7).
 - **D13 Delete** is admin only, allowed at any time (also after the draw), and is a single `DELETE FROM \`groups\` WHERE id = ?` that relies on `ON DELETE CASCADE`. No emails are sent.
 - **D14 Member emails** are shown to the admin only. Other members see names only.
@@ -174,7 +175,7 @@ All server fns call `require_user()` first. Without a session they return `Unaut
 
 Tables touched: `groups` (CRUD), `group_members` (CRUD). Delete-only through D5: `wishlists` (→ `wishlist_items` cascade), `exclusion_rules`, `gift_assignments`. The unused `email_templates` table is dropped by the draw slice's migration and plays no part in this slice.
 
-No column changes and no migration in this slice. `delete_group` relies on the `ON DELETE CASCADE` foreign keys of the child tables `group_members`, `gift_assignments`, `wishlists` (→ `wishlist_items`) and `exclusion_rules`; AC22 checks them.
+No new columns. One migration (0005, see the revision note at the top) changes `groups.invitation_code` to `utf8mb4_bin`. `delete_group` relies on the `ON DELETE CASCADE` foreign keys of the child tables `group_members`, `gift_assignments`, `wishlists` (→ `wishlist_items`) and `exclusion_rules`; AC22 checks them.
 
 ### UI notes
 
@@ -253,7 +254,7 @@ Fixtures: users Alice, Bob, Carol, Dave. G = group with admin Alice and members 
 - AC27: Given Carol is logged in and opens `/join/{G code}`, then she sees G's name, admin Alice, member count 2 and a Join button, **and she is not yet a member**. When she clicks Join, she is a member, lands on `/groups/{G}` and sees `group_joined`.
 - AC28: Given Carol enters the code lowercased with surrounding spaces or a dash (e.g. ` abcd-efgh `) on `/join`, then she reaches the preview for G.
 - AC29: Given an empty code, `join_group` returns `CodeRequired`. Given an unknown code, `/join/XXXXXXXX` shows `invalid_invitation_code` and `join_group` returns `InvalidCode`.
-- AC30: Given Bob (already a member) opens `/join/{G code}`, then he sees `already_member` and a link to G. `join_group` returns `AlreadyMember{G}` and no second membership row exists.
+- AC30: Given Bob (already a member) opens `/join/{G code}`, then he is redirected directly to G (including after login and after the draw/deadline), without offering a join or writing group data (#59). `join_group` returns `AlreadyMember{G}` and no second membership row exists.
 - AC31: Given G's deadline is in the past, when Carol opens the link, then she sees `registration_deadline_passed` and no Join button. `join_group` returns `RegistrationClosed`.
 - AC32: Given G's deadline is today (stored as today 23:59:59 Berlin) and it is 23:00 Berlin, then Carol can join.
 - AC33: Given G is drawn, then Carol sees `join_closed_drawn` and `join_group` returns `AlreadyDrawn`. The membership count is unchanged.
