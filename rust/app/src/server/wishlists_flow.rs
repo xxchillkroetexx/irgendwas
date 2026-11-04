@@ -869,3 +869,131 @@ pub async fn clear_wishlist(group_id: i32, confirm: bool) -> Result<(), Wishlist
     tracing::info!(user_id, group_id, "wishlist cleared");
     Ok(())
 }
+
+// ------------------------------------------------------------ copying own wishes
+
+pub async fn get_sources(group_id: i32) -> Result<Vec<NamedRef>, WishlistError> {
+    let user_id = user_id().await?;
+    let state = state()?;
+    authz::require_member(&state.pool, user_id, group_id)
+        .await
+        .map_err(from_app)?;
+    let rows = sqlx::query_as::<_, NameRow>(
+        "SELECT g.id, g.name FROM wishlists w JOIN `groups` g ON g.id = w.group_id \
+         JOIN group_members m ON m.group_id = g.id AND m.user_id = w.user_id \
+         WHERE w.user_id = ? AND g.id <> ? \
+         AND EXISTS (SELECT 1 FROM wishlist_items i WHERE i.wishlist_id = w.id) \
+         ORDER BY g.name, g.id",
+    )
+    .bind(user_id)
+    .bind(group_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| db_error("copy: sources", e))?;
+    Ok(rows
+        .into_iter()
+        .map(|r| NamedRef {
+            id: r.id,
+            name: r.name,
+        })
+        .collect())
+}
+
+pub async fn copy_items(
+    group_id: i32,
+    source_group_id: i32,
+    item_ids: Vec<i32>,
+) -> Result<(), WishlistError> {
+    let user_id = user_id().await?;
+    let state = state()?;
+    let _turn = writer_turn(user_id).await;
+    // Authorize both groups before reporting selection validation.
+    for id in [group_id, source_group_id] {
+        authz::require_member(&state.pool, user_id, id)
+            .await
+            .map_err(from_app)?;
+    }
+    let ids: std::collections::BTreeSet<_> = item_ids.into_iter().collect();
+    if group_id == source_group_id
+        || ids.is_empty()
+        || ids.len() > MAX_ITEMS
+        || ids.iter().any(|id| *id <= 0)
+    {
+        return Err(WishlistError::Validation(vec![(
+            WishlistField::Items,
+            WishlistFieldError::SelectionRequired,
+        )]));
+    }
+    retrying(|| copy_items_tx(&state, user_id, group_id, source_group_id, &ids)).await
+}
+
+async fn copy_items_tx(
+    state: &AppState,
+    user_id: i32,
+    group_id: i32,
+    source_group_id: i32,
+    ids: &std::collections::BTreeSet<i32>,
+) -> Result<(), Fail> {
+    let mut conn = connection(state).await?;
+    let mut tx = begin(&mut conn).await?;
+    let ordered = if group_id < source_group_id {
+        [group_id, source_group_id]
+    } else {
+        [source_group_id, group_id]
+    };
+    for id in ordered {
+        lock_group_for_member(&mut tx, id, user_id).await?;
+    }
+    let mut destination = None;
+    let mut source = None;
+    for id in ordered {
+        if id == group_id {
+            sqlx::query("INSERT INTO wishlists (user_id, group_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)")
+                .bind(user_id).bind(id).execute(&mut *tx).await.map_err(tx_error("copy: create destination"))?;
+        }
+        let list_id = lock_list(&mut tx, id, user_id)
+            .await?
+            .ok_or(WishlistError::NotFound)?;
+        if id == group_id {
+            destination = Some(list_id);
+        } else {
+            source = Some(list_id);
+        }
+    }
+    let destination = destination.ok_or(WishlistError::Internal)?;
+    let source = source.ok_or(WishlistError::Internal)?;
+    let rows = sqlx::query_as::<_, ItemRow>("SELECT id, title, description, link FROM wishlist_items WHERE wishlist_id = ? ORDER BY position, id FOR UPDATE")
+        .bind(source).fetch_all(&mut *tx).await.map_err(tx_error("copy: source items"))?;
+    let selected: Vec<_> = rows.into_iter().filter(|r| ids.contains(&r.id)).collect();
+    if selected.len() != ids.len() {
+        return Err(WishlistError::NotFound.into());
+    }
+    let existing = lock_items(&mut tx, destination).await?;
+    if existing.len() + selected.len() > MAX_ITEMS {
+        return Err(WishlistError::Validation(vec![(
+            WishlistField::Items,
+            WishlistFieldError::TooManyItems,
+        )])
+        .into());
+    }
+    let mut position = existing.iter().map(|r| r.position).max().unwrap_or(0);
+    if position > i32::MAX - MAX_ITEMS as i32
+        || existing.windows(2).any(|w| w[0].position >= w[1].position)
+    {
+        renumber(&mut tx, &existing).await?;
+        position = existing.len() as i32;
+    }
+    for row in selected {
+        let values = validate(
+            &row.title,
+            row.description.as_deref().unwrap_or_default(),
+            row.link.as_deref().unwrap_or_default(),
+        )?;
+        position += 1;
+        sqlx::query("INSERT INTO wishlist_items (wishlist_id, title, description, link, position) VALUES (?, ?, ?, ?, ?)")
+            .bind(destination).bind(values.title).bind(values.description).bind(values.link).bind(position)
+            .execute(&mut *tx).await.map_err(tx_error("copy: insert item"))?;
+    }
+    touch_list(&mut tx, destination).await?;
+    commit(tx).await
+}

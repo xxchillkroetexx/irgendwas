@@ -58,3 +58,5 @@ mod wishlists_edit;
 mod wishlists_reorder;
 mod wishlists_security;
 mod wishlists_view;
+
+mod wishlist_copy;

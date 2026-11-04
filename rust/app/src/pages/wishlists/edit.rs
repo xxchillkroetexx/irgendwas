@@ -16,9 +16,9 @@ use crate::pages::groups::{ConfirmSubmit, parse_group_id};
 use crate::paths::{group_path, wishlist_edit_path, wishlist_view_path};
 use crate::t;
 use crate::wishlists_api::{
-    AddItem, ClearWishlist, DESCRIPTION_MAX, DeleteItem, Direction, ItemView, LINK_MAX, MAX_ITEMS,
-    MoveItem, TITLE_MAX, UpdateItem, WishlistError, WishlistField, WishlistFieldError,
-    WishlistView, get_my_wishlist,
+    AddItem, ClearWishlist, CopyWishlistItems, DESCRIPTION_MAX, DeleteItem, Direction, ItemView,
+    LINK_MAX, MAX_ITEMS, MoveItem, NamedRef, TITLE_MAX, UpdateItem, WishlistError, WishlistField,
+    WishlistFieldError, WishlistView, get_my_wishlist, get_wishlist_sources,
 };
 
 type ListResource = Resource<Result<WishlistView, WishlistError>>;
@@ -64,6 +64,31 @@ pub fn WishlistEditPage() -> impl IntoView {
             }
         },
     );
+    let source_group = Memo::new(move |_| {
+        query
+            .read()
+            .get("source")
+            .and_then(|raw| parse_group_id(&raw))
+    });
+    let sources = Resource::new(
+        move || id.get(),
+        |group| async move {
+            match group {
+                Some(group) => when_logged_in(get_wishlist_sources(group)).await,
+                None => Err(WishlistError::NotFound),
+            }
+        },
+    );
+    let source_list = Resource::new(
+        move || source_group.get(),
+        |group| async move {
+            match group {
+                Some(group) => when_logged_in(get_my_wishlist(group)).await.map(Some),
+                None => Ok(None),
+            }
+        },
+    );
+    let copy = ServerAction::<CopyWishlistItems>::new();
     let actions = Actions {
         add: ServerAction::new(),
         delete: ServerAction::new(),
@@ -107,6 +132,15 @@ pub fn WishlistEditPage() -> impl IntoView {
         }
     });
 
+    Effect::new(move |_| {
+        if let Some(result) = copy.value().get() {
+            match result {
+                Ok(()) => session.refetch(),
+                Err(error) => toasts.push(error.flash()),
+            }
+            list.refetch();
+        }
+    });
     view! {
         <RequireUser>
             <Transition fallback=|| ()>
@@ -119,6 +153,7 @@ pub fn WishlistEditPage() -> impl IntoView {
                     }
                 })}
             </Transition>
+            <CopySection group=id source_group sources source_list action=copy/>
         </RequireUser>
     }
 }
@@ -480,5 +515,64 @@ fn ClearSection(group_id: i32, action: ServerAction<ClearWishlist>) -> impl Into
                 </ActionForm>
             </div>
         </div>
+    }
+}
+
+#[component]
+fn CopySection(
+    group: Memo<Option<i32>>,
+    source_group: Memo<Option<i32>>,
+    sources: Resource<Result<Vec<NamedRef>, WishlistError>>,
+    source_list: Resource<Result<Option<WishlistView>, WishlistError>>,
+    action: ServerAction<CopyWishlistItems>,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <Suspense fallback=|| ()>
+            {move || Suspend::new(async move {
+                let Ok(sources) = sources.await else { return ().into_any(); };
+                if sources.is_empty() { return ().into_any(); }
+                let group_id = group.get_untracked().unwrap_or_default();
+                view! {
+                    <section class="card my-4">
+                        <div class="card-body">
+                            <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
+                            <form method="get" action=wishlist_edit_path(group_id)>
+                                <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
+                                <select id="copy-source" name="source" class="form-select mb-2" required>
+                                    <option value="">{i18n.t("wishlist.copy.choose")}</option>
+                                    {sources.into_iter().map(|source| view! {
+                                        <option value=source.id selected=move || source_group.get() == Some(source.id)>{source.name}</option>
+                                    }).collect_view()}
+                                </select>
+                                <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
+                            </form>
+                            <Suspense fallback=|| ()>
+                                {move || Suspend::new(async move {
+                                    match source_list.await {
+                                        Ok(Some(source)) if source.group.id != group_id => view! {
+                                            <ActionForm action>
+                                                <input type="hidden" name="group_id" value=group_id/>
+                                                <input type="hidden" name="source_group_id" value=source.group.id/>
+                                                <p class="mt-3">{i18n.t("wishlist.copy.instructions")}</p>
+                                                {source.items.into_iter().enumerate().map(|(index,item)| view! {
+                                                    <div class="form-check">
+                                                        <input type="checkbox" class="form-check-input" id=format!("copy-item-{}",item.id) name=format!("item_ids[{index}]") value=item.id/>
+                                                        <label class="form-check-label" for=format!("copy-item-{}",item.id)>{item.title}</label>
+                                                    </div>
+                                                }).collect_view()}
+                                                <button type="submit" class="btn btn-primary mt-3" disabled=move || action.pending().get()>{i18n.t("wishlist.copy.submit")}</button>
+                                            </ActionForm>
+                                        }.into_any(),
+                                        Ok(_) => ().into_any(),
+                                        Err(error) => view! { <WishlistErrorView error/> }.into_any(),
+                                    }
+                                })}
+                            </Suspense>
+                        </div>
+                    </section>
+                }.into_any()
+            })}
+        </Suspense>
     }
 }

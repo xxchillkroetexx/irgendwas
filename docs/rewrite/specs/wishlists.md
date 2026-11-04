@@ -266,4 +266,4 @@ The user requested implementation of #57, extending the original exclusion of co
 
 Both groups require current membership, and the source must belong to the caller. The server rejects missing/foreign item IDs together, duplicate IDs are deduplicated, same-list copying is rejected, and the 50-item cap applies atomically to the complete selection. All group locks are taken in ascending ID order, then both wishlist locks in that order; destination creation happens in that order too. Copy validates item contents under W8/W9 before insert. No GET creates data.
 
-This implementation provides own editor reads, add, and copy as the prerequisite for #57; remaining wishlist-slice operations and the group panel stay tracked separately.
+Copy extends the existing wishlist editor and server flow; the original wishlist CRUD, panel, locking and validation remain authoritative. No additional schema migration is needed beyond the existing position migration.
