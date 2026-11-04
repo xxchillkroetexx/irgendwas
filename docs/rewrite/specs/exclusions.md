@@ -192,7 +192,7 @@ ALTER TABLE exclusion_rules
     FOREIGN KEY (group_id, excluded_user_id) REFERENCES group_members (group_id, user_id) ON DELETE CASCADE;
 ```
 
-- Fresh start: the table is empty when this migration runs, so no cleanup step is needed.
+- Fresh start: the table is empty when this migration runs. (Implementation 2026-11-02: the migration still deletes rules whose giver or excluded user is not a member before adding the FKs — a no-op on a fresh DB; see the decision log.)
 - `group_members` already has `UNIQUE(group_id, user_id)`, which is a valid FK target. `(group_id, user_id)` is covered by the prefix of `unique_exclusion`. InnoDB creates the index for `(group_id, excluded_user_id)`.
 - The existing single-column FKs and `unique_exclusion` stay. Self-rules are rejected by the server fn (step 4) and ignored by `check_feasibility`. No CHECK constraint is added for them.
 - No other schema change. The cap is enforced in the fn under the lock (D9).

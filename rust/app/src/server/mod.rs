@@ -8,12 +8,18 @@
 //! - [`authz`]: group membership / admin checks. **Every** server fn that takes a group id
 //!   must go through these.
 //! - [`flash`]: session-backed flash messages.
-//! - [`i18n`]: session/cookie locale helpers.
+//! - [`i18n`]: session/cookie locale helpers; [`locale_flow`]: the language switch body.
 //! - [`rate_limit`]: in-memory limiter with an injectable clock.
 //! - [`token`]: random link tokens, stored as SHA-256.
 //! - [`respond`]: redirects and headers from server fns and SSR renders.
 //! - [`account_flow`], [`account_mail`]: the account server fn bodies and their mails.
 //! - [`auth_flow`], [`auth_mail`]: the auth server fn bodies and their mails.
+//! - [`groups_flow`]: the groups server fn bodies; [`invite`]: invitation codes;
+//!   [`membership`]: what leaving a group deletes.
+//! - [`wishlists_flow`]: the wishlist server fn bodies (items, order, links).
+//! - [`exclusions`]: the exclusion server fn bodies and `load_rules` (the draw's input).
+//! - [`draw`]: the pure draw algorithm; [`draw_flow`], [`draw_mail`]: the draw server fn
+//!   bodies and their mails; [`draw_worker`]: the in-process draw mail worker.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
 
 pub mod account_flow;
@@ -25,15 +31,24 @@ pub mod authz;
 pub mod client_ip;
 pub mod config;
 pub mod db;
+pub mod draw;
+pub mod draw_flow;
+pub mod draw_mail;
+pub mod draw_worker;
+pub mod exclusions;
 pub mod flash;
+pub mod groups_flow;
 pub mod i18n;
+pub mod invite;
+pub mod locale_flow;
 pub mod mail;
+pub mod membership;
 pub mod password;
 pub mod rate_limit;
 pub mod respond;
 pub mod share;
 pub mod token;
-pub mod wishlist;
+pub mod wishlists_flow;
 
 use std::sync::Arc;
 
@@ -52,6 +67,7 @@ pub struct AppState {
     pub pool: MySqlPool,
     pub config: Arc<Config>,
     pub mailer: mail::Mailer,
+    pub draw_worker: draw_worker::DrawWorker,
     pub rate_limiter: Arc<rate_limit::RateLimiter>,
 }
 

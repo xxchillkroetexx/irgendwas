@@ -68,3 +68,9 @@ pub fn password_errors(password: &str, confirm: &str) -> Vec<(Field, FieldError)
     }
     errors
 }
+
+/// Line breaks as `\n`: browsers submit a textarea's line breaks as CRLF but count each as
+/// one character against `maxlength`. Applied before length checks and storage.
+pub fn normalize_newlines(raw: &str) -> String {
+    raw.replace("\r\n", "\n").replace('\r', "\n")
+}
