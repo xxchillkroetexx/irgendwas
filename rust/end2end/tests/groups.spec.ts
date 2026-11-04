@@ -270,9 +270,27 @@ test.describe("groups", () => {
     await expect(page.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
     await expect(page.getByRole("button", { name: t("group.show.leaveGroup") })).toBeVisible();
 
-    // AC30: opening the link again says so.
+    // #59: repeated invitations bypass confirmation for existing members.
     await page.goto(`/join/${inviteCode}`);
-    await expect(page.getByText(t("flash.info.already_member"))).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await expect(page.getByRole("button", { name: t("group.join.submit") })).toHaveCount(0);
+
+    // The enter-code form navigates inside the hydrated app, so this also checks
+    // the client redirect rather than only the initial server-rendered response.
+    await page.goto("/join");
+    await waitForHydration(page);
+    await page.locator("#join-code").fill(inviteCode);
+    await page.getByRole("button", { name: t("group.join.submit") }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+
+    const plain = await page.context().browser()!.newContext({
+      javaScriptEnabled: false,
+      storageState: await page.context().storageState(),
+    });
+    const plainPage = await plain.newPage();
+    await plainPage.goto(`/join/${inviteCode}`);
+    await expect(plainPage).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await plain.close();
     expect(errors).toEqual([]);
   });
 
