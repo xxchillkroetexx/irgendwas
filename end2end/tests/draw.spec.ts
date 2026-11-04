@@ -191,11 +191,31 @@ test.describe("draw", () => {
     await expect(alice.getByTestId("assignment-wishlist")).toHaveAttribute("href", new RegExp(`^/groups/${gid}/wishlist/\\d+$`));
     await expect(alice.getByTestId("draw-perform")).toHaveCount(0);
     await expect(alice.getByTestId("draw-reset")).toBeVisible();
+    const invitation = alice.getByTestId("group-invitation");
+    await expect(invitation).toContainText(t("group.show.registrationClosedHint"));
+    await expect(invitation.locator("input, button, code")).toHaveCount(0);
+    await expect(alice.getByRole("button", { name: t("group.show.regenerateCode") })).toHaveCount(0);
     // The admin's page names no other pairing: the third member's name appears only in the
     // member lists, never inside the draw panel.
     const other = receiver === users.bob.name ? users.carol.name : users.bob.name;
     await expect(alice.getByTestId("draw-panel")).not.toContainText(other);
     expect(errors, errors.join("\n")).toEqual([]);
+  });
+
+  test("the mobile group page puts the assignment and wishlist before administration", async () => {
+    const page = users.alice.page;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(groupUrl);
+    const draw = await page.getByTestId("draw-panel").boundingBox();
+    const wishlist = await page.getByTestId("group-wishlist").boundingBox();
+    const details = await page.getByTestId("group-details").boundingBox();
+    const invitation = await page.getByTestId("group-invitation").boundingBox();
+    expect(draw && wishlist && details && invitation).toBeTruthy();
+    expect(draw!.y).toBeLessThan(wishlist!.y);
+    expect(wishlist!.y).toBeLessThan(details!.y);
+    expect(details!.y).toBeLessThan(invitation!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
   });
 
   test("AC14 AC31: every member sees their own receiver, gets one mail naming them, and finds them on the dashboard", async () => {

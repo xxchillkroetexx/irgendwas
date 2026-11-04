@@ -8,7 +8,7 @@ use leptos::server_fn::ServerFn;
 use leptos_router::hooks::{use_navigate, use_params_map};
 
 use super::{group_path, when_logged_in};
-use crate::components::RequireUser;
+use crate::components::{ClientRedirect, RequireUser};
 use crate::flash::{FlashMessage, use_toasts};
 use crate::groups_api::{
     ClosedReason, GroupError, GroupOp, InvitationPreview, JoinGroup, OpenInvitation, join_path,
@@ -100,9 +100,20 @@ pub fn JoinPreviewPage() -> impl IntoView {
     let code = Memo::new(move |_| {
         normalize_invitation_code(&params.read().get("code").unwrap_or_default())
     });
-    let preview: PreviewResource = Resource::new(
+    let preview: PreviewResource = Resource::new_blocking(
         move || code.get(),
-        |code| when_logged_in(preview_invitation(code)),
+        |code| async move {
+            let result = when_logged_in(preview_invitation(code)).await;
+            // Decide before SSR sends its headers; existing members bypass the
+            // confirmation page even after the draw or registration deadline.
+            #[cfg(feature = "ssr")]
+            if let Ok(preview) = &result
+                && preview.already_member
+            {
+                crate::server::respond::redirect_page(&group_path(preview.group_id));
+            }
+            result
+        },
     );
     view! {
         <RequireUser>
@@ -138,6 +149,10 @@ fn JoinPreview(code: Memo<String>, preview: PreviewResource) -> impl IntoView {
                 <Transition fallback=|| ()>
                     {move || Suspend::new(async move {
                         match preview.await {
+                            Ok(preview) if preview.already_member => {
+                                view! { <ClientRedirect path=group_path(preview.group_id)/> }
+                                    .into_any()
+                            }
                             Ok(preview) => {
                                 view! { <PreviewCard preview code=code.get_untracked() action error/> }
                                     .into_any()

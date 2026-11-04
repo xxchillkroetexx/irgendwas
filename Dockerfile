@@ -27,6 +27,8 @@ COPY . .
 ARG CARGO_BUILD_JOBS=
 # Cache mounts keep the registry and target dir between builds (buildah/BuildKit); the
 # artifacts are copied out because cache mounts are not part of the image.
+# Normalize permissions: source assets may be 0640 (checkout with umask 027), but
+# the non-root runtime must be able to read them regardless of builder ownership.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     set -eux; \
@@ -34,7 +36,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo leptos build --release; \
     mkdir -p /out; \
     cp target/release/server /out/server; \
-    cp -r target/site /out/site
+    cp -r target/site /out/site; \
+    chmod -R a+rX /out
 
 # ---- runtime: distroless, non-root, glibc + CA certificates, no shell ---------------
 FROM gcr.io/distroless/cc-debian13:nonroot

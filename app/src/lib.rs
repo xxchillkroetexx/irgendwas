@@ -26,6 +26,7 @@ pub mod i18n;
 pub mod locale_api;
 pub mod pages;
 pub mod paths;
+pub mod share_api;
 pub mod tz;
 pub mod validation;
 pub mod wishlists_api;

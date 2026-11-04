@@ -144,6 +144,9 @@ async fn ac20_the_edit_page_is_a_403_for_a_member_and_a_404_for_anyone_else(pool
 
     let member = bob.get(&url).await;
     assert_eq!(member.status, 403);
+    assert!(html_contains(&member.body, &en("error.forbidden.title")));
+    assert!(member.body.contains(&format!("href=\"/groups/{}\"", w.g)));
+    assert!(!html_contains(&member.body, &en("error.generic.title")));
     assert!(
         !member.body.contains(CODE),
         "no invitation code on the 403 page"

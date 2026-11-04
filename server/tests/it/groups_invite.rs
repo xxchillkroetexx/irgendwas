@@ -255,15 +255,16 @@ async fn ac29_odd_input_is_just_an_invalid_code(pool: MySqlPool) {
 // ------------------------------------------------------------------------- AC30
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac30_an_existing_member_is_told_so_and_gets_no_second_row(pool: MySqlPool) {
+async fn ac30_an_existing_member_redirects_and_gets_no_second_row(pool: MySqlPool) {
     let w = world(&pool).await;
     let mut bob = w.bob().await;
 
     let p = preview(&mut bob, CODE).await;
     assert!(p.already_member);
     let page = bob.get(&format!("/join/{CODE}")).await;
-    assert!(html_contains(&page.body, &en("flash.info.already_member")));
-    assert!(page.body.contains(&format!("href=\"/groups/{}\"", w.g)));
+    assert_eq!(page.status, 302);
+    assert_eq!(page.location(), Some(format!("/groups/{}", w.g)));
+    assert!(!page.body.contains("action=\"/api/join_group\""));
 
     let reply = join_group(&mut bob, CODE).await;
     assert_eq!(
@@ -285,6 +286,49 @@ async fn ac30_an_existing_member_is_told_so_and_gets_no_second_row(pool: MySqlPo
         reply.group_err(),
         GroupError::AlreadyMember { group_id: w.g }
     );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn issue59_member_redirect_wins_after_draw_or_deadline_without_writes(pool: MySqlPool) {
+    let w = world(&pool).await;
+    sqlx::query("UPDATE `groups` SET is_drawn=TRUE, registration_deadline='2020-01-01' WHERE id=?")
+        .bind(w.g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = groups_snapshot(&pool).await;
+    for mut member in [w.alice().await, w.bob().await] {
+        let page = member.get(&format!("/join/{CODE}")).await;
+        assert_eq!(page.status, 302);
+        assert_eq!(page.location(), Some(format!("/groups/{}", w.g)));
+        assert_eq!(member.get(&format!("/groups/{}", w.g)).await.status, 200);
+    }
+    assert_eq!(
+        groups_snapshot(&pool).await,
+        before,
+        "opening an invitation never writes membership or group data"
+    );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn issue59_existing_member_is_rechecked_after_login(pool: MySqlPool) {
+    let w = world(&pool).await;
+    let path = format!("/join/{CODE}");
+    let mut visitor = w.anon();
+    assert_eq!(
+        visitor.get(&path).await.location(),
+        Some(format!("/auth/login?next={}", urlencode(&path)))
+    );
+    let login = visitor
+        .login_next(&w.emails[1], app::test_support::BOB_PASSWORD, &path)
+        .await;
+    login.ok();
+    assert_eq!(login.location(), Some(path.clone()));
+    let before = ts::member_ids(&pool, w.g).await;
+    let page = visitor.get(&path).await;
+    assert_eq!(page.status, 302);
+    assert_eq!(page.location(), Some(format!("/groups/{}", w.g)));
+    assert_eq!(ts::member_ids(&pool, w.g).await, before);
 }
 
 #[sqlx::test(migrations = "../migrations")]

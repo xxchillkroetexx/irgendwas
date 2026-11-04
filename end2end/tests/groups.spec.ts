@@ -270,10 +270,38 @@ test.describe("groups", () => {
     await expect(page.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
     await expect(page.getByRole("button", { name: t("group.show.leaveGroup") })).toBeVisible();
 
-    // AC30: opening the link again says so.
+    // #59: repeated invitations bypass confirmation for existing members.
     await page.goto(`/join/${inviteCode}`);
-    await expect(page.getByText(t("flash.info.already_member"))).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await expect(page.getByRole("button", { name: t("group.join.submit") })).toHaveCount(0);
+
+    // The enter-code form navigates inside the hydrated app, so this also checks
+    // the client redirect rather than only the initial server-rendered response.
+    await page.goto("/join");
+    await waitForHydration(page);
+    await page.locator("#join-code").fill(inviteCode);
+    await page.getByRole("button", { name: t("group.join.submit") }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+
+    const plain = await page.context().browser()!.newContext({
+      javaScriptEnabled: false,
+      storageState: await page.context().storageState(),
+    });
+    const plainPage = await plain.newPage();
+    await plainPage.goto(`/join/${inviteCode}`);
+    await expect(plainPage).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await plain.close();
     expect(errors).toEqual([]);
+  });
+
+  test("a member denied group editing gets a useful title and return link", async () => {
+    const page = users.bob.page;
+    const response = await page.goto(`/groups/${gid}/edit`);
+    expect(response?.status()).toBe(403);
+    await expect(page.getByRole("heading", { name: t("error.forbidden.title") })).toBeVisible();
+    await expect(page.getByRole("link", { name: t("error.backGroup") })).toHaveAttribute("href", `/groups/${gid}`);
+    await page.getByRole("link", { name: t("error.backGroup") }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
   });
 
   test("AC25 AC29: regenerating (after the confirm) kills the old link at once", async () => {
@@ -337,6 +365,8 @@ test.describe("groups", () => {
     await expect(page.getByText("12.12.2026")).toBeVisible();
     await expect(page.getByText(tDe("group.show.drawDateInfo"))).toBeVisible();
     await expect(page.getByText("10 Dec 2026")).toHaveCount(0);
+    await page.goto("/groups/new");
+    await expect(page.getByText(tDe("group.form.dateInputHelp"))).toHaveCount(2);
     expect(errors).toEqual([]);
   });
 
@@ -347,7 +377,7 @@ test.describe("groups", () => {
     await waitForHydration(alice);
 
     acceptNextDialog(alice);
-    const bobRow = alice.locator("li, tr, .list-group-item").filter({ hasText: "Bob Member" }).first();
+    const bobRow = alice.getByTestId("group-members").locator("li").filter({ hasText: "Bob Member" });
     await bobRow.getByRole("button", { name: t("group.show.makeAdmin") }).click();
     await expect(alice.getByText(t("flash.success.admin_transferred"))).toBeVisible();
     await expect(alice.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
@@ -377,7 +407,7 @@ test.describe("groups", () => {
     const errors = collectPageErrors(bob);
     await bob.goto(`/groups/${gid}`);
     await waitForHydration(bob);
-    const row = bob.locator("li, tr, .list-group-item").filter({ hasText: "Carol Newcomer" }).first();
+    const row = bob.getByTestId("group-members").locator("li").filter({ hasText: "Carol Newcomer" });
     acceptNextDialog(bob);
     await row.getByRole("button", { name: t("group.show.removeMember") }).click();
     await expect(bob.getByText(t("flash.success.member_removed"))).toBeVisible();

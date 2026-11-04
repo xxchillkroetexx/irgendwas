@@ -213,6 +213,7 @@ pub fn Footer() -> impl IntoView {
         <footer class="mt-auto py-3 bg-light">
             <div class="container text-center">
                 <p class="mb-0">"© " {i18n.t("footer.copyright")}</p>
+                <a href="/install">{i18n.t("app.install.title")}</a>
             </div>
         </footer>
     }

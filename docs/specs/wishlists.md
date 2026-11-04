@@ -6,7 +6,7 @@ status: approved
 
 Scope: one wishlist per member and group. The owner adds, edits, removes and reorders items and can clear the whole list. Members view the lists. This slice fills the groups slice's `<WishlistPanel group_id>` hook and provides the wishlist URL that the draw slice links to from its assignment card and from the dashboard assignments card (account D10 gives that card to the draw slice).
 
-Not in scope: assignments and the draw (draw slice), exclusions, a global "one list for all my groups", copying items between groups, and reserving or marking items as bought.
+Not in scope: assignments and the draw (draw slice), exclusions, a global "one list for all my groups", reserving or marking items as bought.
 
 Fresh start: no production data is migrated. The Rust app owns its schema, and `0001_baseline.sql` (the PHP schema) is the starting point.
 
@@ -258,3 +258,12 @@ None.
 ## Resolved (2026-10-31, user)
 1. **Who may view whose wishlist?** (a): every current member sees every current member's list, before and after the draw (W1). The admin has no extra rights, and no wishlist fn reads `gift_assignments`. Rejected: (b) the PHP rule (after the draw only own + receiver's list, admin sees all) and (c) only giver and owner after the draw.
 2. **Keep item reordering?** (a): yes, an always-on order with Move up / Move down buttons and the `wishlist_items.position` migration (W7). Rejected: (b) creation order only.
+
+
+## Issue #57: copying own wishes (approved 2026-11-03)
+
+The user requested implementation of #57, extending the original exclusion of copying. The editor at `/groups/:id/wishlist` provides own source-list selection and checkbox selection of one or more items. Copy preserves source order, title, description and normalized link, generates new IDs and timestamps, and appends to the destination. Source rows and timestamps remain unchanged. Historical/drawn groups remain available while the user is still a member; departed/deleted lists are unavailable under W12.
+
+Both groups require current membership, and the source must belong to the caller. The server rejects missing/foreign item IDs together, duplicate IDs are deduplicated, same-list copying is rejected, and the 50-item cap applies atomically to the complete selection. All group locks are taken in ascending ID order, then both wishlist locks in that order; destination creation happens in that order too. Copy validates item contents under W8/W9 before insert. No GET creates data.
+
+Copy extends the existing wishlist editor and server flow; the original wishlist CRUD, panel, locking and validation remain authoritative. No additional schema migration is needed beyond the existing position migration.
