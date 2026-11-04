@@ -1,0 +1,97 @@
+# Production stack: app + MariaDB behind an existing Traefik container on the external
+# Docker network `proxynet` (no published ports). Runs as a Portainer stack (variables in
+# the stack's environment) or with
+#   docker compose --env-file prod.env up -d
+# Always pass --env-file: without it compose reads ./.env, the *development* config.
+# Variables: compose.env.example. See README "Production".
+#
+# Traefik provides TLS, security headers and compression (labels below). Its entry point
+# must not trust forwarded headers (no `forwardedHeaders.insecure`, no `trustedIPs` unless a
+# CDN sits in front): then it replaces a client's X-Forwarded-For with the address it sees.
+# The labels work with Traefik's Docker provider; with a file provider use the same router
+# and middlewares and the service url http://irgendwas:3000.
+name: irgendwas
+
+services:
+  app:
+    container_name: irgendwas
+    image: ${APP_IMAGE:-git.scheissndreck.de/irgendwas/irgendwas}:${APP_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      APP_URL: ${APP_URL:?set APP_URL (public URL, e.g. https://wichteln.example)}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_LOCALE: ${APP_LOCALE:-de}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
+      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-1200}
+      RATE_LIMIT_MAIL_PER_IP: ${RATE_LIMIT_MAIL_PER_IP:-}
+      TRUSTED_PROXIES_CIDR: ${TRUSTED_PROXIES_CIDR:?set TRUSTED_PROXIES_CIDR (Traefik on proxynet, /32)}
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      DB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      DB_USERNAME: ${DB_USERNAME:-irgendjemand}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MAIL_HOST: ${MAIL_HOST:?set MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-ssl}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?set MAIL_FROM_ADDRESS}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Secret Santa}
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "/app/server", "--healthcheck"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - proxynet
+      - database
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxynet
+      traefik.http.routers.irgendwas.rule: Host(`${APP_HOST:?set APP_HOST (host name of APP_URL)}`)
+      traefik.http.routers.irgendwas.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.irgendwas.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.irgendwas.middlewares: irgendwas-headers,irgendwas-compress
+      traefik.http.services.irgendwas.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.irgendwas-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.irgendwas-headers.headers.stsIncludeSubdomains: "true"
+      traefik.http.middlewares.irgendwas-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.irgendwas-headers.headers.frameDeny: "true"
+      traefik.http.middlewares.irgendwas-headers.headers.referrerPolicy: strict-origin-when-cross-origin
+      traefik.http.middlewares.irgendwas-compress.compress: "true"
+
+  mariadb:
+    # LTS; never `latest` (docs/decisions.md, 2026-11-04).
+    image: docker.io/library/mariadb:11.8
+    container_name: irgendwas_db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      MARIADB_USER: ${DB_USERNAME:-irgendjemand}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    volumes:
+      - mariadb_data_rust:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - database
+
+networks:
+  proxynet:
+    external: true
+  # app ↔ MariaDB only, no outside access.
+  database:
+    internal: true
+
+volumes:
+  mariadb_data_rust:
