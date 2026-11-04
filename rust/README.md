@@ -352,3 +352,30 @@ login flow. An internet connection is required: no offline cache is provided.
 Icons use the app's existing red/green colors and a gift symbol; regenerate with
 `python3 scripts/generate-app-icons.py` (standard library only).
 See `../docs/rewrite/specs/pwa.md` for the contract and platform references.
+## Login lifetime (#60)
+
+Browser and installed PWA logins stay signed in for **90 days without a request** by
+default (`INACTIVITY_LIMIT=7776000`, seconds). Each request renews the persistent
+cookie and the MySQL session expiry for another full period, including ordinary
+page reads. There is no additional absolute expiry while the app is regularly
+used, and no separate Remember Me switch. Closing the app/browser or restarting
+the server does not end a stored login. Browser/OS cookie eviction or clearing
+site data can still require signing in again.
+
+The prior Rust default was 1200 seconds (20 minutes), with an already persistent,
+rolling cookie; the PHP Remember Me checkbox had no implementation and PHP read
+a different timeout variable. The Rust rewrite had removed the checkbox rather
+than offering a longer session. This policy makes the long lifetime apply to all
+logins, including registration completion.
+
+**Existing deployments:** replace any explicit `INACTIVITY_LIMIT=1200` in your
+`.env` / production env file with `7776000` (or your chosen seconds), then restart
+the app. Explicit configuration overrides the default; changing only the code
+does not override an old deployment value. Existing expired sessions cannot be
+revived; a current session receives the new duration on its next request.
+
+Logout immediately deletes that device's session on the server, so replaying its
+previous cookie cannot authenticate. Other devices remain signed in. Password
+reset/change still invalidate previous sessions through the account session epoch;
+password change keeps the current device signed in as documented by the account
+slice. Cookie flags remain HttpOnly, SameSite=Lax and Secure for HTTPS.

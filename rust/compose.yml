@@ -49,7 +49,7 @@ services:
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_LOCALE: ${APP_LOCALE:-en}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
-      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-1200}
+      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-7776000}
       # Registrations + password resets per client IP and hour; empty = app default (20).
       RATE_LIMIT_MAIL_PER_IP: ${RATE_LIMIT_MAIL_PER_IP:-}
       # Caddy's fixed edge address plus the proxies in front of Caddy.

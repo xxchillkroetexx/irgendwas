@@ -12,6 +12,9 @@ use ipnet::IpNet;
 use crate::i18n::Locale;
 use crate::tz::DEFAULT_TIMEZONE;
 
+/// Default rolling session lifetime: 90 days, including installed PWAs.
+pub const DEFAULT_INACTIVITY_LIMIT: u64 = 90 * 24 * 60 * 60;
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
     #[error("environment variable {0} is required")]
@@ -33,7 +36,7 @@ pub struct Config {
     pub app_locale: Locale,
     /// Zone for displaying and entering dates (`APP_TIMEZONE`).
     pub app_timezone: Tz,
-    /// Session inactivity timeout in seconds (`INACTIVITY_LIMIT`).
+    /// Rolling session inactivity timeout in seconds (`INACTIVITY_LIMIT`, default 90 days).
     pub inactivity_limit: u64,
     /// Reverse proxies whose `X-Forwarded-For` is trusted (`TRUSTED_PROXIES_CIDR`,
     /// separated by spaces and/or commas; spaces are what Caddy's `trusted_proxies` takes).
@@ -123,7 +126,7 @@ impl Config {
         };
 
         let inactivity_limit = match get("INACTIVITY_LIMIT") {
-            None => 1200,
+            None => DEFAULT_INACTIVITY_LIMIT,
             Some(v) => v.parse::<u64>().ok().filter(|n| *n > 0).ok_or_else(|| {
                 invalid(
                     "INACTIVITY_LIMIT",

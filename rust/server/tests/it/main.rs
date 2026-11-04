@@ -60,3 +60,4 @@ mod wishlists_security;
 mod wishlists_view;
 
 mod wishlist_copy;
+mod session_policy;

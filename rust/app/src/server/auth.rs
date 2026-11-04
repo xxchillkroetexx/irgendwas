@@ -115,7 +115,12 @@ pub async fn login_with_epoch(session: &Session, user_id: i32, epoch: u32) -> Re
 /// Ends the login: deletes the session, keeping only the chosen locale (under a new id).
 pub async fn logout(session: &Session) -> Result<(), AppError> {
     let locale: Option<String> = session.get(LOCALE_KEY).await.ok().flatten();
-    session.flush().await?;
+    // flush() retains the cached record's id in tower-sessions. The logout flash
+    // would then recreate that id as an anonymous session. Cycle first (loading
+    // the record fallibly), then clear the cached data: retained locale/flash
+    // gets a genuinely fresh id, and a failed initial load cannot retain auth.
+    session.cycle_id().await?;
+    session.clear().await;
     if let Some(locale) = locale {
         session.insert(LOCALE_KEY, locale).await?;
     }
