@@ -43,6 +43,8 @@ test("installation help is linked, localized and available without JavaScript", 
   await expect(page.getByRole("heading", { level: 2 })).toHaveText(["iPhone und iPad", "Android", "Desktop"]);
   await expect(page.getByText(/Zum Home-Bildschirm und Hinzufügen/)).toBeVisible();
   await expect(page.getByText(/Eine Internetverbindung wird benötigt/)).toBeVisible();
+  await expect(page.locator("main")).toContainText("Legen Sie Wichteln");
+  await expect(page.locator("main")).not.toContainText("Secret Santa");
   await context.close();
 });
 
