@@ -1,4 +1,5 @@
-//! Password hashing: argon2id only (fresh start, no legacy PHP bcrypt hashes).
+//! Password hashing: argon2id only. The PHP bcrypt hashes kept by the data migration
+//! (`scripts/migrate-php-data.sh`) never verify; those users reset their password.
 //!
 //! [`needs_rehash`] lets the login flow upgrade hashes when the argon2 parameters change:
 //! after a successful [`verify`], store a fresh [`hash`] if it returns true.
@@ -24,14 +25,20 @@ pub fn hash(password: &str) -> Result<String, PasswordError> {
         .map_err(|e| PasswordError(e.to_string()))
 }
 
-/// Checks `password` against a stored argon2 PHC hash. Malformed hashes never verify.
+/// Checks `password` against a stored argon2 PHC hash. Anything else (malformed, or a
+/// migrated PHP bcrypt hash) never verifies but still costs one argon2id run against the
+/// dummy hash: otherwise such an account would answer faster than an unknown email (which
+/// is checked against the dummy hash too) and give itself away.
 pub fn verify(password: &str, stored_hash: &str) -> bool {
     match PasswordHash::new(stored_hash) {
         // The parameters are taken from the hash itself.
-        Ok(parsed) => argon2()
+        Ok(parsed) if Algorithm::new(parsed.algorithm.as_str()).is_ok() => argon2()
             .verify_password(password.as_bytes(), &parsed)
             .is_ok(),
-        Err(_) => false,
+        _ => {
+            let _ = verify(password, &DUMMY_HASH);
+            false
+        }
     }
 }
 

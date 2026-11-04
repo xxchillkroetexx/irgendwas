@@ -5,8 +5,9 @@ use leptos::prelude::*;
 use crate::error::AppError;
 use crate::i18n::use_i18n;
 
+/// Sets the HTTP status of the page being rendered (SSR only; a no-op on the client).
 #[cfg(feature = "ssr")]
-fn set_status(code: u16) {
+pub(crate) fn set_status(code: u16) {
     if let (Some(res), Ok(status)) = (
         use_context::<leptos_axum::ResponseOptions>(),
         axum::http::StatusCode::from_u16(code),
@@ -16,7 +17,7 @@ fn set_status(code: u16) {
 }
 
 #[cfg(not(feature = "ssr"))]
-fn set_status(_code: u16) {}
+pub(crate) fn set_status(_code: u16) {}
 
 #[component]
 pub fn NotFound() -> impl IntoView {
@@ -26,6 +27,34 @@ pub fn NotFound() -> impl IntoView {
         <div class="text-center py-5">
             <h1 class="display-5">{i18n.t("error.notFound.title")}</h1>
             <p class="lead">{i18n.t("error.notFound.message")}</p>
+            <a href="/" class="btn btn-primary">{i18n.t("error.backHome")}</a>
+        </div>
+    }
+}
+
+/// 403 page: logged in, but not allowed (e.g. a member on an admin-only page).
+#[component]
+pub fn Forbidden() -> impl IntoView {
+    set_status(403);
+    let i18n = use_i18n();
+    view! {
+        <div class="text-center py-5">
+            <h1 class="display-5">{i18n.t("error.generic.title")}</h1>
+            <p class="lead">{i18n.t("error.forbidden")}</p>
+            <a href="/" class="btn btn-primary">{i18n.t("error.backHome")}</a>
+        </div>
+    }
+}
+
+/// 500 page for an unexpected server fn error (details are only logged on the server).
+#[component]
+pub fn ServerError() -> impl IntoView {
+    set_status(500);
+    let i18n = use_i18n();
+    view! {
+        <div class="text-center py-5">
+            <h1 class="display-5">{i18n.t("error.generic.title")}</h1>
+            <p class="lead">{i18n.t("error.generic.message")}</p>
             <a href="/" class="btn btn-primary">{i18n.t("error.backHome")}</a>
         </div>
     }

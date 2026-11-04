@@ -33,6 +33,27 @@ pub const DASHBOARD_PATH: &str = "/user/dashboard";
 /// The profile page (account slice).
 pub const PROFILE_PATH: &str = "/user/profile";
 
+/// The page of a group.
+pub fn group_path(group_id: i32) -> String {
+    format!("/groups/{group_id}")
+}
+
+/// The edit page of the caller's own wishlist in a group (wishlists slice).
+pub fn wishlist_edit_path(group_id: i32) -> String {
+    format!("/groups/{group_id}/wishlist")
+}
+
+/// The read-only view of a member's wishlist in a group (wishlists slice; the draw slice
+/// links here from the assignment cards).
+pub fn wishlist_view_path(group_id: i32, user_id: i32) -> String {
+    format!("/groups/{group_id}/wishlist/{user_id}")
+}
+
+/// The caller's exclusion rules in a group (exclusions slice).
+pub fn exclusions_path(group_id: i32) -> String {
+    format!("/groups/{group_id}/exclusions")
+}
+
 /// [`safe_return_path`] plus: not `/auth` and not under `/auth/`, so a redirect never loops
 /// into an auth page or a server fn endpoint (spec: auth, `safe_next`). `None` means the
 /// caller falls back to [`DASHBOARD_PATH`].

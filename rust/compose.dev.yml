@@ -24,6 +24,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Throwaway server for `#[sqlx::test]` (DATABASE_URL points here): every test creates a
+  # database and runs all migrations, which on a disk-backed volume made the suite take
+  # 8+ minutes (DDL creates/rebuilds files). Data lives in RAM and is lost on restart;
+  # durability flags are off. Dev/test only — never copy these settings to compose.yml.
+  mariadb-test:
+    image: docker.io/library/mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: devrootpassword
+      MARIADB_DATABASE: irgendwas_db
+      TZ: Europe/Berlin
+    command:
+      - "--default-time-zone=Europe/Berlin"
+      - "--innodb-flush-log-at-trx-commit=0"
+      - "--innodb-doublewrite=0"
+      - "--innodb-flush-method=nosync"
+    ports:
+      - "127.0.0.1:3308:3306"
+    tmpfs:
+      - /var/lib/mysql:rw,size=4g
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   mailpit:
     image: docker.io/axllent/mailpit:latest
     ports:

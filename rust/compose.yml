@@ -1,10 +1,11 @@
-# Production stack: Caddy (edge or behind another proxy) → app → MariaDB.
+# Production stack: Caddy → app → MariaDB, behind Traefik on the host (recommended, see
+# deploy/traefik/) or with Caddy as the TLS edge (add deploy/caddy-edge/compose.yml).
 #
 #   cp compose.env.example prod.env    # fill in secrets, APP_URL, mail, proxy settings
 #   podman compose --env-file prod.env -f compose.yml up -d --build
 #
 # Always pass --env-file: without it compose reads ./.env, which is the *development* config.
-# See README.md ("Production") for the edge and behind-a-proxy setups.
+# See README.md ("Production") for the setups.
 name: irgendwas-rust
 
 services:
@@ -14,16 +15,17 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    # Plain HTTP only, on loopback by default (Traefik on the host connects to it). Caddy as
+    # the TLS edge: HTTP_BIND=0.0.0.0, HTTP_PORT=80 plus deploy/caddy-edge/compose.yml (443).
     ports:
-      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
-      - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
-      - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp"
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
     environment:
       CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
       CADDY_AUTO_HTTPS: ${CADDY_AUTO_HTTPS:-off}
-      # Only the proxies in front of Caddy (space-separated; empty = Caddy is the edge).
-      # Never Caddy's own address: rootless podman forwards published ports so that clients
-      # appear to come from it, and trusting it would let clients forge X-Forwarded-For.
+      # Only the proxies in front of Caddy (space-separated; empty = Caddy is the edge), as
+      # Caddy sees them. Rootless podman forwards published ports so that every client
+      # appears as Caddy's own address: trust that (172.31.250.10/32) only while the port is
+      # bound to 127.0.0.1, where nothing but host-local processes (Traefik) can reach it.
       TRUSTED_PROXIES_CIDR: ${TRUSTED_PROXIES_CIDR:-}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -48,6 +50,8 @@ services:
       APP_LOCALE: ${APP_LOCALE:-en}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
       INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-7776000}
+      # Registrations + password resets per client IP and hour; empty = app default (20).
+      RATE_LIMIT_MAIL_PER_IP: ${RATE_LIMIT_MAIL_PER_IP:-}
       # Caddy's fixed edge address plus the proxies in front of Caddy.
       TRUSTED_PROXIES_CIDR: "${CADDY_IP:-172.31.250.10}/32 ${TRUSTED_PROXIES_CIDR:-}"
       DB_HOST: mariadb
