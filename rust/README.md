@@ -54,8 +54,8 @@ cargo leptos serve      # build once and serve
 curl http://127.0.0.1:3000/health   # {"database":"ok","status":"ok"}
 ```
 
-The server loads `./.env` from the current directory only (it never walks up, because the
-PHP app's `../.env` is not valid strict dotenv). Real environment variables win.
+The server loads `./.env` from the current directory only (it never walks up: a `../.env` left
+over from the PHP app is not valid strict dotenv). Real environment variables win.
 Migrations run on startup.
 
 ## Tests

@@ -14,7 +14,7 @@ Rewrite the PHP Secret Santa app as a Leptos full-stack (SSR + hydration) Rust a
 ## Layout
 
 ```
-rust/                    # cargo-leptos workspace (PHP keeps src/ and public/ until cutover)
+rust/                    # cargo-leptos workspace (the PHP app was removed from dev 2026-11-04; branch dev_php)
   Cargo.toml             # workspace
   app/                   # shared: components, pages, server fns; app/src/server/ = ssr-only services
   frontend/              # hydrate entry (wasm)
@@ -206,3 +206,4 @@ Append one line per decision: `YYYY-MM-DD | slice | decision | why`.
 - 2026-11-04 | ci | check runs the two test builds of `cargo leptos test` one after the other (`cargo test -p server`, then `-p frontend --lib --target-dir target/front`); e2e builds `--frontend-only`, then `--server-only`, then `end-to-end` (up to date) | run 41: rustc was SIGKILLed (out of memory) compiling the app crate for ssr and hydrate at the same time
 - 2026-11-04 | ci | The CI target cache is the named volume `irgendwas-ci-cache` (runner `valid_volumes`), not the host path `/var/cache/irgendwas-ci` | rootless podman on the Rocky 10 runner could not see/create the host directory ("mkdir /var/cache/irgendwas-ci: permission denied"); a named volume needs no host directory, ownership or SELinux label
 - 2026-11-04 | ci | The runner is forgejo-runner 13 on Docker-in-Docker (rootful); the image job's buildah needs `--security-opt seccomp=unconfined`, set as `container.options` in runner-config.yml (applies to every job) because the runner ignores `--security-opt` in a workflow's `options:` | reproduced locally with docker:dind + forgejo-runner 13 `exec`: workflow option → Seccomp 2, buildah fails; runner option → Seccomp 0, build succeeds; full release image built under dind (79 MB)
+- 2026-11-04 | all | The PHP app (`src/`, `public/`, `docker/`, `composer.json`, `docker-compose.yml`, `.env.template`, its tools) is removed from `dev` before cutover; it stays on the branch `dev_php`, and specs/agents read it with `git show origin/dev_php:<path>`. The production cutover (Phase 4) still runs the PHP image and volume until the switch. `rust/` stays where it is for now | a clean working tree without the reference code; nothing in `rust/` or CI depends on it (the data migration reads only the archived data volume)

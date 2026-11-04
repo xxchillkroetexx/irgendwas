@@ -11,11 +11,11 @@ This is a **free redesign that keeps the production data**. Your job is to work 
 
 ## Process
 
-1. Read every PHP file in the slice's scope, including its views, the repositories/models it calls, the related `src/Localization/*/messages.json` keys and the tables in `src/Config/schema.sql`. Follow calls; don't stop at the controller.
+1. The PHP code is no longer in the working tree: read it from the branch `dev_php` (`git ls-tree -r --name-only origin/dev_php`, `git show origin/dev_php:<path>`). Read every PHP file in the slice's scope, including its views, the repositories/models it calls, the related `src/Localization/*/messages.json` keys and the tables in `src/Config/schema.sql`. Follow calls; don't stop at the controller.
 2. Write down the current behaviour: every route, every input and its validation, every outcome (redirects, flash messages, emails, DB writes) and every authorization check, including the missing ones.
 3. Flag bugs, security problems and odd behaviour.
 4. Propose the redesigned behaviour. Prefer simple. Keep data compatible: any schema change must be a forward migration that preserves existing rows.
-5. Write the spec using the template below. Use Bash only for read-only inspection (`grep`, `git log`); write only the spec file.
+5. Write the spec using the template below. Use Bash only for read-only inspection (`grep`, `git log`, `git show`, `git grep … origin/dev_php`); write only the spec file.
 
 ## Template: `docs/rewrite/specs/<slice>.md`
 

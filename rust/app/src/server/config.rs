@@ -251,7 +251,7 @@ pub fn normalize_origin(value: &str) -> Option<String> {
 }
 
 /// Loads `./.env` (current directory only) if it exists. Never walks up the directory tree:
-/// the repository root `.env` belongs to the PHP app and is not valid strict dotenv.
+/// a `.env` at the repository root (e.g. left over from the PHP app) is not valid strict dotenv.
 /// Variables already present in the environment win.
 pub fn load_dotenv() -> Result<bool, dotenvy::Error> {
     let path = Path::new(".env");

@@ -1,11 +1,11 @@
 # irgendwas: Secret Santa
 
-The PHP app (`src/`, `public/`, `docker/`) is being rewritten in Rust/Leptos under `rust/`; work happens on `dev` (`rust_rewrite` was merged in PR #55; the PHP `dev` is `dev_php`).
+The app is a Rust/Leptos rewrite of a PHP app and lives under `rust/`; work happens on `dev` (`rust_rewrite` was merged in PR #55). The PHP code was removed from `dev`; it is kept on the branch `dev_php`.
 Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker, risks and decision log.
 
 ## Rules for the rewrite
 
-- PHP code is a **reference only**. Do not modify it; it is deleted at cutover.
+- The PHP code is a **reference only**: read it with `git show origin/dev_php:<path>` (e.g. `src/Config/schema.sql`); never restore it to `dev`.
 - Implement from approved specs in `docs/rewrite/specs/`. If a spec is `status: draft` or missing, stop and say so.
 - The PHP data is migrated once at cutover by `rust/scripts/migrate-php-data.sh` (it inserts named columns into the current schema); otherwise the PHP schema is only a reference. A new migration that adds a NOT NULL column without a default, or changes what a migrated row must look like, also updates that script. Schema changes are new SQLx migrations in `rust/migrations/` (don't edit one that's already committed; dev DBs would break). Migration numbers in specs are placeholders: use the next free number at implementation time.
 - Name columns explicitly in queries; no `SELECT *`.
@@ -30,7 +30,7 @@ Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker
 - Nothing time-dependent or random during render (hydration). Locale and time zone come from `<html lang>` / `data-timezone`.
 - Tests: POST through `crate::common::post(...)` (it sends the Origin; a POST without one gets 403). Mail tests send to `Mailpit::unique_email()` (one Mailpit is shared by parallel tests). In e2e, call `waitForHydration(page)` before interacting and `collectPageErrors(page)` to catch hydration panics.
 - Mail: `state()?.mailer.send(Message { to, subject, html, text })`; escape every interpolated value with `escape_html`; await `handle.outcome()` only when delivery status matters.
-- `rust/.env` must exist (copy `.env.example`); otherwise cargo-leptos picks up the PHP `.env` at the repo root.
+- `rust/.env` must exist (copy `.env.example`); otherwise cargo-leptos picks up a `.env` at the repo root (e.g. a leftover of the PHP app).
 
 ## Commands (run from `rust/`)
 
