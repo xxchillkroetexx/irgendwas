@@ -1,5 +1,5 @@
 #!/bin/sh
-# CI: makes rust/target a symlink to a persistent directory on the runner host (see the
+# CI: makes rust/target a symlink to a persistent directory in an optional runner volume (see the
 # header of .forgejo/workflows/rust.yml). Cargo locks the target dir, so two runs of the
 # same job wait for each other instead of corrupting it. Registry crates are reused by
 # version; workspace crates rebuild because the checkout gives their sources new mtimes.
