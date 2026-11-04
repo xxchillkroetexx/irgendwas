@@ -1,6 +1,6 @@
 # irgendwas: Secret Santa
 
-The PHP app (`src/`, `public/`, `docker/`) is being rewritten in Rust/Leptos under `rust/` on branch `rust_rewrite`.
+The PHP app (`src/`, `public/`, `docker/`) is being rewritten in Rust/Leptos under `rust/`; work happens on `dev` (`rust_rewrite` was merged in PR #55; the PHP `dev` is `dev_php`).
 Read `docs/rewrite/PLAN.md` first: it holds the decisions, phases, slice tracker, risks and decision log.
 
 ## Rules for the rewrite

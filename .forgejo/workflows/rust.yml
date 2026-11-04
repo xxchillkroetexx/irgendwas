@@ -186,9 +186,12 @@ jobs:
       image: quay.io/buildah/stable:latest
       # The runner's engine is Docker (dind): its default seccomp profile blocks the
       # unshare(CLONE_NEWUSER) buildah needs without CAP_SYS_ADMIN ("Error during
-      # unshare(CLONE_NEWUSER): Operation not permitted", run 79). Unconfined seccomp
-      # lets buildah make its own unprivileged user namespace; no capabilities added.
-      options: --security-opt seccomp=unconfined
+      # unshare(CLONE_NEWUSER): Operation not permitted", runs 79, 84). forgejo-runner 13
+      # ignores --security-opt in a job's `options:`, so it goes in runner-config.yml:
+      #   container:
+      #     options: "--security-opt seccomp=unconfined"
+      # Unconfined seccomp lets buildah make its own unprivileged user namespace; no
+      # capabilities are added.
     env:
       BUILDAH_ISOLATION: chroot
       STORAGE_DRIVER: vfs
