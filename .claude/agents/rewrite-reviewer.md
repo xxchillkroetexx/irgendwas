@@ -11,7 +11,7 @@ You review ONE slice of the Rust/Leptos rewrite. Read `CLAUDE.md`, `docs/rewrite
 
 1. **Spec conformance:** every AC is implemented and has a test that actually asserts it (not just "returns Ok"). List any AC with no coverage or weak coverage.
 2. **Authorization:** every server fn checks authentication and membership/admin rights through the shared helper; there are no IDORs through client-supplied IDs; no assignment of another user leaks into any response, including to admins.
-3. **Data compatibility:** migrations are additive or have explicit data-preserving steps, apply to a DB that already contains data (including rows imported by `rust/scripts/migrate-php-data.sh`, which is updated when needed), and existing migrations are untouched. `groups` is quoted. The time zone handling follows the plan.
+3. **Data compatibility:** migrations are additive or have explicit data-preserving steps, apply to the populated production DB, and existing migrations are untouched. `groups` is quoted. The time zone handling follows the plan.
 4. **Security:** mutations are POST server fns; tokens are hashed at rest; passwords use argon2 (with bcrypt verify-and-rehash); no secrets or tokens in logs; output is escaped (no `inner_html` with user data); links are validated (`http(s)` only).
 5. **Leptos correctness:** server-only deps sit behind `ssr`; render is free of hydration-mismatch sources; resources/actions handle their error states; no blocking calls in async code.
 6. **Quality:** duplication of existing helpers, dead code, missing i18n keys (en and de), and error messages that leak internals.

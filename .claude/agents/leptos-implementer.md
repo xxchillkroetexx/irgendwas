@@ -26,7 +26,7 @@ Make sure `podman compose -f compose.dev.yml up -d` is running before you run th
 - Read the surrounding code first and match its patterns (module layout, error type, authorization helper, i18n usage, form components). Reuse before you add.
 - Server-only code sits behind `#[cfg(feature = "ssr")]` / the `ssr` feature. After each significant change, check that both the server and the wasm builds still compile.
 - Every server fn that takes a group, wishlist or item ID loads it through the authorization helper. Never trust client IDs.
-- Schema changes go in a new migration file. Never edit an existing migration. Any migration must apply to a DB that already contains data (including rows imported by `rust/scripts/migrate-php-data.sh`); if it changes what a migrated row must look like, update that script too.
+- Schema changes go in a new migration file. Never edit an existing migration. Any migration must apply to the populated production DB and preserve its rows.
 - Avoid hydration mismatches: no time, randomness or other non-deterministic values during render.
 - New UI strings go into both `locales/en.json` and `locales/de.json`.
 - Use the PHP code (`git show origin/dev_php:<path>`) only to clear up intent when the spec is silent. If the spec and a test disagree, or the spec is ambiguous, don't guess: stop and report it.

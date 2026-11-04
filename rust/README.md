@@ -24,6 +24,7 @@ compose.env.example template for the production env file
 caddy/Caddyfile     Caddy config for compose.yml
 deploy/traefik/     production edge: Traefik (host network, file provider) in front of Caddy
 deploy/caddy-edge/  overlay for the alternative "Caddy is the TLS edge" (publishes 443)
+deploy/traefik-container/  the production stack since the cutover (Traefik container → app)
 deploy/rehearsal/   overlays, nginx and Traefik configs for the local release rehearsal
 scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh (CI), rehearsal.sh
                     (see "Release rehearsal"), migrate-php-data.sh (see "Migrating the PHP data")
@@ -143,7 +144,13 @@ together and regenerate the lockfile in the container:
 
 ## Production
 
-Recommended topology (decision log 2026-11-02):
+**Running in production since the cutover (2026-11-04):** `deploy/traefik-container/compose.yml`,
+a Portainer stack where an existing Traefik container on the Docker network `proxynet`
+routes straight to `app:3000`, without Caddy; Traefik middlewares add the security headers
+and compression. Its header comment lists what Traefik and `TRUSTED_PROXIES_CIDR` need.
+The sections below describe the rehearsed setups with Caddy.
+
+Recommended topology for a fresh host (decision log 2026-11-02):
 
 ```
 client ──https──▶ Traefik (host network, :80/:443, Let's Encrypt, file provider)
@@ -196,6 +203,7 @@ not published; networks `edge` and `database`), `mariadb` 11.8 (internal network
 
 ### Migrating the PHP data
 
+Done at the cutover on 2026-11-04; kept for reference (not updated for later migrations).
 One-off, at cutover. From the PHP host's data volume (`mariadb_data`, archived as a tarball
 or as a directory) to an SQL file with the data in the Rust schema:
 

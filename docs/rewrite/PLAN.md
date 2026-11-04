@@ -50,10 +50,10 @@ docs/rewrite/
 ### Phase 2: Feature slices (pipeline: `/rewrite-slice <slice>`)
 Run one slice at a time, in tracker order. Each slice runs spec (approved) → acceptance tests → implementation → gate → review → fix loop.
 
-### Phase 3: Release rehearsal
+### Phase 3: Release rehearsal. **Done 2026-11-02** (local, `rehearsal-2026-11.md`)
 Deploy the production compose (Caddy + app + fresh MariaDB) on a staging host, with and without an outer reverse proxy (Traefik or nginx) in front of Caddy. Run the e2e smoke suite against it, and check that the client IP and HTTPS detection work in both setups.
 
-### Phase 4: Cutover
+### Phase 4: Cutover. **Done 2026-11-04** (production runs the Rust app with the migrated data)
 Stop PHP → archive its data volume → `scripts/migrate-php-data.sh` on the archive → deploy Rust with a new, empty database (first start runs the migrations) → import the generated SQL before opening the route → smoke test (log in via "forgot password" with a migrated account). Tell users to reset their password. Keep the PHP image and its DB volume untouched for a while as a fallback.
 
 ## Slice tracker
@@ -207,3 +207,6 @@ Append one line per decision: `YYYY-MM-DD | slice | decision | why`.
 - 2026-11-04 | ci | The CI target cache is the named volume `irgendwas-ci-cache` (runner `valid_volumes`), not the host path `/var/cache/irgendwas-ci` | rootless podman on the Rocky 10 runner could not see/create the host directory ("mkdir /var/cache/irgendwas-ci: permission denied"); a named volume needs no host directory, ownership or SELinux label
 - 2026-11-04 | ci | The runner is forgejo-runner 13 on Docker-in-Docker (rootful); the image job's buildah needs `--security-opt seccomp=unconfined`, set as `container.options` in runner-config.yml (applies to every job) because the runner ignores `--security-opt` in a workflow's `options:` | reproduced locally with docker:dind + forgejo-runner 13 `exec`: workflow option → Seccomp 2, buildah fails; runner option → Seccomp 0, build succeeds; full release image built under dind (79 MB)
 - 2026-11-04 | all | The PHP app (`src/`, `public/`, `docker/`, `composer.json`, `docker-compose.yml`, `.env.template`, its tools) is removed from `dev` before cutover; it stays on the branch `dev_php`, and specs/agents read it with `git show origin/dev_php:<path>`. The production cutover (Phase 4) still runs the PHP image and volume until the switch. `rust/` stays where it is for now | a clean working tree without the reference code; nothing in `rust/` or CI depends on it (the data migration reads only the archived data volume)
+- 2026-11-04 | deploy | **Cutover done.** Production (Portainer stack `irgendwas`) runs the CI image `:dev` with the migrated PHP data in a new MariaDB 11.8 volume; the PHP image and its 12.0 data volume stay as a fallback. Topology differs from the rehearsed one: the existing Traefik *container* on the Docker network `proxynet` routes straight to `app:3000` (no Caddy); security headers and compression are Traefik middlewares; `TRUSTED_PROXIES_CIDR` = Traefik's address on `proxynet`. Template: `rust/deploy/traefik-container/compose.yml` | the host already runs Traefik for other services; one proxy less
+- 2026-11-04 | deploy | MariaDB stays pinned to 11.8 (LTS, supported until 2028), never `latest` | the PHP stack's `mariadb:latest` drifted to 12.0, a short-term release; the next LTS (12.3) can be an in-place upgrade, a downgrade is impossible
+- 2026-11-04 | all | After the cutover, `migrate-php-data.sh` is history (kept for reference, no longer kept in sync with new migrations); every migration must apply to the populated production database and preserve its rows | the data now lives in the Rust schema
