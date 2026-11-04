@@ -1,0 +1,12 @@
+{
+  "name": "irgendwas-end2end",
+  "private": true,
+  "description": "Playwright acceptance tests. Run from the repository root with `cargo leptos end-to-end` (uses run.sh, which runs Playwright in its container image).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "^24.0.0"
+  }
+}

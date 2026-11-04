@@ -1,0 +1,13 @@
+# Keep the build context small and free of secrets: only what the build needs.
+target/
+end2end/
+.git/
+.claude/
+.agents/
+.forgejo/
+docs/
+*.md
+_*
+.env
+*.env
+!.env.example
