@@ -1,9 +1,9 @@
 //! Issue #58: receiving is read-only for wishlists and drafts survive login safely.
 use crate::common;
 
+use crate::common::auth::{Client, Opts, router, urlencode};
 use app::share_api::{ShareDraft, ShareInput, prepare_share};
 use app::test_support::{ALICE_PASSWORD, create_alice, create_group};
-use crate::common::auth::{Client, Opts, router, urlencode};
 use sqlx::MySqlPool;
 
 #[test]
@@ -355,11 +355,17 @@ async fn shared_description_cannot_escape_the_review_textarea(pool: MySqlPool) {
     create_group(&pool, alice, "Family").await;
     let app = router(&pool, &[], Opts::default());
     let mut client = Client::new(&app);
-    client.login("alice@example.test", ALICE_PASSWORD).await.ok();
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
     let attack = "</textarea><script id=share-injected>alert(1)</script>";
     let review = receive(&mut client, "Safe title", attack).await;
     let page = client.get(&review).await;
     assert_eq!(page.status.as_u16(), 200);
-    assert!(page.body.contains("&lt;/textarea&gt;&lt;script id=share-injected&gt;"));
+    assert!(
+        page.body
+            .contains("&lt;/textarea&gt;&lt;script id=share-injected&gt;")
+    );
     assert!(!page.body.contains("<script id=share-injected>"));
 }

@@ -4,8 +4,8 @@ use tower_sessions::Session;
 
 use super::{auth, respond};
 use crate::AppError;
-use crate::wishlists_api::{WishlistError, WishlistField, WishlistFieldError};
 use crate::share_api::{ShareDraft, ShareInput, prepare_share};
+use crate::wishlists_api::{WishlistError, WishlistField, WishlistFieldError};
 
 const DRAFTS_KEY: &str = "shared_link_drafts";
 const MAX_PENDING: usize = 5;
@@ -74,11 +74,21 @@ pub async fn add_wish(
 ) -> Result<(), WishlistError> {
     let user = auth::current_user().await.map_err(mutation_error)?;
     let session = auth::session().await.map_err(mutation_error)?;
-    if user.is_some() && !id.is_empty() && !drafts(&session).await.map_err(mutation_error)?.iter().any(|p| p.id == id) {
+    if user.is_some()
+        && !id.is_empty()
+        && !drafts(&session)
+            .await
+            .map_err(mutation_error)?
+            .iter()
+            .any(|p| p.id == id)
+    {
         return Err(WishlistError::NotFound);
     }
     if title.len() + description.len() + link.len() > MAX_SHARE_BYTES {
-        return Err(WishlistError::Validation(vec![(WishlistField::Description, WishlistFieldError::DescriptionTooLong)]));
+        return Err(WishlistError::Validation(vec![(
+            WishlistField::Description,
+            WishlistFieldError::DescriptionTooLong,
+        )]));
     }
     let id = if id.is_empty() || user.is_none() {
         super::token::generate().map_err(mutation_error)?
@@ -95,7 +105,8 @@ pub async fn add_wish(
             link: link.clone(),
         },
     )
-    .await.map_err(mutation_error)?;
+    .await
+    .map_err(mutation_error)?;
     if user.is_none() {
         respond::redirect_document(&crate::paths::login_url(&review_path(&id)));
         return if respond::is_plain_form_post() {
@@ -109,14 +120,19 @@ pub async fn add_wish(
         Ok(_) => {
             let mut pending = drafts(&session).await.map_err(mutation_error)?;
             pending.retain(|p| p.id != id);
-            session.insert(DRAFTS_KEY, pending).await.map_err(AppError::from).map_err(mutation_error)?;
+            session
+                .insert(DRAFTS_KEY, pending)
+                .await
+                .map_err(AppError::from)
+                .map_err(mutation_error)?;
             let target = format!("/groups/{group_id}/wishlist");
             if respond::is_plain_form_post() {
                 super::flash::push(
                     &session,
                     crate::flash::FlashMessage::success("flash.success.item_added"),
                 )
-                .await.map_err(mutation_error)?;
+                .await
+                .map_err(mutation_error)?;
                 respond::redirect_document(&target);
             } else {
                 leptos_axum::redirect(&target);
@@ -125,11 +141,9 @@ pub async fn add_wish(
         }
         Err(error) => {
             if respond::is_plain_form_post() {
-                super::flash::push(
-                    &session,
-                    error.flash(),
-                )
-                .await.map_err(mutation_error)?;
+                super::flash::push(&session, error.flash())
+                    .await
+                    .map_err(mutation_error)?;
                 respond::redirect_document(&review_path(&id));
                 Ok(())
             } else {

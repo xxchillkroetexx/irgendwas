@@ -23,6 +23,7 @@ pub struct ShareDraft {
 
 /// Apps often put the product URL in `text` on Android instead of `url`.
 /// Never interpret received content as HTML, script or a request to fetch a product.
+#[cfg(feature = "ssr")]
 pub fn prepare_share(input: ShareInput) -> ShareDraft {
     let link = [&input.url, &input.text, &input.title]
         .into_iter()

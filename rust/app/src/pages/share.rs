@@ -4,9 +4,9 @@ use leptos_router::hooks::use_query_map;
 
 use crate::auth::get_current_user;
 use crate::components::{RequireUser, TextArea};
+use crate::groups_api::{GroupError, list_my_groups};
 use crate::i18n::use_i18n;
 use crate::share_api::{ShareDraft, get_shared_draft};
-use crate::groups_api::{GroupError, list_my_groups};
 
 #[component]
 pub fn SharedWishPage() -> impl IntoView {
