@@ -3,6 +3,14 @@
 Leptos 0.8 (SSR + hydration) on Axum, built with `cargo-leptos`, MariaDB via SQLx.
 See `../docs/rewrite/PLAN.md` for decisions and the slice tracker.
 
+For a minimal Docker deployment behind an existing reverse proxy, use
+[`compose.proxy.yml` and the German deployment guide](../docs/deployment.md).
+This runs only the app and MariaDB; the Caddy/Traefik setups below remain available.
+`sh scripts/check-deployment.sh` validates the Compose configuration without a daemon.
+`sh scripts/smoke-deployment.sh` builds and exercises a throwaway production stack
+(requires Docker Compose v2 and curl), including assets, cookies, CSRF, backup/restore
+and database persistence. It removes only its own test project's containers and volume.
+
 ## Layout
 
 ```

@@ -1,5 +1,10 @@
 # Secret Santa Web Application
 
+Für den aktuellen **Rust-Rewrite**: [Deployment mit Docker hinter einem vorhandenen
+Reverse Proxy](docs/deployment.md). Die folgende Dokumentation beschreibt die ältere
+PHP-Anwendung; Entwicklung und weitere Betriebsvarianten des Rewrites stehen in
+[rust/README.md](rust/README.md).
+
 A web application for organizing Secret Santa gift exchanges. This application allows users to create groups, invite participants, create wishlists, and automatically assign gift givers and receivers.
 
 ## Features

@@ -1,0 +1,81 @@
+# Minimal production stack behind an existing reverse proxy. See ../docs/deployment.md.
+# docker compose --env-file prod.env -f compose.proxy.yml up -d --build --wait
+name: irgendwas
+
+services:
+  app:
+    image: ${APP_IMAGE:-localhost/irgendwas-rust:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-2}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:3000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      APP_URL: ${APP_URL:?set APP_URL (public URL, e.g. https://wichteln.example)}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_LOCALE: ${APP_LOCALE:-en}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Berlin}
+      INACTIVITY_LIMIT: ${INACTIVITY_LIMIT:-1200}
+      # Registrations + password resets per client IP and hour; empty = app default (20).
+      RATE_LIMIT_MAIL_PER_IP: ${RATE_LIMIT_MAIL_PER_IP:-}
+      TRUSTED_PROXIES_CIDR: ${TRUSTED_PROXIES_CIDR:-}
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      DB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      DB_USERNAME: ${DB_USERNAME:-irgendjemand}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MAIL_HOST: ${MAIL_HOST:-smtp.example.com}
+      MAIL_PORT: ${MAIL_PORT:-465}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-ssl}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Secret Santa}
+      RUST_LOG: ${RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "/app/server", "--healthcheck"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - proxy
+      - database
+
+  mariadb:
+    image: docker.io/library/mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE:-irgendwas_db}
+      MARIADB_USER: ${DB_USERNAME:-irgendjemand}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - database
+
+networks:
+  # Outbound SMTP and incoming HTTP; the fixed gateway can be trusted explicitly.
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:-172.31.251.0/24}
+          gateway: ${PROXY_GATEWAY:-172.31.251.1}
+  database:
+    internal: true
+
+volumes:
+  mariadb_data:

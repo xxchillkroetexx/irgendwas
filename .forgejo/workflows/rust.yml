@@ -11,10 +11,12 @@ on:
   push:
     paths:
       - "rust/**"
+      - "docs/deployment.md"
       - ".forgejo/workflows/rust.yml"
   pull_request:
     paths:
       - "rust/**"
+      - "docs/deployment.md"
       - ".forgejo/workflows/rust.yml"
 
 env:
@@ -32,6 +34,18 @@ env:
   MAILPIT_SMTP_PORT: "1025"
 
 jobs:
+  deployment-config:
+    runs-on: docker
+    container:
+      image: docker.io/library/docker:28-cli
+    steps:
+      - name: Install checkout and validation tools
+        run: apk add --no-cache git nodejs python3
+      - uses: actions/checkout@v4
+      - name: Validate deployment configuration and required secrets
+        working-directory: rust
+        run: sh scripts/check-deployment.sh
+
   check:
     runs-on: docker
     container:
@@ -163,7 +177,7 @@ jobs:
   # REGISTRY_TOKEN (an access token with package write scope).
   image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-    needs: [check, e2e]
+    needs: [check, e2e, deployment-config]
     runs-on: docker
     container:
       image: quay.io/buildah/stable:latest
