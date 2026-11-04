@@ -12,14 +12,13 @@ leptos_router.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-url = "2"
 chrono.workspace = true
 chrono-tz.workspace = true
 
 # server-only (enabled by the `ssr` feature)
 leptos_axum = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["sync"] }
 sqlx = { workspace = true, optional = true }
 tower-sessions = { workspace = true, optional = true }
 argon2 = { workspace = true, optional = true }
@@ -30,15 +29,19 @@ lettre = { workspace = true, optional = true }
 dotenvy = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 ipnet = { version = "2", optional = true }
+rand = { workspace = true, optional = true }
+# wishlist links: parsed and normalised on the server (WHATWG URL rules)
+url = { version = "2.5", optional = true }
 # test-support only: Mailpit API client (plain HTTP, no TLS stack)
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "query"], optional = true }
 
 # client-only
-web-sys = { version = "0.3", optional = true, features = ["Document", "Element", "HtmlElement", "HtmlInputElement", "Location", "Window"] }
+web-sys = { version = "0.3", optional = true, features = ["Document", "Element", "HtmlElement", "HtmlInputElement", "Location", "Window", "Navigator", "Clipboard"] }
+wasm-bindgen-futures = { version = "0.4", optional = true }
 
 [features]
 default = []
-hydrate = ["leptos/hydrate", "dep:web-sys"]
+hydrate = ["leptos/hydrate", "dep:web-sys", "dep:wasm-bindgen-futures"]
 ssr = [
     "leptos/ssr",
     "leptos_meta/ssr",
@@ -56,6 +59,8 @@ ssr = [
     "dep:dotenvy",
     "dep:tracing",
     "dep:ipnet",
+    "dep:rand",
+    "dep:url",
 ]
 # Fixtures for integration tests (`app::test_support`). Never enable in production builds.
 test-support = ["ssr", "dep:reqwest"]

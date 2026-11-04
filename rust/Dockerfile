@@ -1,5 +1,6 @@
 # Production image for the Rust/Leptos app.
 #   podman build --format docker -t irgendwas-rust .     (from rust/)
+#   --build-arg CARGO_BUILD_JOBS=4 limits parallel rustc jobs (default: all CPUs).
 # `--format docker` keeps the HEALTHCHECK (OCI images drop it); compose.yml defines the
 # same healthcheck, so the flag only matters for plain `podman run`.
 
@@ -23,11 +24,13 @@ COPY rust-toolchain.toml ./
 RUN rustup toolchain install && rustup target list --installed
 
 COPY . .
+ARG CARGO_BUILD_JOBS=
 # Cache mounts keep the registry and target dir between builds (buildah/BuildKit); the
 # artifacts are copied out because cache mounts are not part of the image.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     set -eux; \
+    if [ -z "${CARGO_BUILD_JOBS}" ]; then unset CARGO_BUILD_JOBS; fi; \
     cargo leptos build --release; \
     mkdir -p /out; \
     cp target/release/server /out/server; \

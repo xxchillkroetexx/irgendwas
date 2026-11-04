@@ -12,8 +12,8 @@ Work from the spec, not from any existing implementation of this slice. The test
 ## What to write
 
 - **Every acceptance criterion gets at least one test**, named after it (`ac3_non_member_cannot_view_group`), so coverage can be traced.
-- **Integration tests** in `rust/server/tests/<slice>.rs` (`#[sqlx::test(migrations = "../migrations")]`) for server-fn logic, authorization, validation and DB effects. Call the server-side functions directly. Use the shared fixtures in `app/src/test_support.rs` (feature `test-support`); add fixtures there rather than duplicating setup.
-- **Pure unit tests** for algorithms (e.g. the draw), also in `rust/server/tests/` (the gate doesn't run unit tests inside `app`): property-style checks over many seeds (no self-assignment, honours exclusions, a bijection, correct "impossible" detection).
+- **Integration tests** in `rust/server/tests/it/<slice>.rs` (add `mod <slice>;` to `rust/server/tests/it/main.rs`; shared helpers via `use crate::common::...`, no `mod common;`) (`#[sqlx::test(migrations = "../migrations")]`) for server-fn logic, authorization, validation and DB effects. Call the server-side functions directly. Use the shared fixtures in `app/src/test_support.rs` (feature `test-support`); add fixtures there rather than duplicating setup.
+- **Pure unit tests** for algorithms (e.g. the draw), also in `rust/server/tests/it/` (the gate doesn't run unit tests inside `app`): property-style checks over many seeds (no self-assignment, honours exclusions, a bijection, correct "impossible" detection).
 - **Playwright e2e** (`rust/end2end/tests/<slice>.spec.ts`) only for the main user journeys and anything that depends on hydration or redirects. Read tokens from emails through the Mailpit API helper.
 - Cover the error paths in the spec (unauthorized, not a member, validation, expired tokens), not only the happy path.
 

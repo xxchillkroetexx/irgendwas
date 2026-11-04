@@ -1,26 +1,30 @@
-//! `/user/dashboard` (spec: account, "UI notes"): welcome, subtitle and the tips card. The
-//! groups column (slice groups) and the assignments column (slice draw) join the row once
-//! those slices exist; until then they are not rendered at all. The default landing page
-//! after login.
+//! `/user/dashboard` (spec: account, "UI notes"): welcome, subtitle, the tips card and the
+//! draw slice's assignments card (the caller's own receivers only). The default landing page
+//! after login. Personal data: never cached (draw S4).
 
 use leptos::prelude::*;
 
 use crate::auth::use_session_resource;
 use crate::components::RequireUser;
 use crate::i18n::use_i18n;
+use crate::pages::draw::{AssignmentsCard, AssignmentsResource, assignments_resource};
 use crate::t;
 
 #[component]
 pub fn DashboardPage() -> impl IntoView {
+    #[cfg(feature = "ssr")]
+    crate::server::respond::no_store();
+    // Page level (never inside the guard's async children).
+    let assignments = assignments_resource();
     view! {
         <RequireUser>
-            <Dashboard/>
+            <Dashboard assignments/>
         </RequireUser>
     }
 }
 
 #[component]
-fn Dashboard() -> impl IntoView {
+fn Dashboard(assignments: AssignmentsResource) -> impl IntoView {
     let i18n = use_i18n();
     let session = use_session_resource().0;
 
@@ -37,7 +41,6 @@ fn Dashboard() -> impl IntoView {
             })}
         </Transition>
         <p class="lead text-muted mb-4">{i18n.t("user.dashboard.subtitle")}</p>
-        <p><a href="/wishlists">{i18n.t("wishlist.edit.title")}</a></p>
         <div class="row">
             <div class="col-lg-4 mb-4">
                 <div class="card h-100">
@@ -50,6 +53,13 @@ fn Dashboard() -> impl IntoView {
                         </ul>
                     </div>
                 </div>
+            </div>
+            <div class="col-lg-8 mb-4">
+                <Transition fallback=|| ()>
+                    {move || Suspend::new(async move {
+                        assignments.await.ok().map(|list| view! { <AssignmentsCard list/> })
+                    })}
+                </Transition>
             </div>
         </div>
     }

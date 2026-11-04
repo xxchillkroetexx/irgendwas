@@ -1,0 +1,27 @@
+# Rehearsal setup B: nginx as the outer proxy in front of Caddy (scripts/rehearsal.sh up b).
+# Also a template for a containerised outer proxy: Caddy joins the proxy's network (mapping
+# form, like `caddy.networks` in compose.yml: podman-compose cannot merge a list into it) and
+# TRUSTED_PROXIES_CIDR is the proxy's address (here 172.31.251.10/32).
+services:
+  nginx:
+    image: docker.io/library/nginx:1
+    restart: unless-stopped
+    depends_on:
+      - caddy
+    ports:
+      - "127.0.0.1:${OUTER_HTTP_PORT:-18081}:80"
+    volumes:
+      - ./deploy/rehearsal/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      outer:
+        ipv4_address: 172.31.251.10
+
+  caddy:
+    networks:
+      outer: {}
+
+networks:
+  outer:
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24
