@@ -8,7 +8,7 @@ use leptos::prelude::*;
 use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
 use crate::components::RequireUser;
-use crate::flash::{FlashMessage, Toasts, use_toasts};
+use crate::flash::{Toasts, use_toasts};
 use crate::groups_api::{
     DeleteGroup, GroupDetail, GroupError, GroupOp, GroupStatus, Invitation, LeaveGroup, MemberView,
     RegenerateInvitation, RemoveMember, TransferAdmin, get_group,
@@ -292,7 +292,7 @@ fn copy_to_clipboard(text: String, toasts: Toasts) {
         let written = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&text));
         leptos::task::spawn_local(async move {
             if written.await.is_ok() {
-                toasts.push(FlashMessage::success("group.show.copied"));
+                toasts.push(crate::flash::FlashMessage::success("group.show.copied"));
             }
         });
     }

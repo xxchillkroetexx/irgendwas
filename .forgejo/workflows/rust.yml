@@ -88,8 +88,13 @@ jobs:
           done
           echo "MariaDB did not come up" >&2
           exit 1
-      - name: Tests
-        run: cargo leptos test
+      # What `cargo leptos test` runs, but one after the other: it builds both at once, and
+      # two compilations of the app crate (ssr and hydrate) ran the runner out of memory
+      # (rustc SIGKILLed, run 41).
+      - name: Tests (server)
+        run: cargo test --package=server --no-default-features
+      - name: Tests (frontend)
+        run: cargo test --package=frontend --lib --target-dir=target/front --no-default-features
 
   e2e:
     runs-on: docker
@@ -151,6 +156,12 @@ jobs:
           done
           echo "MariaDB did not come up" >&2
           exit 1
+      # Frontend and server one after the other (see check: memory); end-to-end then finds
+      # both up to date.
+      - name: Build frontend
+        run: cargo leptos build --frontend-only
+      - name: Build server
+        run: cargo leptos build --server-only
       - name: End-to-end tests
         run: cargo leptos end-to-end
       - name: Playwright report
