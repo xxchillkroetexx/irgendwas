@@ -419,6 +419,6 @@
     "share.iphone.title": "Teilen auf iPhone und iPad",
     "share.iphone.help": "Safari auf iPhone und iPad kann diese PWA nicht als Ziel im systemweiten Teilen-Menü anbieten. Kopieren Sie den Produktlink, öffnen Sie diese App, wählen Sie „Geteilten Link hinzufügen“, fügen Sie den Link ein, wählen Sie eine Wunschliste und bestätigen Sie.",
     "share.install.title": "Produktlinks empfangen",
-    "share.install.support": "Nach der Installation mit einem unterstützten Chromium-Browser auf Android oder Desktop können Sie Secret Santa im Teilen-Menü einer anderen App auswählen. Die Verfügbarkeit hängt von Browser und Betriebssystem ab. Fehlt die App, kopieren Sie den Link und nutzen Sie das Formular unten.",
+    "share.install.support": "Nach der Installation mit einem unterstützten Chromium-Browser auf Android oder Desktop können Sie Wichteln im Teilen-Menü einer anderen App auswählen. Die Verfügbarkeit hängt von Browser und Betriebssystem ab. Fehlt die App, kopieren Sie den Link und nutzen Sie das Formular unten.",
     "share.too_large": "Der geteilte Inhalt ist zu lang. Fügen Sie stattdessen einen kürzeren Produktlink ein."
 }
