@@ -9,9 +9,10 @@
 
 use std::time::Duration;
 
-use sqlx::MySqlPool;
 use sqlx::migrate::{MigrateError, Migrator};
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use sqlx::pool::PoolConnection;
+use sqlx::{MySql, MySqlPool, Transaction};
 
 use super::config::DbConfig;
 
@@ -63,6 +64,38 @@ pub async fn ping(pool: &MySqlPool) -> Result<(), sqlx::Error> {
         .fetch_one(pool)
         .await
         .map(|_| ())
+}
+
+/// The isolation level of one transaction (see [`begin_with`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IsolationLevel {
+    /// Every statement reads what committed before it; searches take no gap locks.
+    ReadCommitted,
+    /// One snapshot for the whole transaction (taken at its first consistent read).
+    RepeatableRead,
+}
+
+impl IsolationLevel {
+    fn statement(self) -> &'static str {
+        match self {
+            IsolationLevel::ReadCommitted => "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
+            IsolationLevel::RepeatableRead => "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+        }
+    }
+}
+
+/// Starts a transaction with an explicit isolation level on `conn`. `SET TRANSACTION`
+/// (without `SESSION`) only applies to the next transaction, which `BEGIN` starts right
+/// away on the same connection, so the pooled connection keeps its default level
+/// afterwards. (`BEGIN` only fails when the connection itself is broken; the pool's ping
+/// then discards it. A request dropped between the two statements can leave the pending
+/// level on the connection for its next transaction.)
+pub async fn begin_with(
+    conn: &mut PoolConnection<MySql>,
+    level: IsolationLevel,
+) -> Result<Transaction<'_, MySql>, sqlx::Error> {
+    sqlx::query(level.statement()).execute(&mut **conn).await?;
+    sqlx::Connection::begin(&mut **conn).await
 }
 
 /// A description of `err` that is safe to log: the error kind and, for database errors,

@@ -15,14 +15,20 @@ mod app;
 pub mod auth;
 pub mod auth_api;
 pub mod components;
+pub mod domain;
+pub mod draw_api;
 pub mod error;
+pub mod exclusions_api;
 pub mod flash;
 pub mod format;
+pub mod groups_api;
 pub mod i18n;
+pub mod locale_api;
 pub mod pages;
 pub mod paths;
 pub mod tz;
 pub mod validation;
+pub mod wishlists_api;
 
 #[cfg(feature = "ssr")]
 pub mod server;

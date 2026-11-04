@@ -10,6 +10,7 @@ Not in scope (hooks only): wishlists, exclusions and the draw (`GroupRepository:
 Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Dates are displayed with `app::format` and read/written through the `tz` date-input helpers; `group.memberCount` and `flash.error.too_many_code_attempts` are plural keys. AC5 was revised; AC46 and AC47 were added.
+Revised 2026-11-01 (implementation): a migration (next free number, 0005) changes `groups.invitation_code` to `utf8mb4_bin` (CLAUDE.md identity-column rule from the auth review; the baseline column is `utf8mb4_unicode_ci`). This replaces "no migration" for this slice.
 
 ## Current PHP behaviour
 
@@ -174,7 +175,7 @@ All server fns call `require_user()` first. Without a session they return `Unaut
 
 Tables touched: `groups` (CRUD), `group_members` (CRUD). Delete-only through D5: `wishlists` (→ `wishlist_items` cascade), `exclusion_rules`, `gift_assignments`. The unused `email_templates` table is dropped by the draw slice's migration and plays no part in this slice.
 
-No column changes and no migration in this slice. `delete_group` relies on the `ON DELETE CASCADE` foreign keys of the child tables `group_members`, `gift_assignments`, `wishlists` (→ `wishlist_items`) and `exclusion_rules`; AC22 checks them.
+No new columns. One migration (0005, see the revision note at the top) changes `groups.invitation_code` to `utf8mb4_bin`. `delete_group` relies on the `ON DELETE CASCADE` foreign keys of the child tables `group_members`, `gift_assignments`, `wishlists` (→ `wishlist_items`) and `exclusion_rules`; AC22 checks them.
 
 ### UI notes
 
