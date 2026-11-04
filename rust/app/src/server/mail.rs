@@ -59,6 +59,8 @@ impl fmt::Debug for Message {
     }
 }
 
+/// A mail failure. Its texts are safe to log: they never carry an SMTP server reply (which
+/// can quote the recipient's address) or a part of the message.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MailError {
     /// The recipient (or the configured sender) is not a valid address.
@@ -67,12 +69,50 @@ pub enum MailError {
     /// The message could not be assembled.
     #[error("could not build message: {0}")]
     Build(String),
-    /// The SMTP server could not be reached or refused the message.
+    /// The SMTP server could not be reached or refused the message. The text is a kind and
+    /// the SMTP reply code only (see [`smtp_error`]), never the reply text.
     #[error("smtp delivery failed: {0}")]
     Smtp(String),
     /// The sending task died (panic or runtime shutdown).
     #[error("mail task aborted")]
     Aborted,
+}
+
+impl MailError {
+    /// The variant as a short word for logs.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            MailError::Address => "address",
+            MailError::Build(_) => "build",
+            MailError::Smtp(_) => "smtp",
+            MailError::Aborted => "aborted",
+        }
+    }
+}
+
+/// An SMTP error as [`MailError::Smtp`]: its class and the reply code (e.g. `550`). The
+/// error's own text is dropped: it quotes the server's reply, which often names the
+/// recipient address.
+fn smtp_error(err: &lettre::transport::smtp::Error) -> MailError {
+    let class = if err.is_permanent() {
+        "permanent"
+    } else if err.is_transient() {
+        "transient"
+    } else if err.is_timeout() {
+        "timeout"
+    } else if err.is_tls() {
+        "tls"
+    } else if err.is_response() {
+        "response"
+    } else if err.is_client() {
+        "client"
+    } else {
+        "connection"
+    };
+    match err.status() {
+        Some(code) => MailError::Smtp(format!("{class}, code {code}")),
+        None => MailError::Smtp(class.to_string()),
+    }
 }
 
 /// Delivery status of one [`Mailer::send`]. Dropping it does not cancel the send.
@@ -164,7 +204,7 @@ impl Mailer {
             match &result {
                 Ok(()) => tracing::debug!(mail_id = id, to_domain = %domain, "mail sent"),
                 Err(err) => {
-                    tracing::warn!(mail_id = id, to_domain = %domain, error = %err, "mail failed")
+                    tracing::warn!(mail_id = id, to_domain = %domain, kind = err.kind(), error = %err, "mail failed")
                 }
             }
             result
@@ -185,7 +225,7 @@ impl Inner {
             .send(email)
             .await
             .map(|_| ())
-            .map_err(|e| MailError::Smtp(e.to_string()))
+            .map_err(|e| smtp_error(&e))
     }
 
     fn build(&self, message: Message) -> Result<lettre::Message, MailError> {

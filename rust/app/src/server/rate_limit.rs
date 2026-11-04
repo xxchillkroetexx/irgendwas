@@ -49,17 +49,33 @@ pub const MAIL_PER_EMAIL: Limit = Limit {
     max: 3,
     window: TimeDelta::minutes(60),
 };
-/// Register + forgot-password calls per client IP (`mail:ip:<ip>`): 20 per hour.
+/// Register + forgot-password calls per client IP (`mail:ip:<ip>`): 20 per hour. The
+/// count is configurable (`Config::mail_per_ip`, see [`mail_per_ip`]); this is the default.
 pub const MAIL_PER_IP: Limit = Limit {
     max: 20,
     window: TimeDelta::minutes(60),
 };
+
+/// [`MAIL_PER_IP`] with the configured count (`RATE_LIMIT_MAIL_PER_IP`).
+pub fn mail_per_ip(config: &super::Config) -> Limit {
+    Limit {
+        max: config.mail_per_ip,
+        ..MAIL_PER_IP
+    }
+}
 
 /// Current-password checks in change_password + request_email_change
 /// (`account:pw:<user_id>`): 10 per 15 minutes (spec: account AC40).
 pub const ACCOUNT_PASSWORD: Limit = Limit {
     max: 10,
     window: TimeDelta::minutes(15),
+};
+
+/// Invalid invitation codes per user (`invite:code:<user_id>`), counted by
+/// `preview_invitation` and `join_group` together: 10 per 10 minutes (spec: groups AC45).
+pub const INVITE_CODE: Limit = Limit {
+    max: 10,
+    window: TimeDelta::minutes(10),
 };
 
 /// Purge expired entries once the map holds this many keys.
@@ -223,4 +239,9 @@ pub fn mail_ip_key(ip: &str) -> String {
 /// `account:pw:<user_id>` (a user id is no secret: not hashed).
 pub fn account_password_key(user_id: i32) -> String {
     format!("account:pw:{user_id}")
+}
+
+/// `invite:code:<user_id>` (a user id is no secret: not hashed).
+pub fn invite_code_key(user_id: i32) -> String {
+    format!("invite:code:{user_id}")
 }
