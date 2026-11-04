@@ -175,8 +175,8 @@ jobs:
 
   # Image → Forgejo container registry, for pushes to dev (tag :dev) and main (tag
   # :latest), after check and e2e passed; both also get :sha-<12 chars> of the commit.
-  # Rootless buildah (chroot isolation, vfs storage) needs neither the host's Docker
-  # socket nor privileged containers. Repo secrets: REGISTRY_USER and
+  # buildah (chroot isolation, vfs storage) needs neither the engine's socket nor a
+  # privileged container. Repo secrets: REGISTRY_USER and
   # REGISTRY_TOKEN (an access token with package write scope).
   image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
@@ -184,6 +184,11 @@ jobs:
     runs-on: docker
     container:
       image: quay.io/buildah/stable:latest
+      # The runner's engine is Docker (dind): its default seccomp profile blocks the
+      # unshare(CLONE_NEWUSER) buildah needs without CAP_SYS_ADMIN ("Error during
+      # unshare(CLONE_NEWUSER): Operation not permitted", run 79). Unconfined seccomp
+      # lets buildah make its own unprivileged user namespace; no capabilities added.
+      options: --security-opt seccomp=unconfined
     env:
       BUILDAH_ISOLATION: chroot
       STORAGE_DRIVER: vfs
