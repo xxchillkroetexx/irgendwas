@@ -294,6 +294,16 @@ test.describe("groups", () => {
     expect(errors).toEqual([]);
   });
 
+  test("a member denied group editing gets a useful title and return link", async () => {
+    const page = users.bob.page;
+    const response = await page.goto(`/groups/${gid}/edit`);
+    expect(response?.status()).toBe(403);
+    await expect(page.getByRole("heading", { name: t("error.forbidden.title") })).toBeVisible();
+    await expect(page.getByRole("link", { name: t("error.backGroup") })).toHaveAttribute("href", `/groups/${gid}`);
+    await page.getByRole("link", { name: t("error.backGroup") }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+  });
+
   test("AC25 AC29: regenerating (after the confirm) kills the old link at once", async () => {
     const alice = users.alice.page;
     const errors = collectPageErrors(alice);
@@ -355,6 +365,8 @@ test.describe("groups", () => {
     await expect(page.getByText("12.12.2026")).toBeVisible();
     await expect(page.getByText(tDe("group.show.drawDateInfo"))).toBeVisible();
     await expect(page.getByText("10 Dec 2026")).toHaveCount(0);
+    await page.goto("/groups/new");
+    await expect(page.getByText(tDe("group.form.dateInputHelp"))).toHaveCount(2);
     expect(errors).toEqual([]);
   });
 
@@ -365,7 +377,7 @@ test.describe("groups", () => {
     await waitForHydration(alice);
 
     acceptNextDialog(alice);
-    const bobRow = alice.locator("li, tr, .list-group-item").filter({ hasText: "Bob Member" }).first();
+    const bobRow = alice.getByTestId("group-members").locator("li").filter({ hasText: "Bob Member" });
     await bobRow.getByRole("button", { name: t("group.show.makeAdmin") }).click();
     await expect(alice.getByText(t("flash.success.admin_transferred"))).toBeVisible();
     await expect(alice.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
@@ -395,7 +407,7 @@ test.describe("groups", () => {
     const errors = collectPageErrors(bob);
     await bob.goto(`/groups/${gid}`);
     await waitForHydration(bob);
-    const row = bob.locator("li, tr, .list-group-item").filter({ hasText: "Carol Newcomer" }).first();
+    const row = bob.getByTestId("group-members").locator("li").filter({ hasText: "Carol Newcomer" });
     acceptNextDialog(bob);
     await row.getByRole("button", { name: t("group.show.removeMember") }).click();
     await expect(bob.getByText(t("flash.success.member_removed"))).toBeVisible();

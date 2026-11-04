@@ -182,6 +182,37 @@ footer {
   margin-bottom: 0.5rem;
 }
 
+/* The group page keeps administrative details in two columns on desktop, while mobile
+   starts with the caller's assignment and wishlist. DOM order follows the mobile task. */
+.group-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "details members"
+    "draw wishlist"
+    "invitation exclusions";
+  column-gap: 1.5rem;
+}
+.group-draw { grid-area: draw; }
+.group-wishlist { grid-area: wishlist; }
+.group-details { grid-area: details; }
+.group-members { grid-area: members; }
+.group-invitation { grid-area: invitation; }
+.group-exclusions { grid-area: exclusions; }
+
+@media (max-width: 991.98px) {
+  .group-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "draw"
+      "wishlist"
+      "details"
+      "members"
+      "invitation"
+      "exclusions";
+  }
+}
+
 /* Responsive utilities */
 @media (max-width: 768px) {
   .card {

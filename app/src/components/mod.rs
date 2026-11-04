@@ -6,7 +6,7 @@ mod layout;
 mod text_area;
 
 pub use flash::{FlashAlert, FlashMessages};
-pub use guard::{ClientRedirect, RedirectIfLoggedIn, RequireUser};
+pub use guard::{ClientRedirect, PageLoading, RedirectIfLoggedIn, RequireUser};
 pub use layout::{Footer, Layout, NavBar};
 pub use text_area::TextArea;
 
