@@ -1,0 +1,242 @@
+# CI for the Rust/Leptos app.
+# Runner: forgejo-runner 13 on Docker-in-Docker (docker:dind, DOCKER_HOST tcp). Every job
+# uses `runs-on: docker`: only that runner may carry the label `docker`, or jobs also land
+# on other runners (and their own, empty target cache).
+#
+# runner-config.yml needs:
+#   container:
+#     valid_volumes:
+#       - irgendwas-ci-cache
+#     options: "--security-opt seccomp=unconfined"   # buildah in the image job, see there
+#
+# check and e2e keep their cargo target dir in the named volume irgendwas-ci-cache, so
+# dependencies are compiled once and later runs rebuild only the workspace crates (the
+# runner's cache server would tar and upload several GB per run). The volume lives in the
+# dind engine, so it survives only if dind's /var/lib/docker is a volume itself. Each job
+# uses its own subdirectory (~5-10 GB) and wipes it above $TARGET_CACHE_MAX_MB;
+# `docker exec <dind container> docker volume rm irgendwas-ci-cache` starts over.
+name: ci
+
+# Documentation-only changes skip the pipeline.
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".claude/**"
+      - ".agents/**"
+      - "LICENSE"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".claude/**"
+      - ".agents/**"
+      - "LICENSE"
+
+env:
+  CARGO_LEPTOS_VERSION: "0.3.11"
+  CARGO_TERM_COLOR: always
+  # Keep the runner's disk usage down: no debuginfo, no incremental cache in CI.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
+  TARGET_CACHE_MAX_MB: "20000"
+  IMAGE: git.scheissndreck.de/irgendwas/irgendwas
+  # Test services (job containers reach services by their name).
+  DATABASE_URL: mysql://root:ci-root-password@mariadb:3306/irgendwas_db
+  MAILPIT_URL: http://mailpit:8025
+  MAILPIT_SMTP_HOST: mailpit
+  MAILPIT_SMTP_PORT: "1025"
+
+jobs:
+  check:
+    runs-on: docker
+    container:
+      image: docker.io/library/rust:1.99.1-slim-trixie
+      volumes:
+        - irgendwas-ci-cache:/ci-cache
+    services:
+      mariadb:
+        image: docker.io/library/mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: irgendwas_db
+          MARIADB_USER: irgendjemand
+          MARIADB_PASSWORD: ci-password
+        # Every #[sqlx::test] creates a database and runs all migrations; on disk this is
+        # ~50x slower. RAM-backed, durability off (throwaway CI database).
+        options: >-
+          --tmpfs /var/lib/mysql:rw,size=4g
+        cmd: ["--innodb-flush-log-at-trx-commit=0", "--innodb-doublewrite=0", "--innodb-flush-method=nosync"]
+      mailpit:
+        image: docker.io/axllent/mailpit:latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git and node (needed by checkout)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git nodejs
+      - uses: actions/checkout@v4
+      - name: Toolchain (rust-toolchain.toml) and cargo-leptos
+        run: |
+          rustup toolchain install
+          sh scripts/install-cargo-leptos.sh
+      - name: Persistent target dir
+        run: sh scripts/ci-target-dir.sh /ci-cache/target-check
+      - name: Configuration
+        run: cp .env.example .env
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Wait for MariaDB
+        run: |
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/mariadb/3306) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "MariaDB did not come up" >&2
+          exit 1
+      # What `cargo leptos test` runs, but one after the other: it builds both at once, and
+      # two compilations of the app crate (ssr and hydrate) ran the runner out of memory
+      # (rustc SIGKILLed, run 41).
+      - name: Tests (server)
+        run: cargo test --package=server --no-default-features
+      - name: Tests (frontend)
+        run: cargo test --package=frontend --lib --target-dir=target/front --no-default-features
+
+  e2e:
+    runs-on: docker
+    container:
+      # run.sh detects this image (PLAYWRIGHT_BROWSERS_PATH) and runs Playwright directly.
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      volumes:
+        - irgendwas-ci-cache:/ci-cache
+    services:
+      mariadb:
+        image: docker.io/library/mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: irgendwas_db
+          MARIADB_USER: irgendjemand
+          MARIADB_PASSWORD: ci-password
+      mailpit:
+        image: docker.io/axllent/mailpit:latest
+    env:
+      # Server configuration; real env vars override .env.
+      APP_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      DB_USERNAME: irgendjemand
+      DB_PASSWORD: ci-password
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_ENCRYPTION: none
+      # The whole suite registers from one IP; production keeps the default of 20.
+      RATE_LIMIT_MAIL_PER_IP: "1000"
+      CI: "true"
+      PLAYWRIGHT_WORKERS: "4"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build tools and rustup
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/checkout@v4
+      - name: Toolchain (rust-toolchain.toml) and cargo-leptos
+        run: |
+          rustup toolchain install
+          sh scripts/install-cargo-leptos.sh
+      - name: Persistent target dir
+        run: sh scripts/ci-target-dir.sh /ci-cache/target-e2e
+      - name: Configuration
+        run: cp .env.example .env
+      - name: Wait for MariaDB
+        run: |
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/mariadb/3306) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "MariaDB did not come up" >&2
+          exit 1
+      # Frontend and server one after the other (see check: memory); end-to-end then finds
+      # both up to date.
+      - name: Build frontend
+        run: cargo leptos build --frontend-only
+      - name: Build server
+        run: cargo leptos build --server-only
+      - name: End-to-end tests
+        run: cargo leptos end-to-end
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report
+          path: end2end/playwright-report/
+
+  # Image → Forgejo container registry, for pushes to dev (tag :dev) and main (tag
+  # :latest), after check and e2e passed; both also get :sha-<12 chars> of the commit.
+  # buildah (chroot isolation, vfs storage) needs neither the engine's socket nor a
+  # privileged container. Repo secrets: REGISTRY_USER and
+  # REGISTRY_TOKEN (an access token with package write scope).
+  image:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    needs: [check, e2e]
+    runs-on: docker
+    container:
+      image: quay.io/buildah/stable:latest
+      # The runner's engine is Docker (dind): its default seccomp profile blocks the
+      # unshare(CLONE_NEWUSER) buildah needs without CAP_SYS_ADMIN ("Error during
+      # unshare(CLONE_NEWUSER): Operation not permitted", runs 79, 84). forgejo-runner 13
+      # ignores --security-opt in a job's `options:`, so it goes in runner-config.yml:
+      #   container:
+      #     options: "--security-opt seccomp=unconfined"
+      # Unconfined seccomp lets buildah make its own unprivileged user namespace; no
+      # capabilities are added.
+    env:
+      BUILDAH_ISOLATION: chroot
+      STORAGE_DRIVER: vfs
+      BUILDAH_FORMAT: docker
+    steps:
+      - name: Install git and node (needed by checkout)
+        run: dnf install -y --setopt=install_weak_deps=False git nodejs
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          short="${GITHUB_SHA::12}"
+          case "$GITHUB_REF" in
+            refs/heads/main) channel=latest ;;
+            refs/heads/dev) channel=dev ;;
+            *) echo "no image tag for $GITHUB_REF" >&2; exit 1 ;;
+          esac
+          echo "SHORT_SHA=$short" >> "$GITHUB_ENV"
+          echo "CHANNEL=$channel" >> "$GITHUB_ENV"
+          # --format docker keeps the HEALTHCHECK; the build runs `cargo leptos build --release`.
+          buildah build \
+            --format docker \
+            --layers=false \
+            --build-arg CARGO_BUILD_JOBS=4 \
+            --label org.opencontainers.image.source=https://git.scheissndreck.de/irgendwas/irgendwas \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            -t "${IMAGE}:sha-${short}" \
+            -t "${IMAGE}:${channel}" \
+            -f Dockerfile .
+      - name: Push
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | buildah login -u "$REGISTRY_USER" --password-stdin git.scheissndreck.de
+          buildah push "${IMAGE}:sha-${SHORT_SHA}"
+          buildah push "${IMAGE}:${CHANNEL}"
+          buildah logout git.scheissndreck.de
+      - name: Free the runner's disk
+        if: always()
+        run: buildah rm --all >/dev/null 2>&1 || true; buildah rmi --all --force >/dev/null 2>&1 || true
