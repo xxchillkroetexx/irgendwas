@@ -7,7 +7,7 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::{GroupErrorView, group_path, route_group_id, when_logged_in};
-use crate::components::{RequireUser, TextArea};
+use crate::components::{PageLoading, RequireUser, TextArea};
 use crate::groups_api::{CreateGroup, GroupError, GroupField, UpdateGroup, get_group};
 use crate::i18n::use_i18n;
 use crate::tz;
@@ -111,10 +111,18 @@ pub fn GroupEditPage() -> impl IntoView {
     );
     view! {
         <RequireUser>
-            <Transition fallback=|| ()>
+            <Transition fallback=|| view! { <PageLoading/> }>
                 {move || Suspend::new(async move {
                     match group.await {
                         Ok(values) => view! { <EditForm values/> }.into_any(),
+                        Err(GroupError::Forbidden) => {
+                            match id.get_untracked() {
+                                Some(group_id) => view! {
+                                    <crate::pages::Forbidden back_to=group_path(group_id)/>
+                                }.into_any(),
+                                None => view! { <crate::pages::Forbidden/> }.into_any(),
+                            }
+                        }
                         Err(error) => view! { <GroupErrorView error/> }.into_any(),
                     }
                 })}
@@ -253,6 +261,8 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                 <FieldFeedback field=GroupField::RegistrationDeadline error/>
                 <div id="group-deadline-help" class="form-text">
                     {i18n.t("group.form.registrationDeadlineHelp")}
+                    " "
+                    {i18n.t("group.form.dateInputHelp")}
                 </div>
             </div>
             <div class="col-md-6 mb-3">
@@ -266,7 +276,11 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                     value=values.draw_date
                 />
                 <FieldFeedback field=GroupField::DrawDate error/>
-                <div id="group-draw-date-help" class="form-text">{i18n.t("group.form.drawDateHelp")}</div>
+                <div id="group-draw-date-help" class="form-text">
+                    {i18n.t("group.form.drawDateHelp")}
+                    " "
+                    {i18n.t("group.form.dateInputHelp")}
+                </div>
             </div>
         </div>
     }

@@ -34,14 +34,24 @@ pub fn NotFound() -> impl IntoView {
 
 /// 403 page: logged in, but not allowed (e.g. a member on an admin-only page).
 #[component]
-pub fn Forbidden() -> impl IntoView {
+pub fn Forbidden(#[prop(optional)] back_to: Option<String>) -> impl IntoView {
     set_status(403);
     let i18n = use_i18n();
+    let back = match back_to {
+        Some(path) => view! {
+            <a href=path class="btn btn-primary">{i18n.t("error.backGroup")}</a>
+        }
+        .into_any(),
+        None => view! {
+            <a href="/" class="btn btn-primary">{i18n.t("error.backHome")}</a>
+        }
+        .into_any(),
+    };
     view! {
         <div class="text-center py-5">
-            <h1 class="display-5">{i18n.t("error.generic.title")}</h1>
+            <h1 class="display-5">{i18n.t("error.forbidden.title")}</h1>
             <p class="lead">{i18n.t("error.forbidden")}</p>
-            <a href="/" class="btn btn-primary">{i18n.t("error.backHome")}</a>
+            {back}
         </div>
     }
 }
@@ -74,10 +84,10 @@ pub fn ErrorPage(errors: ArcRwSignal<Errors>) -> impl IntoView {
         None => (500, "error.generic.message".to_string()),
     };
     set_status(status);
-    let title_key = if status == 404 {
-        "error.notFound.title"
-    } else {
-        "error.generic.title"
+    let title_key = match status {
+        403 => "error.forbidden.title",
+        404 => "error.notFound.title",
+        _ => "error.generic.title",
     };
     view! {
         <div class="text-center py-5">

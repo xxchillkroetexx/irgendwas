@@ -7,7 +7,7 @@ use leptos::prelude::*;
 
 use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
-use crate::components::RequireUser;
+use crate::components::{PageLoading, RequireUser};
 use crate::flash::{Toasts, use_toasts};
 use crate::groups_api::{
     DeleteGroup, GroupDetail, GroupError, GroupOp, GroupStatus, Invitation, LeaveGroup, MemberView,
@@ -137,7 +137,7 @@ fn GroupShow(group: GroupResource, panel: PanelResource, draw: DrawResource) -> 
     });
 
     view! {
-        <Transition fallback=|| ()>
+        <Transition fallback=|| view! { <PageLoading/> }>
             {move || Suspend::new(async move {
                 // Both resources are awaited here, whatever the outcome, so the page is only
                 // sent once both have resolved (no late data chunk).
@@ -162,7 +162,7 @@ fn GroupDetailView(
     let i18n = use_i18n();
     let id = detail.id;
     let header_actions = if detail.is_admin {
-        view! { <AdminActions id actions/> }.into_any()
+        view! { <AdminActions id actions status=detail.status/> }.into_any()
     } else if detail.can_leave {
         view! {
             <ActionForm action=actions.leave>
@@ -197,15 +197,19 @@ fn GroupDetailView(
             </div>
             {header_actions}
         </div>
-        <div class="row">
-            <div class="col-lg-6">
-                <DetailsCard detail/>
+        <div class="group-detail-grid">
+            <div class="group-draw">
                 <DrawPanel group_id=id is_admin is_drawn data=draw actions=actions.draw/>
-                {invitation}
             </div>
-            <div class="col-lg-6">
-                <MembersCard group_id=id members is_admin is_drawn actions/>
+            <div class="group-wishlist" data-testid="group-wishlist">
                 {panel.map(|data| view! { <WishlistPanel group_id=id data/> })}
+            </div>
+            <div class="group-details" data-testid="group-details"><DetailsCard detail/></div>
+            <div class="group-members" data-testid="group-members">
+                <MembersCard group_id=id members is_admin is_drawn actions/>
+            </div>
+            <div class="group-invitation" data-testid="group-invitation">{invitation}</div>
+            <div class="group-exclusions">
                 <ExclusionsLink group_id=id is_drawn/>
             </div>
         </div>
@@ -213,21 +217,23 @@ fn GroupDetailView(
 }
 
 #[component]
-fn AdminActions(id: i32, actions: Actions) -> impl IntoView {
+fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView {
     let i18n = use_i18n();
     view! {
         <div class="d-flex flex-wrap gap-2">
             <a href=format!("/groups/{id}/edit") class="btn btn-outline-primary">
                 {i18n.t("group.show.editButton")}
             </a>
-            <ActionForm action=actions.regenerate>
-                <input type="hidden" name="group_id" value=id/>
-                <ConfirmSubmit
-                    label=i18n.t("group.show.regenerateCode")
-                    confirm=i18n.t("group.show.regenerateCodeConfirm")
-                    class="btn btn-outline-secondary"
-                />
-            </ActionForm>
+            {(status == GroupStatus::Open).then(|| view! {
+                <ActionForm action=actions.regenerate>
+                    <input type="hidden" name="group_id" value=id/>
+                    <ConfirmSubmit
+                        label=i18n.t("group.show.regenerateCode")
+                        confirm=i18n.t("group.show.regenerateCodeConfirm")
+                        class="btn btn-outline-secondary"
+                    />
+                </ActionForm>
+            })}
             <ActionForm action=actions.delete>
                 <input type="hidden" name="group_id" value=id/>
                 <ConfirmSubmit
@@ -306,6 +312,19 @@ fn copy_to_clipboard(text: String, toasts: Toasts) {
 #[component]
 fn InvitationCard(invitation: Invitation, status: GroupStatus) -> impl IntoView {
     let i18n = use_i18n();
+    if status != GroupStatus::Open {
+        return view! {
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="h5 card-title">{i18n.t("group.show.invitationCode")}</h2>
+                    <p class="alert alert-warning mb-0" role="status">
+                        {i18n.t("group.show.registrationClosedHint")}
+                    </p>
+                </div>
+            </div>
+        }
+        .into_any();
+    }
     let toasts = use_toasts();
     let code = invitation.code.clone();
     let on_copy = move |_| copy_to_clipboard(code.clone(), toasts);
@@ -313,14 +332,6 @@ fn InvitationCard(invitation: Invitation, status: GroupStatus) -> impl IntoView 
         <div class="card mb-4">
             <div class="card-body">
                 <h2 class="h5 card-title">{i18n.t("group.show.invitationCode")}</h2>
-                {(status != GroupStatus::Open)
-                    .then(|| {
-                        view! {
-                            <div class="alert alert-warning" role="status">
-                                {i18n.t("group.show.registrationClosedHint")}
-                            </div>
-                        }
-                    })}
                 <p class="mb-2">{i18n.t("group.show.shareCode")}</p>
                 <div class="input-group mb-3">
                     <input
@@ -339,6 +350,7 @@ fn InvitationCard(invitation: Invitation, status: GroupStatus) -> impl IntoView 
             </div>
         </div>
     }
+    .into_any()
 }
 
 #[component]

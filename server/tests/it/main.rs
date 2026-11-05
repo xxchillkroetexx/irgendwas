@@ -51,9 +51,13 @@ mod origin;
 mod password;
 mod paths;
 mod session;
+mod share_target;
 mod tz;
 mod wishlists_concurrency;
 mod wishlists_edit;
 mod wishlists_reorder;
 mod wishlists_security;
 mod wishlists_view;
+
+mod session_policy;
+mod wishlist_copy;

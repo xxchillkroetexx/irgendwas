@@ -19,7 +19,7 @@ fn defaults() {
     assert!(!c.app_debug);
     assert_eq!(c.app_locale, Locale::En);
     assert_eq!(c.app_timezone, chrono_tz::Europe::Berlin);
-    assert_eq!(c.inactivity_limit, 1200);
+    assert_eq!(c.inactivity_limit, 7_776_000);
     assert!(c.trusted_proxies.is_empty());
     assert_eq!((c.db.host.as_str(), c.db.port), ("localhost", 3306));
     assert_eq!(c.mail.encryption, MailEncryption::StartTls);

@@ -70,6 +70,18 @@ enum Access {
     Failed,
 }
 
+/// Visible feedback while a protected page checks the current login.
+#[component]
+pub fn PageLoading() -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <div class="d-flex align-items-center gap-2 py-4 text-muted" role="status">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            <span>{i18n.t("common.loading")}</span>
+        </div>
+    }
+}
+
 /// Redirects during SSR (302) when `redirect` is given.
 fn apply_redirect(redirect: Option<&str>) {
     #[cfg(feature = "ssr")]
@@ -102,7 +114,7 @@ pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     let i18n = use_i18n();
     let children = StoredValue::new(children);
     view! {
-        <Suspense fallback=|| ()>
+        <Suspense fallback=|| view! { <PageLoading/> }>
             {move || Suspend::new(async move {
                 match access.await {
                     Access::Allowed => children.read_value()().into_any(),

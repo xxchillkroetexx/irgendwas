@@ -103,7 +103,7 @@ Summary of decisions:
 7. Reset tokens are stored as SHA-256, valid 1 hour, single use.
 8. URL paths stay under `/auth/*`. Logout is POST-only.
 9. Emails are normalised (trim, lowercase) on every write and compared in normalised form.
-10. No "remember me": every session is subject to the inactivity timeout.
+10. No separate "remember me" control: all browser and PWA logins persist for 90 days of inactivity by default, renewed on every request (revised by #60 on 2026-11-03).
 
 ### Pages / routes
 
@@ -234,7 +234,7 @@ Client IP. Deployment: Caddy is the edge proxy in front of the app; Caddy may it
 #### Session contract (with foundation's `current_user()` / `require_user()`)
 - Session keys: `user_id: i32`, `session_epoch: u32`, plus flash.
 - `current_user()` loads the user row by `user_id`. If the row is missing or `users.session_epoch != session.session_epoch`, it flushes the session and returns anonymous.
-- Cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `APP_URL` is https; inactivity timeout `INACTIVITY_LIMIT` seconds (default 1200). No long-lived "remember me" session. Foundation implements this; the ACs below check it.
+- Cookie: `HttpOnly`, `SameSite=Lax`, `Secure` when `APP_URL` is https; persistent cookie with rolling inactivity timeout `INACTIVITY_LIMIT` seconds (default 7,776,000 = 90 days). Every request renews both cookie Max-Age and server expiry, including reads without session mutations; normal browser and installed PWA follow the same policy. No absolute maximum is imposed while regularly used. Explicit logout deletes that session immediately; password reset/change still invalidate sessions through `session_epoch`. Existing deployments that explicitly set 1200 must update their configuration. Revised by #60 on 2026-11-03.
 - Cross-slice: the account slice's "change password" must increment `session_epoch` and write the new value into the *current* session (others die, the current one stays).
 
 ### Data & migrations
@@ -314,6 +314,9 @@ Logout
 
 Session lifecycle
 - AC19: Given Alice is logged in and idle for longer than `INACTIVITY_LIMIT` (test config: small value), when she opens a protected page, then she is redirected to `/auth/login?next=...`.
+- AC19a (#60): With default configuration, login and registration completion issue persistent 90-day cookies; opening the app in a fresh browser context with stored cookies or after a server restart keeps the login.
+- AC19b (#60): A request before expiry renews the persisted session expiry and cookie Max-Age to the full configured period, even without a session mutation. An expired session remains anonymous.
+- AC19c (#60): Logging out one device immediately invalidates its old cookie while another device remains signed in.
 - AC20: Given Alice is logged in and her `users` row is deleted, when she opens any page, then she is treated as anonymous (no error page).
 
 Registration
@@ -362,7 +365,7 @@ None.
 ## Resolved (2026-10-31, user)
 
 1. **Registration flow** (two-step vs. single-step with immediate login): two-step. A `next=` path supplied at registration start survives the registration mail link and is applied after completion (stored in `pending_registrations.next_path`; AC29, AC30). The groups invite flow depends on it.
-2. **"Remember me"**: dropped. No long-lived sessions.
+2. **"Remember me"**: separate control dropped. Revised by #60 (2026-11-03): every login now has a persistent, rolling 90-day default lifetime for everyday and PWA use; no short-lived mode.
 3. **Link lifetimes**: reset link 1 hour, registration link 24 hours.
 4. **Rate limiter**: in-memory, with the proposed limits (10 failed logins per email / 50 per IP per 15 min; 3 mails per address and 20 register/forgot calls per IP per hour).
 5. **Production `users` table shape** (collation, `failed_login_attempts`, case-duplicate emails): moot, there is no production DB to migrate. Emails are normalised to lowercase on write and compared lowercased.

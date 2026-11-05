@@ -48,6 +48,7 @@ pub enum WishlistFieldError {
     LinkTooLong,
     TooManyItems,
     ConfirmRequired,
+    SelectionRequired,
 }
 
 impl WishlistFieldError {
@@ -61,6 +62,7 @@ impl WishlistFieldError {
             WishlistFieldError::LinkTooLong => "validation.wishlist.link_too_long",
             WishlistFieldError::TooManyItems => "validation.wishlist.too_many_items",
             WishlistFieldError::ConfirmRequired => "validation.wishlist.confirm_required",
+            WishlistFieldError::SelectionRequired => "validation.wishlist.selection_required",
         }
     }
 
@@ -372,6 +374,33 @@ pub async fn clear_wishlist(
             Some(group_id),
             result,
             Some("flash.success.wishlist_deleted"),
+        )
+        .await,
+    )
+}
+
+/// Nonempty own lists in other groups where the caller remains a member.
+#[server(prefix = "/api", endpoint = "get_wishlist_sources")]
+pub async fn get_wishlist_sources(group_id: i32) -> Result<Vec<NamedRef>, WishlistError> {
+    crate::server::respond::with_error_status(
+        crate::server::wishlists_flow::get_sources(group_id).await,
+    )
+}
+
+/// Copies selected own wishes in source order, leaving the source unchanged.
+#[server(prefix = "/api", endpoint = "copy_wishlist_items")]
+pub async fn copy_wishlist_items(
+    group_id: i32,
+    source_group_id: i32,
+    item_ids: Option<Vec<i32>>,
+) -> Result<(), WishlistError> {
+    use crate::server::wishlists_flow as flow;
+    let result = flow::copy_items(group_id, source_group_id, item_ids.unwrap_or_default()).await;
+    crate::server::respond::with_error_status(
+        flow::outcome(
+            Some(group_id),
+            result,
+            Some("flash.success.wishlist_copied"),
         )
         .await,
     )
