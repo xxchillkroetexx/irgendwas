@@ -157,6 +157,9 @@ test.describe("wishlists", () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
     });
+    // #69: a failed add keeps the typed values for correction.
+    await expect(title).toHaveValue("Item A");
+    await expect(link).toHaveValue("javascript:alert(1)");
 
     // AC9 + AC13: scheme-less link is repaired, flash is shown, page stays on the edit URL.
     await description.fill("Desc A");
@@ -168,6 +171,10 @@ test.describe("wishlists", () => {
     await expect(anchor).toHaveAttribute("target", "_blank");
     await expect(anchor).toHaveAttribute("rel", "noopener noreferrer nofollow");
     await expect(page.getByText("www.example.com").first()).toBeVisible();
+    // #69: a successful add empties the form for the next wish.
+    await expect(title).toHaveValue("");
+    await expect(description).toHaveValue("");
+    await expect(link).toHaveValue("");
 
     // AC28: markup in a title is shown as text and nothing runs.
     let dialog = false;
@@ -185,6 +192,10 @@ test.describe("wishlists", () => {
     expect(dialog, "no script ran").toBe(false);
     page.off("dialog", onDialog);
 
+    // #69: nothing of the previous wish carries over; Item C is a title only.
+    await expect(title).toHaveValue("");
+    await expect(description).toHaveValue("");
+    await expect(link).toHaveValue("");
     await title.fill("Item C");
     await add.click();
     await expect(page.getByText("Item C", { exact: true }).first()).toBeVisible();
@@ -208,7 +219,7 @@ test.describe("wishlists", () => {
 
     // AC16 + AC18: the inline edit form shows its own errors, not the add form's.
     await control(page, "link", "wishlist.edit.edit", "Item C").click();
-    await expect(page).toHaveURL(/\?edit=\d+$/);
+    await expect(page).toHaveURL(/\?edit=(\d+)#item-\1$/);
     await waitForHydration(page);
     const inline = page.locator("main form").filter({ has: page.getByRole("button", { name: t("wishlist.edit.save") }) });
     const addForm = page.locator("main form").filter({ has: page.getByRole("button", { name: t("wishlist.edit.addItem") }) });
@@ -304,7 +315,7 @@ test.describe("wishlists", () => {
 
     // Edit through ?edit=ID and the inline form.
     await control(p, "link", "wishlist.edit.edit", "Plain B").click();
-    await expect(p).toHaveURL(/\?edit=\d+$/);
+    await expect(p).toHaveURL(/\?edit=(\d+)#item-\1$/);
     await p.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).last().fill("Plain B2");
     await p.getByRole("button", { name: t("wishlist.edit.save") }).click();
     await expect(p).toHaveURL(new RegExp(`${editUrl}$`));
@@ -362,6 +373,76 @@ test.describe("wishlists", () => {
       expect(errors).toEqual([]);
       await context.close();
     }
+  });
+
+  test("#69 on a phone, Edit shows the inline form in view with the title focused; Cancel and Save return to the row", async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      storageState: await users.alice.context.storageState(),
+    });
+    const page = await context.newPage();
+    const errors = collectPageErrors(page);
+    await page.goto(editUrl);
+    await waitForHydration(page);
+    // The add form's fields by id: with an inline form open, the labels are there twice.
+    const title = page.locator("#add-title");
+    const description = page.locator("#add-description");
+    const link = page.locator("#add-link");
+    const add = page.getByRole("button", { name: t("wishlist.edit.addItem") });
+    const names = ["Phone 1", "Phone 2", "Phone 3", "Phone 4", "Phone 5"];
+    for (const name of names) {
+      await title.fill(name);
+      await description.fill(`About ${name}`);
+      await link.fill("https://example.com/phone");
+      await add.click();
+      await expect(page.locator(".list-group-item .fw-semibold").getByText(name, { exact: true })).toBeVisible();
+      await expect(title).toHaveValue("");
+      await expect(description).toHaveValue("");
+      await expect(link).toHaveValue("");
+      await expect(title).toBeFocused();
+    }
+    // The last row starts below the first screen, so the router's scroll to the top hid it.
+    const last = control(page, "link", "wishlist.edit.edit", "Phone 5");
+    const href = (await last.getAttribute("href")) ?? "";
+    const id = /\?edit=(\d+)#item-\1$/.exec(href)?.[1];
+    expect(id, href).toBeTruthy();
+    const row = page.locator(`#item-${id}`);
+    expect(await row.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThan(844);
+
+    await last.click();
+    await expect(page).toHaveURL(new RegExp(`\\?edit=${id}#item-${id}$`));
+    const inlineTitle = page.locator(`#edit-${id}-title`);
+    await expect(inlineTitle).toBeFocused();
+    await expect(inlineTitle).toBeInViewport();
+
+    // Adding another wish meanwhile keeps the focus in the add form: the re-read list must
+    // not pull it into the open inline form.
+    await title.fill("Phone 6");
+    await add.click();
+    await expect(page.locator(".list-group-item .fw-semibold").getByText("Phone 6", { exact: true })).toBeVisible();
+    await expect(title).toHaveValue("");
+    await expect(title).toBeFocused();
+    await expect(inlineTitle).not.toBeFocused();
+
+    // Cancel returns to the row.
+    await page.getByRole("link", { name: t("wishlist.edit.cancel") }).click();
+    await expect(page).toHaveURL(new RegExp(`${editUrl}#item-${id}$`));
+    await expect(page.getByRole("button", { name: t("wishlist.edit.save") })).toHaveCount(0);
+    await expect(row).toBeInViewport();
+
+    // Save returns to the (renamed) row.
+    await waitForHydration(page);
+    await control(page, "link", "wishlist.edit.edit", "Phone 5").click();
+    await expect(inlineTitle).toBeFocused();
+    await expect(inlineTitle).toBeInViewport();
+    await inlineTitle.fill("Phone 5 renamed");
+    await page.getByRole("button", { name: t("wishlist.edit.save") }).click();
+    await expect(page.getByText(t("flash.success.item_updated"))).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`${editUrl}$`));
+    await expect(row).toContainText("Phone 5 renamed");
+    await expect(row).toBeInViewport();
+    expect(errors).toEqual([]);
+    await context.close();
   });
 
 });
