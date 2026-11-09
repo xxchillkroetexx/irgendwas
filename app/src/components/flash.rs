@@ -13,7 +13,7 @@ const AUTO_DISMISS_AFTER: Duration = Duration::from_secs(5);
 #[component]
 pub fn FlashMessages() -> impl IntoView {
     let SessionResource(session) = expect_context::<SessionResource>();
-    let Toasts(toasts) = expect_context::<Toasts>();
+    let toasts = expect_context::<Toasts>();
 
     view! {
         <div class="flash-messages" aria-live="polite">
@@ -27,7 +27,7 @@ pub fn FlashMessages() -> impl IntoView {
                 })}
             </Transition>
             <For
-                each=move || toasts.get().into_iter().enumerate()
+                each=move || toasts.current().into_iter().enumerate()
                 key=|(index, message)| (*index, message.clone())
                 children=|(_, message)| view! { <FlashAlert message/> }
             />

@@ -33,7 +33,14 @@ pub fn Layout(children: Children) -> impl IntoView {
         },
     );
     provide_context(SessionResource(session));
-    provide_context(Toasts(RwSignal::new(Vec::new())));
+    let toasts = Toasts::new(location.pathname);
+    provide_context(toasts);
+    // A client-side navigation leaves the previous page's toasts behind (a toast pushed
+    // for the destination of a client redirect, `Toasts::push_for`, stays).
+    Effect::new(move |_| {
+        let path = location.pathname.get();
+        toasts.keep_only(&path);
+    });
 
     view! {
         <header>
