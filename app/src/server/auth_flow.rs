@@ -120,21 +120,40 @@ pub async fn login(email: String, password: String, next: Option<String>) -> Res
     if password::needs_rehash(&user.password) {
         match password::hash_async(password).await {
             Ok(hash) => {
-                sqlx::query("UPDATE users SET password = ? WHERE id = ?")
-                    .bind(hash)
-                    .bind(user.id)
-                    .execute(&state.pool)
-                    .await
-                    .map_err(db_error)?;
+                // Only over the hash that was verified: a password reset/change that
+                // committed meanwhile must not be undone by the old password's rehash.
+                let rehashed =
+                    sqlx::query("UPDATE users SET password = ? WHERE id = ? AND password = ?")
+                        .bind(hash)
+                        .bind(user.id)
+                        .bind(&user.password)
+                        .execute(&state.pool)
+                        .await
+                        .map_err(db_error)?;
+                if rehashed.rows_affected() == 0 {
+                    tracing::info!(user_id = user.id, "password rehash skipped: hash changed");
+                }
             }
             Err(err) => tracing::warn!(user_id = user.id, error = %err, "password rehash failed"),
         }
     }
-    sqlx::query("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(user.id)
-        .execute(&state.pool)
-        .await
-        .map_err(db_error)?;
+    // The epoch read together with the verified hash must still be current: a password
+    // reset/change in between makes the verified credentials stale, so no login.
+    let current = sqlx::query(
+        "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ? AND session_epoch = ?",
+    )
+    .bind(user.id)
+    .bind(user.session_epoch)
+    .execute(&state.pool)
+    .await
+    .map_err(db_error)?;
+    if current.rows_affected() == 0 {
+        tracing::info!(
+            user_id = user.id,
+            "login refused: credentials changed meanwhile"
+        );
+        return Err(AuthError::InvalidCredentials);
+    }
 
     let session = session().await?;
     auth::login_with_epoch(&session, user.id, user.session_epoch)
@@ -233,13 +252,19 @@ pub async fn register(email: String, next: Option<String>) -> Result<(), AuthErr
             .execute(&state.pool)
             .await
             .map_err(db_error)?;
-            // The recipient is the address as stored with this token.
-            let stored_email: String =
+            // The recipient is the address as stored with this token. No row: a concurrent
+            // request for the same address replaced the token meanwhile (and mails its own
+            // link), so this link is already dead: same answer, no mail.
+            let stored_email: Option<String> =
                 sqlx::query_scalar("SELECT email FROM pending_registrations WHERE token_hash = ?")
                     .bind(token::hash(&token))
-                    .fetch_one(&state.pool)
+                    .fetch_optional(&state.pool)
                     .await
                     .map_err(db_error)?;
+            let Some(stored_email) = stored_email else {
+                tracing::info!("registration link superseded by a concurrent request");
+                return Ok(());
+            };
             let i18n = I18n::new(request_locale(), state.config.app_timezone);
             let link =
                 auth_mail::app_link(&state.config, &format!("/auth/register/confirm/{token}"));
@@ -372,19 +397,32 @@ pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
             .try_acquire(&mail_email_key(&email), MAIL_PER_EMAIL)
     {
         let token = token::generate().map_err(|_| AuthError::Internal)?;
-        sqlx::query(
+        // Only while the account still has the address the link is mailed to: an email
+        // change confirmed meanwhile clears reset tokens, and a token written after it
+        // would hand the former mailbox a valid link (`email` is utf8mb4_bin).
+        let stored = sqlx::query(
             "UPDATE users SET reset_token = ?, \
-             reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ?",
+             reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR \
+             WHERE id = ? AND email = ?",
         )
         .bind(token::hash(&token))
         .bind(user_id)
+        .bind(&stored_email)
         .execute(&state.pool)
         .await
         .map_err(db_error)?;
-        let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
-        let link = auth_mail::app_link(&state.config, &format!("/auth/reset-password/{token}"));
-        let message = auth_mail::password_reset(&i18n, &stored_email, &name, &link);
-        auth_mail::queue(&state, "password_reset", Some(user_id), message);
+        if stored.rows_affected() == 0 {
+            // Same answer as for a delivered link (no enumeration).
+            tracing::info!(
+                user_id,
+                "reset link not sent: the address changed meanwhile"
+            );
+        } else {
+            let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
+            let link = auth_mail::app_link(&state.config, &format!("/auth/reset-password/{token}"));
+            let message = auth_mail::password_reset(&i18n, &stored_email, &name, &link);
+            auth_mail::queue(&state, "password_reset", Some(user_id), message);
+        }
     }
 
     flash::flash(FlashMessage::success("flash.success.reset_instructions"))
@@ -426,9 +464,12 @@ pub async fn reset_password(
     let (user_id, email) = reset_token_owner(&state, &token).await?;
     let hash = password::hash_async(password).await.map_err(internal)?;
     // The token condition again in the UPDATE: exactly one of concurrent submits wins.
+    // A pending email change dies with the old credentials: whoever started it with them
+    // (e.g. the attacker the reset locks out) must not be able to confirm it afterwards.
     let updated = sqlx::query(
         "UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, \
-         session_epoch = session_epoch + 1 \
+         session_epoch = session_epoch + 1, pending_email = NULL, \
+         email_verification_token = NULL, email_verification_expires = NULL \
          WHERE reset_token = ? AND reset_token_expires > CURRENT_TIMESTAMP",
     )
     .bind(hash)
