@@ -47,6 +47,7 @@ mod i18n_polish;
 mod i18n_polish_home;
 mod mail;
 mod migrations;
+mod navigation;
 mod origin;
 mod password;
 mod paths;
