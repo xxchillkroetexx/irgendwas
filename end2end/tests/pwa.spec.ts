@@ -57,3 +57,59 @@ test("installation help hydrates on mobile", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+// Issue #74: inside the installed app the install links are pointless and hidden.
+test("install link is shown in the browser but hidden in the installed app", async ({ page }) => {
+  const errors = collectPageErrors(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  const installLink = page.locator("footer").getByRole("link", { name: "Install the app", exact: true });
+  await expect(installLink).toBeVisible();
+
+  // Chromium cannot emulate `display-mode` (CDP `Emulation.setEmulatedMedia` silently
+  // ignores it, checked with Chromium 156), so the test finds the app stylesheet's rule
+  // that hides `.install-link`, checks its display-mode conditions, and then makes it
+  // match by appending the medium `all`, as an installed app's display mode would.
+  const media = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      if (!sheet.href?.endsWith("/assets/css/styles.css")) continue;
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (rule instanceof CSSMediaRule && rule.cssText.includes(".install-link")) {
+          const original = rule.media.mediaText;
+          rule.media.appendMedium("all");
+          return original;
+        }
+      }
+    }
+    return null;
+  });
+  expect(media).toContain("(display-mode: standalone)");
+  expect(media).toContain("(display-mode: minimal-ui)");
+  expect(media).toContain("(display-mode: window-controls-overlay)");
+  expect(media).not.toContain("fullscreen");
+  await expect(installLink).toBeHidden();
+  await expect(page.locator("footer")).toContainText("©");
+
+  // The help page itself stays reachable by URL.
+  await page.goto("/install");
+  await waitForHydration(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Install the app");
+  expect(errors).toEqual([]);
+});
+
+test("install link is hidden in an older iOS Home Screen app (navigator.standalone)", async ({ page }) => {
+  const errors = collectPageErrors(page);
+  await page.goto("/");
+  await waitForHydration(page);
+  await expect(page.locator("html[data-standalone]")).toHaveCount(0);
+  await expect(page.locator("footer").getByRole("link", { name: "Install the app" })).toBeVisible();
+
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "standalone", { configurable: true, get: () => true });
+  });
+  await page.goto("/");
+  await waitForHydration(page);
+  await expect(page.locator("html[data-standalone]")).toHaveCount(1);
+  await expect(page.locator("footer").getByRole("link", { name: "Install the app" })).toBeHidden();
+  expect(errors).toEqual([]);
+});
