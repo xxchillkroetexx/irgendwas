@@ -50,7 +50,7 @@ env:
 
 jobs:
   check:
-    runs-on: docker
+    runs-on: ci-amd64
     container:
       image: docker.io/library/rust:1.99.1-slim-trixie
       volumes:
@@ -108,7 +108,7 @@ jobs:
         run: cargo test --package=frontend --lib --target-dir=target/front --no-default-features
 
   e2e:
-    runs-on: docker
+    runs-on: ci-amd64
     container:
       # run.sh detects this image (PLAYWRIGHT_BROWSERS_PATH) and runs Playwright directly.
       image: mcr.microsoft.com/playwright:v1.64.1-noble
@@ -189,7 +189,7 @@ jobs:
   image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     needs: [check, e2e]
-    runs-on: docker
+    runs-on: ci-amd64
     container:
       image: quay.io/buildah/stable:latest
       # The runner's engine is Docker (dind): its default seccomp profile blocks the
