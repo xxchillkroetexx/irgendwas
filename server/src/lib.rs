@@ -8,6 +8,7 @@ pub mod middleware;
 pub mod session_store;
 mod share;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -17,7 +18,10 @@ use app::server::mail::{MailError, Mailer};
 use app::server::{AppState, Config, db};
 use app::{App, shell};
 use axum::Router;
+use axum::extract::Query;
 use axum::handler::Handler;
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use leptos::config::LeptosOptions;
 use leptos_axum::{AxumRouteListing, LeptosRoutes, generate_route_list};
@@ -63,11 +67,30 @@ pub fn router(state: AppState) -> Router {
     router_with(state, Router::new())
 }
 
+/// Links shared by the PHP application use a query parameter. Convert only the
+/// legacy eight-character code to the current preview URL, never join on GET.
+async fn legacy_join(Query(query): Query<HashMap<String, String>>) -> Response {
+    let code = query
+        .get("code")
+        .filter(|code| code.len() <= 128)
+        .map(|code| app::groups_api::normalize_invitation_code(code))
+        .filter(|code| code.len() == 8 && code.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    let target = code.map_or_else(|| "/join".to_string(), |code| format!("/join/{code}"));
+    let mut response = Redirect::temporary(&target).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("same-origin"),
+    );
+    response
+}
+
 /// [`router`] plus `extra` routes, which run inside the session and locale layers.
 /// Used by integration tests to exercise session helpers directly.
 pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
     let routes = route_list();
-    let session_layer = session_layer(state.pool.clone(), &state.config);
     let leptos_options = state.leptos_options.clone();
     let app_origin: Arc<str> = state.config.app_origin().into();
 
@@ -88,19 +111,29 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
     Router::new()
         .route("/health", get(health::health))
         .route("/share-target", get(share::receive))
+        .route("/groups/join", get(legacy_join))
         .merge(extra)
         .leptos_routes(&state, routes, move || shell(leptos_options.clone()))
+        // Matched application routes include SSR, server functions and redirects.
+        .route_layer(axum::middleware::from_fn(middleware::dynamic_no_store))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::locale,
         ))
-        .layer(session_layer)
+        // Each request gets its own store snapshot, so concurrent writes can be
+        // merged against the record that request actually read.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::session,
+        ))
         // Outermost: cross-origin writes are rejected before they touch the session.
         .layer(axum::middleware::from_fn_with_state(
             app_origin,
             middleware::origin_check,
         ))
+        // The file fallback can render a localized, personalized HTML 404.
+        .layer(axum::middleware::from_fn(middleware::html_no_store))
         .with_state(state)
 }
 

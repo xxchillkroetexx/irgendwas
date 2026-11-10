@@ -4,7 +4,7 @@
 use crate::common::auth::*;
 use crate::common::exclusions::*;
 use crate::common::groups::*;
-use app::exclusions_api::FeasibilityNotice;
+use app::exclusions_api::{ExclusionError, FeasibilityNotice};
 use app::test_support::{self as ts, BOB_PASSWORD};
 use sqlx::MySqlPool;
 
@@ -46,6 +46,54 @@ const KEYS_REUSED: &[&str] = &[
     "group.show.manageExclusions",
     "flash.error.user_not_in_group",
 ];
+
+#[sqlx::test(migrations = "../migrations")]
+async fn oversized_group_keeps_existing_rules_visible_and_removable(pool: MySqlPool) {
+    let x = x_world(&pool).await;
+    ts::add_exclusion(&pool, x.g(), x.bob(), x.carol()).await;
+    let mut added = Vec::new();
+    for i in 0..197 {
+        let id = ts::create_user(
+            &pool,
+            &format!("Member{i}"),
+            &ts::mailpit::unique_email("oversized"),
+        )
+        .await;
+        ts::add_member(&pool, x.g(), id).await;
+        added.push(id);
+    }
+    let mut bob = x.w.bob().await;
+    let p = page(&mut bob, x.g()).await;
+    assert_eq!(
+        p.notice,
+        Some(FeasibilityNotice::GroupTooLarge { max: 200 })
+    );
+    assert!(!p.can_add);
+    assert!(p.my_rules.iter().any(|member| member.user_id == x.carol()));
+    let html = bob.get(&ex_path(x.g())).await;
+    assert_eq!(html.status, 200);
+    assert!(html_contains(
+        &html.body,
+        &en_with("exclusion.warning.groupTooLarge", &[("max", "200")])
+    ));
+    add_ex(&mut bob, x.g(), x.carol()).await.ex_ok();
+    assert_eq!(
+        add_ex(&mut bob, x.g(), x.dave()).await.ex_err(),
+        ExclusionError::GroupTooLarge { max: 200 }
+    );
+    remove_ex(&mut bob, x.g(), x.carol()).await.ex_ok();
+    assert!(page(&mut bob, x.g()).await.my_rules.is_empty());
+
+    // Dropping back to the existing draw limit restores normal rule creation.
+    sqlx::query("DELETE FROM group_members WHERE group_id = ? AND user_id = ?")
+        .bind(x.g())
+        .bind(added[0])
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(page(&mut bob, x.g()).await.can_add);
+    add_ex(&mut bob, x.g(), x.dave()).await.ex_ok();
+}
 
 // ------------------------------------------------------------------------ AC1
 

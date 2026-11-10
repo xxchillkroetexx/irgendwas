@@ -149,6 +149,8 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.title_required"))).toBeVisible();
+      await expect(title).toHaveAttribute("aria-invalid", "true");
+      await expect(title).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.title_required")));
     });
     // AC12: a script link is refused inline.
     await title.fill("Item A");
@@ -156,13 +158,20 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
+      await expect(link).toHaveAttribute("aria-invalid", "true");
+      await expect(link).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.link_invalid")));
     });
+    await expect(title).toHaveValue("Item A");
+    await expect(link).toHaveValue("javascript:alert(1)");
 
     // AC9 + AC13: scheme-less link is repaired, flash is shown, page stays on the edit URL.
     await description.fill("Desc A");
     await link.fill("www.example.com/x");
     await add.click();
     await expect(page.getByText(t("flash.success.item_added"))).toBeVisible();
+    await expect(title).toHaveValue("");
+    await expect(description).toHaveValue("");
+    await expect(link).toHaveValue("");
     await expect(page).toHaveURL(new RegExp(`${editUrl}$`));
     const anchor = page.locator("main a[href='https://www.example.com/x']").first();
     await expect(anchor).toHaveAttribute("target", "_blank");
@@ -207,10 +216,15 @@ test.describe("wishlists", () => {
     await expect.poll(() => order(page, titles)).toEqual(["Item A", "Item C", XSS_TITLE]);
 
     // AC16 + AC18: the inline edit form shows its own errors, not the add form's.
+    const originalViewport = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
     await control(page, "link", "wishlist.edit.edit", "Item C").click();
-    await expect(page).toHaveURL(/\?edit=\d+$/);
+    await expect(page).toHaveURL(/\?edit=(\d+)#item-\1$/);
     await waitForHydration(page);
     const inline = page.locator("main form").filter({ has: page.getByRole("button", { name: t("wishlist.edit.save") }) });
+    await expect(inline.getByLabel(t("wishlist.edit.itemTitle"), { exact: true })).toBeFocused();
+    await expect(inline.getByLabel(t("wishlist.edit.itemTitle"), { exact: true })).toBeInViewport();
+    if (originalViewport) await page.setViewportSize(originalViewport);
     const addForm = page.locator("main form").filter({ has: page.getByRole("button", { name: t("wishlist.edit.addItem") }) });
     await inline.getByLabel(t("wishlist.edit.link"), { exact: true }).fill("ftp://example.com/x");
     await expectingFailedRequest(errors, async () => {
@@ -304,7 +318,7 @@ test.describe("wishlists", () => {
 
     // Edit through ?edit=ID and the inline form.
     await control(p, "link", "wishlist.edit.edit", "Plain B").click();
-    await expect(p).toHaveURL(/\?edit=\d+$/);
+    await expect(p).toHaveURL(/\?edit=(\d+)#item-\1$/);
     await p.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).last().fill("Plain B2");
     await p.getByRole("button", { name: t("wishlist.edit.save") }).click();
     await expect(p).toHaveURL(new RegExp(`${editUrl}$`));
@@ -348,10 +362,22 @@ test.describe("wishlists", () => {
       const errors = collectPageErrors(page);
       await page.goto(`/groups/${target}/wishlist`);
       if (js) await waitForHydration(page);
+      if (js) {
+        await page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill("Unsubmitted while choosing a source");
+        await page.evaluate(() => {
+          const input = document.querySelector<HTMLInputElement>("#add-title")!;
+          input.dataset.sourceMarker = "original";
+        });
+      }
       await page.getByLabel(t("wishlist.copy.source")).selectOption(gid);
       await page.getByRole("button", { name: t("wishlist.copy.load") }).click();
       await expect(page.getByRole("checkbox", { name: "Copy A", exact: true })).toBeVisible();
-      if (js) await waitForHydration(page);
+      if (js) {
+        await waitForHydration(page);
+        const title = page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true });
+        await expect(title).toHaveValue("Unsubmitted while choosing a source");
+        await expect(title).toHaveAttribute("data-source-marker", "original");
+      }
       await page.getByRole("checkbox", { name: "Copy A", exact: true }).check();
       await page.getByRole("checkbox", { name: "Copy B", exact: true }).check();
       await page.getByRole("button", { name: t("wishlist.copy.submit") }).click();
@@ -362,6 +388,115 @@ test.describe("wishlists", () => {
       expect(errors).toEqual([]);
       await context.close();
     }
+  });
+
+  test("#69 flash messages do not accumulate or follow navigation", async () => {
+    const page = users.bob.page;
+    const errors = collectPageErrors(page);
+    const ownList = `/groups/${gid}/wishlist`;
+    const flashes = page.locator(".flash-messages .alert");
+    const added = flashes.filter({ hasText: t("flash.success.item_added") });
+    await page.goto(ownList);
+    await waitForHydration(page);
+    for (const title of ["Bob 1", "Bob 2"]) {
+      await page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill(title);
+      await page.getByRole("button", { name: t("wishlist.edit.addItem") }).click();
+      await expect(page.locator(".list-group-item .fw-semibold").getByText(title, { exact: true })).toBeVisible();
+      await expect(added.first()).toBeVisible();
+      expect(await added.count()).toBeLessThanOrEqual(1);
+    }
+    await page.reload();
+    await waitForHydration(page);
+    await expect(added).toHaveCount(0);
+    await page.goto(`/groups/${gid}/exclusions`);
+    await waitForHydration(page);
+    await expect(page.locator(".flash-messages .alert-success")).toHaveCount(0);
+
+    await page.goto(ownList);
+    await waitForHydration(page);
+    const other = await users.bob.context.newPage();
+    await other.goto(ownList);
+    await waitForHydration(other);
+    other.once("dialog", (d) => void d.accept());
+    await control(other, "button", "wishlist.edit.removeItem", "Bob 1").click();
+    await expect(other.locator(".list-group-item .fw-semibold").getByText("Bob 1", { exact: true })).toHaveCount(0);
+    await other.close();
+    const notFound = flashes.filter({ hasText: t("error.notFound.message") });
+    await expectingFailedRequest(errors, async () => {
+      page.once("dialog", (d) => void d.accept());
+      await control(page, "button", "wishlist.edit.removeItem", "Bob 1").click();
+      await expect(notFound).toBeVisible();
+    });
+    await page.locator("nav").getByRole("link", { name: t("nav.groups") }).click();
+    await expect(page).toHaveURL(/\/groups$/);
+    await expect(page.locator("main")).toBeVisible();
+    await expect(notFound).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("#69 mobile edit, cancel and save keep the selected row in view", async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      storageState: await users.alice.context.storageState(),
+    });
+    const page = await context.newPage();
+    const errors = collectPageErrors(page);
+    await page.goto(editUrl);
+    await waitForHydration(page);
+    const title = page.locator("#add-title");
+    const description = page.locator("#add-description");
+    const link = page.locator("#add-link");
+    const add = page.getByRole("button", { name: t("wishlist.edit.addItem") });
+    for (const name of ["Phone 1", "Phone 2", "Phone 3", "Phone 4", "Phone 5"]) {
+      await title.fill(name);
+      await description.fill(`About ${name}`);
+      await link.fill("https://example.com/phone");
+      await add.click();
+      await expect(page.locator(".list-group-item .fw-semibold").getByText(name, { exact: true })).toBeVisible();
+      await expect(title).toHaveValue("");
+      await expect(description).toHaveValue("");
+      await expect(link).toHaveValue("");
+      await expect(title).toBeFocused();
+    }
+
+    const last = control(page, "link", "wishlist.edit.edit", "Phone 5");
+    const href = (await last.getAttribute("href")) ?? "";
+    const id = /\?edit=(\d+)#item-\1$/.exec(href)?.[1];
+    expect(id, href).toBeTruthy();
+    const row = page.locator(`#item-${id}`);
+    expect(await row.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThan(844);
+
+    await last.click();
+    await expect(page).toHaveURL(new RegExp(`\\?edit=${id}#item-${id}$`));
+    const inlineTitle = page.locator(`#edit-${id}-title`);
+    await expect(inlineTitle).toBeFocused();
+    await expect(inlineTitle).toBeInViewport();
+
+    // A list refresh after adding another item must not steal focus back to the editor.
+    await title.fill("Phone 6");
+    await add.click();
+    await expect(page.locator(".list-group-item .fw-semibold").getByText("Phone 6", { exact: true })).toBeVisible();
+    await expect(title).toHaveValue("");
+    await expect(title).toBeFocused();
+    await expect(inlineTitle).not.toBeFocused();
+
+    await page.getByRole("link", { name: t("wishlist.edit.cancel") }).click();
+    await expect(page).toHaveURL(new RegExp(`${editUrl}#item-${id}$`));
+    await expect(page.getByRole("button", { name: t("wishlist.edit.save") })).toHaveCount(0);
+    await expect(row).toBeInViewport();
+
+    await waitForHydration(page);
+    await control(page, "link", "wishlist.edit.edit", "Phone 5").click();
+    await expect(inlineTitle).toBeFocused();
+    await expect(inlineTitle).toBeInViewport();
+    await inlineTitle.fill("Phone 5 renamed");
+    await page.getByRole("button", { name: t("wishlist.edit.save") }).click();
+    await expect(page.getByText(t("flash.success.item_updated"))).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`${editUrl}$`));
+    await expect(row).toContainText("Phone 5 renamed");
+    await expect(row).toBeInViewport();
+    expect(errors).toEqual([]);
+    await context.close();
   });
 
 });

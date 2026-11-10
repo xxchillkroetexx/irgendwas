@@ -72,6 +72,106 @@ async fn count(pool: &MySqlPool) -> i64 {
 }
 
 #[sqlx::test(migrations = "../migrations")]
+async fn a_consumed_draft_cannot_create_a_second_wish_from_a_stale_session(pool: MySqlPool) {
+    let alice = create_alice(&pool, "alice@example.test").await;
+    let group = create_group(&pool, alice, "Family").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let review = receive(&mut client, "Shared", "https://shop.example/item").await;
+    let id = review.split_once("id=").unwrap().1;
+    // Capture the snapshot a parallel request may have loaded before the first save.
+    let old: Vec<u8> = sqlx::query_scalar("SELECT data FROM sessions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let group_id = group.to_string();
+    let fields = [
+        ("id", id),
+        ("group_id", group_id.as_str()),
+        ("title", "Shared"),
+        ("description", ""),
+        ("link", "https://shop.example/item"),
+    ];
+    let first = client.call("add_shared_wish", &fields).await;
+    assert!(first.status.is_success(), "{}", first.body);
+    assert_eq!(count(&pool).await, 1);
+
+    // Reintroduce the stale session data to exercise the durable claim itself,
+    // independently of request scheduling and the in-process write queue.
+    sqlx::query("UPDATE sessions SET data = ?")
+        .bind(old)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        client
+            .call("get_shared_draft", &[("id", id)])
+            .await
+            .status
+            .as_u16(),
+        404
+    );
+    assert_eq!(
+        client
+            .call("add_shared_wish", &fields)
+            .await
+            .status
+            .as_u16(),
+        404
+    );
+    assert_eq!(count(&pool).await, 1);
+    let claims: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM consumed_share_drafts")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(claims, 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn sharing_after_session_revocation_uses_a_new_id_and_preserves_the_draft(pool: MySqlPool) {
+    let alice = create_alice(&pool, "alice@example.test").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let revoked = client.session_cookie().unwrap().to_string();
+    sqlx::query("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?")
+        .bind(alice)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // The stale session is flushed and the new share is written in the same request.
+    let review = receive(&mut client, "Private draft", "https://shop.example/item").await;
+    let new_id = client.session_cookie().unwrap();
+    assert_ne!(new_id, revoked, "the revoked cookie must never be reissued");
+    let old_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?)")
+        .bind(&revoked)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(!old_exists, "the revoked session row must remain deleted");
+
+    let mut replay = Client::new(&app).with_cookie(server::SESSION_COOKIE, &revoked);
+    assert_eq!(replay.whoami().await, None);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let id = review.split_once("id=").unwrap().1;
+    let reply = client.call("get_shared_draft", &[("id", id)]).await;
+    assert!(reply.status.is_success(), "{}", reply.body);
+    let draft: ShareDraft = serde_json::from_str(&reply.body).unwrap();
+    assert_eq!(draft.title, "Private draft");
+}
+
+#[sqlx::test(migrations = "../migrations")]
 async fn long_share_survives_login_and_only_confirmed_post_creates_a_wish(pool: MySqlPool) {
     let alice = create_alice(&pool, "alice@example.test").await;
     let group = create_group(&pool, alice, "Family").await;
@@ -219,6 +319,30 @@ async fn oversized_intake_is_rejected_and_pending_drafts_are_bounded(pool: MySql
             .as_u16(),
         404
     );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn five_maximum_size_shares_survive_session_storage_and_login(pool: MySqlPool) {
+    create_alice(&pool, "alice@example.test").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    // Quotes and non-ASCII exercise JSON escaping and UTF-8 byte lengths.
+    let content = "\"ä".repeat(5_461);
+    let mut reviews = Vec::new();
+    for _ in 0..5 {
+        reviews.push(receive(&mut client, "", &content).await);
+    }
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    for review in reviews {
+        let id = review.split_once("id=").unwrap().1;
+        let reply = client.call("get_shared_draft", &[("id", id)]).await;
+        assert!(reply.status.is_success(), "{}", reply.body);
+        let draft: ShareDraft = serde_json::from_str(&reply.body).unwrap();
+        assert_eq!(draft.description, content);
+    }
 }
 
 #[sqlx::test(migrations = "../migrations")]

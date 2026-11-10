@@ -139,14 +139,57 @@ impl FlashMessage {
     }
 }
 
-/// Client-side notices (e.g. after an action that does not redirect). Empty during SSR,
-/// so it never causes hydration mismatches.
+/// Client-side notices belong to a pathname, so old feedback does not follow navigation.
+/// Empty during SSR, so it never causes hydration mismatches.
 #[derive(Debug, Clone, Copy)]
-pub struct Toasts(pub RwSignal<Vec<FlashMessage>>);
+pub struct Toasts {
+    list: RwSignal<Vec<(String, FlashMessage)>>,
+    pathname: Memo<String>,
+}
 
 impl Toasts {
+    pub fn new(pathname: Memo<String>) -> Self {
+        Self {
+            list: RwSignal::new(Vec::new()),
+            pathname,
+        }
+    }
+
     pub fn push(&self, message: FlashMessage) {
-        self.0.update(|list| list.push(message));
+        let path = self.pathname.get_untracked();
+        self.list.update(|list| list.push((path, message)));
+    }
+
+    /// Capture the page before an asynchronous operation starts.
+    pub fn current_path(&self) -> Option<String> {
+        self.pathname.try_get_untracked()
+    }
+
+    /// Discard feedback if the operation finished after leaving its source page.
+    pub fn push_if_current(&self, path: &str, message: FlashMessage) {
+        if self.pathname.try_get_untracked().as_deref() == Some(path) {
+            self.push_for(path, message);
+        }
+    }
+
+    /// Use the destination when a toast precedes a client-side redirect.
+    pub fn push_for(&self, to: &str, message: FlashMessage) {
+        let path = to.split(['?', '#']).next().unwrap_or_default().to_string();
+        self.list.update(|list| list.push((path, message)));
+    }
+
+    pub fn current(&self) -> Vec<FlashMessage> {
+        let path = self.pathname.get();
+        self.list.with(|list| {
+            list.iter()
+                .filter(|(p, _)| *p == path)
+                .map(|(_, message)| message.clone())
+                .collect()
+        })
+    }
+
+    pub fn keep_only(&self, path: &str) {
+        self.list.update(|list| list.retain(|(p, _)| p == path));
     }
 }
 

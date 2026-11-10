@@ -32,7 +32,7 @@ use crate::flash::FlashMessage;
 use crate::paths::{group_path, login_url};
 use crate::server::db::{self, IsolationLevel};
 use crate::server::draw::{self as algorithm, DrawConfig, DrawError, infeasibility_kind};
-use crate::server::draw_worker::{DrawReset, MAX_ATTEMPTS, ResetRecipient};
+use crate::server::draw_worker::MAX_ATTEMPTS;
 use crate::server::exclusions::load_rules;
 use crate::server::{AppState, auth, authz, flash, respond};
 
@@ -478,20 +478,19 @@ async fn draw_locked(
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("perform_draw: insert", e))?;
-    sqlx::query("UPDATE `groups` SET is_drawn = TRUE, drawn_at = CURRENT_TIMESTAMP WHERE id = ?")
+    // A new generation makes any older reset notice obsolete. An already in-flight
+    // SMTP delivery can still complete, so mail text must tolerate reordering.
+    sqlx::query("DELETE FROM draw_reset_notifications WHERE group_id = ?")
+        .bind(group_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| db_error("perform_draw: discard stale reset notices", e))?;
+    sqlx::query("UPDATE `groups` SET is_drawn = TRUE, drawn_at = CURRENT_TIMESTAMP, draw_generation = draw_generation + 1 WHERE id = ?")
         .bind(group_id)
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("perform_draw: mark drawn", e))?;
     Ok(pairs.len())
-}
-
-#[derive(FromRow)]
-struct GiverRow {
-    id: i32,
-    email: String,
-    name: String,
-    locale: Option<String>,
 }
 
 /// Resets the draw (spec: "reset_draw"): all assignments go, the group is undrawn again;
@@ -511,11 +510,11 @@ pub async fn reset_draw(group_id: i32) -> Result<(), DrawApiError> {
     )
     .await?;
     let result = reset_locked(&mut tx, group_id, me).await;
-    let reset = finish(tx, result, "reset_draw: commit").await?;
+    finish(tx, result, "reset_draw: commit").await?;
     drop(conn);
 
     tracing::info!(group_id, "draw reset");
-    state.draw_worker.draw_reset(reset);
+    state.draw_worker.draw_reset(group_id);
     Ok(())
 }
 
@@ -523,53 +522,36 @@ async fn reset_locked(
     tx: &mut Transaction<'_, MySql>,
     group_id: i32,
     me: i32,
-) -> Result<DrawReset, DrawApiError> {
+) -> Result<(), DrawApiError> {
     if !lock_group_as_admin(tx, group_id, me).await? {
         return Err(DrawApiError::NotDrawn);
     }
-    // Giver data only: the reset mail names nobody's receiver.
-    let givers = sqlx::query_as::<_, GiverRow>(
-        "SELECT giver.id, giver.email, giver.name, giver.locale \
-         FROM gift_assignments ga JOIN users giver ON giver.id = ga.giver_id \
-         WHERE ga.group_id = ? ORDER BY giver.id",
+    // Durable notices are committed atomically with the reset. They store giver ids
+    // but never receiver ids or pairings, and are invalidated by a later draw.
+    sqlx::query(
+        "INSERT INTO draw_reset_notifications \
+         (group_id, recipient_id, generation, group_name, admin_name) \
+         SELECT ga.group_id, ga.giver_id, g.draw_generation + 1, g.name, admin.name \
+         FROM gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
+         JOIN users admin ON admin.id = g.admin_id \
+         WHERE ga.group_id = ? AND ga.giver_id <> ?",
     )
     .bind(group_id)
-    .fetch_all(&mut **tx)
+    .bind(me)
+    .execute(&mut **tx)
     .await
-    .map_err(|e| db_error("reset_draw: givers", e))?;
-    let (group_name, admin_name) = sqlx::query_as::<_, (String, String)>(
-        "SELECT g.name, admin.name FROM `groups` g JOIN users admin ON admin.id = g.admin_id \
-         WHERE g.id = ?",
-    )
-    .bind(group_id)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|e| db_error("reset_draw: group", e))?;
+    .map_err(|e| db_error("reset_draw: save notices", e))?;
     sqlx::query("DELETE FROM gift_assignments WHERE group_id = ?")
         .bind(group_id)
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("reset_draw: delete", e))?;
-    sqlx::query("UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL WHERE id = ?")
+    sqlx::query("UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL, draw_generation = draw_generation + 1 WHERE id = ?")
         .bind(group_id)
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("reset_draw: mark undrawn", e))?;
-    Ok(DrawReset {
-        group_id,
-        group_name,
-        admin_name,
-        recipients: givers
-            .into_iter()
-            .filter(|giver| giver.id != me)
-            .map(|giver| ResetRecipient {
-                user_id: giver.id,
-                email: giver.email,
-                name: giver.name,
-                locale: giver.locale,
-            })
-            .collect(),
-    })
+    Ok(())
 }
 
 /// Re-queues the mails that failed for good (spec: "resend_draw_notifications").
@@ -589,7 +571,7 @@ pub async fn resend_draw_notifications(group_id: i32) -> Result<u32, DrawApiErro
         return Err(DrawApiError::NotDrawn);
     }
     let requeued = sqlx::query(
-        "UPDATE gift_assignments SET notification_attempts = 0 \
+        "UPDATE gift_assignments SET notification_attempts = 0, notification_next_attempt_at = NULL \
          WHERE group_id = ? AND notification_sent = FALSE AND notification_attempts >= ?",
     )
     .bind(group_id)

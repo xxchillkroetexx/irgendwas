@@ -189,13 +189,17 @@ fn FormAlert(error: Signal<Option<GroupError>>) -> impl IntoView {
 
 /// The `invalid-feedback` of `field`.
 #[component]
-fn FieldFeedback(field: GroupField, error: Signal<Option<GroupError>>) -> impl IntoView {
+fn FieldFeedback(
+    field: GroupField,
+    error: Signal<Option<GroupError>>,
+    id: &'static str,
+) -> impl IntoView {
     let i18n = use_i18n();
     move || {
         error
             .get()
             .and_then(|e| e.field_error(field))
-            .map(|problem| view! { <div class="invalid-feedback">{problem.text(&i18n)}</div> })
+            .map(|problem| view! { <div id=id class="invalid-feedback" role="alert">{problem.text(&i18n)}</div> })
     }
 }
 
@@ -224,10 +228,11 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                 id="group-name"
                 name="name"
                 class=control_class(error, GroupField::Name)
-                aria-describedby="group-name-help"
+                aria-describedby="group-name-help group-name-error"
+                aria-invalid=move || if error.get().and_then(|e| e.field_error(GroupField::Name)).is_some() { "true" } else { "false" }
                 value=values.name
             />
-            <FieldFeedback field=GroupField::Name error/>
+            <FieldFeedback field=GroupField::Name error id="group-name-error"/>
             <div id="group-name-help" class="form-text">{i18n.t("group.form.nameHelp")}</div>
         </div>
         <div class="mb-3">
@@ -237,10 +242,11 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                 name="description"
                 rows="3"
                 class=Signal::derive(control_class(error, GroupField::Description))
-                aria_describedby="group-description-help"
+                aria_describedby="group-description-help group-description-error"
+                aria_invalid=Signal::derive(move || error.get().and_then(|e| e.field_error(GroupField::Description)).is_some())
                 value=values.description
             />
-            <FieldFeedback field=GroupField::Description error/>
+            <FieldFeedback field=GroupField::Description error id="group-description-error"/>
             <div id="group-description-help" class="form-text">
                 {i18n.t("group.form.descriptionHelp")}
             </div>
@@ -255,10 +261,11 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                     id="group-deadline"
                     name="registration_deadline"
                     class=control_class(error, GroupField::RegistrationDeadline)
-                    aria-describedby="group-deadline-help"
+                    aria-describedby="group-deadline-help group-deadline-error"
+                    aria-invalid=move || if error.get().and_then(|e| e.field_error(GroupField::RegistrationDeadline)).is_some() { "true" } else { "false" }
                     value=values.registration_deadline
                 />
-                <FieldFeedback field=GroupField::RegistrationDeadline error/>
+                <FieldFeedback field=GroupField::RegistrationDeadline error id="group-deadline-error"/>
                 <div id="group-deadline-help" class="form-text">
                     {i18n.t("group.form.registrationDeadlineHelp")}
                     " "
@@ -272,10 +279,11 @@ fn GroupFields(values: FormValues, error: Signal<Option<GroupError>>) -> impl In
                     id="group-draw-date"
                     name="draw_date"
                     class=control_class(error, GroupField::DrawDate)
-                    aria-describedby="group-draw-date-help"
+                    aria-describedby="group-draw-date-help group-draw-date-error"
+                    aria-invalid=move || if error.get().and_then(|e| e.field_error(GroupField::DrawDate)).is_some() { "true" } else { "false" }
                     value=values.draw_date
                 />
-                <FieldFeedback field=GroupField::DrawDate error/>
+                <FieldFeedback field=GroupField::DrawDate error id="group-draw-date-error"/>
                 <div id="group-draw-date-help" class="form-text">
                     {i18n.t("group.form.drawDateHelp")}
                     " "

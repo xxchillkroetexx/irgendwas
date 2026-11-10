@@ -8,6 +8,53 @@ use app::wishlists_api::{WishlistError, WishlistPanel, WishlistView};
 use chrono::{TimeZone, Utc};
 use sqlx::MySqlPool;
 
+#[sqlx::test(migrations = "../migrations")]
+async fn legacy_links_are_only_clickable_when_they_are_safe_and_remain_editable(pool: MySqlPool) {
+    let f = fixture(&pool).await;
+    let mut bob = f.w.bob().await;
+    let mut carol = f.w.carol().await;
+    for (stored, expected) in [
+        ("javascript:alert(1)", None),
+        ("data:text/html,hello", None),
+        ("ftp://shop.example/item", None),
+        ("shop.example/item", None),
+        ("https://user:secret@shop.example/item", None),
+        (
+            "HTTPS://Shop.Example/item",
+            Some("https://shop.example/item"),
+        ),
+    ] {
+        sqlx::query("UPDATE wishlist_items SET link = ? WHERE id = ?")
+            .bind(stored)
+            .bind(f.a)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let view: WishlistView = get_wishlist(&mut carol, f.w.g, f.w.bob).await.wl_value();
+        let own: WishlistView = get_my_wishlist(&mut bob, f.w.g).await.wl_value();
+        for item in [&view.items[0], &own.items[0]] {
+            assert_eq!(item.link.as_deref(), Some(stored));
+            assert_eq!(item.link_target.as_deref(), expected);
+            assert_eq!(item.link_host.as_deref(), expected.map(|_| "shop.example"));
+        }
+        let page = carol.get(&view_path(f.w.g, f.w.bob)).await;
+        let editor = bob.get(&format!("{}?edit={}", edit_path(f.w.g), f.a)).await;
+        assert_eq!(page.status, 200);
+        assert_eq!(editor.status, 200);
+        let input_id = format!("id=\"edit-{}-link\"", f.a);
+        let start = editor.body.find(&input_id).expect("edit link input");
+        let tag_start = editor.body[..start].rfind("<input").unwrap();
+        let tag_end = start + editor.body[start..].find('>').unwrap();
+        assert!(editor.body[tag_start..tag_end].contains(&format!("value=\"{stored}\"")));
+        if let Some(target) = expected {
+            assert!(page.body.contains(&format!("href=\"{target}\"")));
+        } else {
+            assert!(!page.body.contains(&format!("href=\"{stored}\"")));
+            assert!(!editor.body.contains(&format!("href=\"{stored}\"")));
+        }
+    }
+}
+
 // -------------------------------------------------------------------------- AC1
 
 #[sqlx::test(migrations = "../migrations")]

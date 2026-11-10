@@ -7,8 +7,8 @@ use crate::AppError;
 use crate::share_api::{ShareDraft, ShareInput, prepare_share};
 use crate::wishlists_api::{WishlistError, WishlistField, WishlistFieldError};
 
-const DRAFTS_KEY: &str = "shared_link_drafts";
-const MAX_PENDING: usize = 5;
+pub const DRAFTS_KEY: &str = "shared_link_drafts";
+pub const MAX_PENDING: usize = 5;
 pub const MAX_SHARE_BYTES: usize = 16_384;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -49,6 +49,16 @@ pub async fn receive(session: &Session, input: ShareInput) -> Result<String, App
 pub async fn get_draft(id: String) -> Result<ShareDraft, AppError> {
     auth::require_user().await?;
     let session = auth::session().await?;
+    let state = super::state()?;
+    let claimed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM consumed_share_drafts WHERE draft_hash = ?)",
+    )
+    .bind(super::token::hash(&id))
+    .fetch_one(&state.pool)
+    .await?;
+    if claimed {
+        return Err(AppError::NotFound);
+    }
     drafts(&session)
         .await?
         .into_iter()
@@ -95,19 +105,16 @@ pub async fn add_wish(
     } else {
         id
     };
-    // Keep corrections across login and a no-JS validation/authorization failure.
-    store(
-        &session,
-        id.clone(),
-        ShareDraft {
-            title: title.clone(),
-            description: description.clone(),
-            link: link.clone(),
-        },
-    )
-    .await
-    .map_err(mutation_error)?;
+    let draft = ShareDraft {
+        title: title.clone(),
+        description: description.clone(),
+        link: link.clone(),
+    };
     if user.is_none() {
+        // Keep corrections across login.
+        store(&session, id.clone(), draft)
+            .await
+            .map_err(mutation_error)?;
         respond::redirect_document(&crate::paths::login_url(&review_path(&id)));
         return if respond::is_plain_form_post() {
             Ok(())
@@ -115,9 +122,11 @@ pub async fn add_wish(
             Err(WishlistError::Unauthorized)
         };
     }
-    let result = super::wishlists_flow::add_item(group_id, title, description, link).await;
+    let result =
+        super::wishlists_flow::add_shared_item(group_id, title, description, link, &id).await;
     match result {
-        Ok(_) => {
+        Ok(None) => Err(WishlistError::NotFound),
+        Ok(Some(_)) => {
             let mut pending = drafts(&session).await.map_err(mutation_error)?;
             pending.retain(|p| p.id != id);
             session
@@ -140,6 +149,22 @@ pub async fn add_wish(
             Ok(())
         }
         Err(error) => {
+            // Preserve corrections on validation/authorization failures, but
+            // never re-stage a draft that another request already consumed.
+            let state = super::state().map_err(mutation_error)?;
+            let claimed: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM consumed_share_drafts WHERE draft_hash = ?)",
+            )
+            .bind(super::token::hash(&id))
+            .fetch_one(&state.pool)
+            .await
+            .map_err(AppError::from)
+            .map_err(mutation_error)?;
+            if !claimed {
+                store(&session, id.clone(), draft)
+                    .await
+                    .map_err(mutation_error)?;
+            }
             if respond::is_plain_form_post() {
                 super::flash::push(&session, error.flash())
                     .await

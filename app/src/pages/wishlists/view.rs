@@ -125,7 +125,7 @@ fn ItemCard(item: ItemView) -> impl IntoView {
                 {item
                     .description
                     .map(|text| view! { <p class="card-text" style="white-space: pre-line">{text}</p> })}
-                {item.link.map(|link| view! { <ItemLink link host=item.link_host/> })}
+                {item.link_target.map(|link| view! { <ItemLink link host=item.link_host/> })}
             </div>
         </li>
     }

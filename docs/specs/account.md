@@ -11,6 +11,7 @@ Fresh start: no production data is migrated and users register again. The Rust a
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Both mails use the account language (`users.locale` via `mail_i18n`) instead of the request locale; the pending-change expiry is formatted with `app::format`. AC27 was revised; AC38 and AC39 were added.
 Revised 2026-11-01 (review): current-password attempts are rate limited (AC40); no-JS confirm works and token pages use `Referrer-Policy: same-origin` (AC41); `no-store` on profile/verify (AC42); per-recipient mail limit (AC43); no-JS profile forms show their result as a flash (AC44).
+Revised 2026-11-10 (#71): password changes cancel outstanding email changes. The result reports whether a live pending change was cancelled, so both hydrated and plain-form feedback describe only what happened.
 
 ## Current PHP behaviour
 
@@ -120,7 +121,7 @@ All are POST (Leptos default) and go through the foundation's Origin check. "Aut
 |---|---|---|---|
 | `get_profile() -> ProfileView` | yes | `{ name, email, pending_email: Option<String>, pending_expires_at: Option<DateTime<Utc>> }`. Pending fields are `None` if no pending change exists **or it has expired** | Unauthorized |
 | `update_name(name: String) -> ()` | yes | Stores `trim(name)` | Unauthorized, NameRequired (empty after trim), NameInvalid (control characters), NameTooLong (> 100 chars) |
-| `change_password(current_password, new_password, new_password_confirm) -> ()` | yes | See below | Unauthorized, PasswordTooShort, PasswordTooLong, PasswordsDontMatch, CurrentPasswordIncorrect |
+| `change_password(current_password, new_password, new_password_confirm) -> PasswordChanged` | yes | `{ pending_email_cancelled: bool }`; see below | Unauthorized, PasswordTooShort, PasswordTooLong, PasswordsDontMatch, CurrentPasswordIncorrect |
 | `request_email_change(new_email, current_password) -> ()` | yes | See below | Unauthorized, InvalidEmail, EmailUnchanged, CurrentPasswordIncorrect, EmailChangeTooSoon, MailSendFailed |
 | `cancel_email_change() -> ()` | yes | Sets `pending_email`, `email_verification_token` and `email_verification_expires` to NULL. Idempotent (Ok if nothing is pending) | Unauthorized |
 | `confirm_email_change(token: String) -> ConfirmResult` | **no** | `{ logged_in: bool }`, so the page can offer "Go to profile" or "Log in" | InvalidOrExpiredToken, EmailTaken |
@@ -132,8 +133,9 @@ All are POST (Leptos default) and go through the foundation's Origin check. "Aut
 
 **`change_password`**
 1. Validate length (too short, then too long), then the confirm match, then verify `current_password` against the stored argon2id hash.
-2. In one statement: `password = argon2id(new)`, `session_epoch = session_epoch + 1`, `reset_token = NULL`, `reset_token_expires = NULL`.
+2. Under the user's row lock determine whether an unexpired pending email change exists. In one statement update the password and epoch, and clear the reset token and pending email-verification fields.
 3. Write the new `session_epoch` into the current session and cycle the session id. Every other session of the user fails `require_user()` on its next request.
+4. Return whether a live pending email change was cancelled; show the corresponding success message, also for a plain form POST.
 
 **`request_email_change`**
 1. Normalise and validate `new_email`. If it equals the current `email` → EmailUnchanged.

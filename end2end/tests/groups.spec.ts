@@ -123,6 +123,12 @@ test.describe.configure({ mode: "serial" });
 
 test.describe("groups", () => {
   let browserRef: Browser;
+  // Keep the invitation deadline in the future, independently of when CI runs.
+  const year = new Date().getUTCFullYear() + 1;
+  const deadline = `${year}-12-10`;
+  const draw = `${year}-12-12`;
+  const deadlineEn = `10 Dec ${year}`;
+  const drawEn = `12 Dec ${year}`;
   const users = {
     alice: { email: uniqueEmail("g-alice"), name: "Alice Admin", context: undefined as unknown as BrowserContext, page: undefined as unknown as Page },
     bob: { email: uniqueEmail("g-bob"), name: "Bob Member", context: undefined as unknown as BrowserContext, page: undefined as unknown as Page },
@@ -166,9 +172,12 @@ test.describe("groups", () => {
     await expectingFailedRequest(errors, async () => {
       await page.getByRole("button", { name: t("group.form.createButton") }).click();
       await expect(page.getByText(t("validation.group.name_required"))).toBeVisible();
+      const name = page.getByLabel(t("group.form.name"), { exact: true });
+      await expect(name).toHaveAttribute("aria-invalid", "true");
+      await expect(name).toHaveAccessibleDescription(new RegExp(t("validation.group.name_required")));
     });
     // AC6: a draw date before the deadline is refused inline.
-    await fillGroupForm(page, { name: "Family 2026", deadline: "2026-12-12", draw: "2026-12-10" });
+    await fillGroupForm(page, { name: "Family 2026", deadline: draw, draw: deadline });
     await expectingFailedRequest(errors, async () => {
       await page.getByRole("button", { name: t("group.form.createButton") }).click();
       await expect(page.getByText(t("validation.group.draw_before_deadline"))).toBeVisible();
@@ -178,16 +187,16 @@ test.describe("groups", () => {
     await fillGroupForm(page, {
       name: "  Family 2026  ",
       description: "Line one\nLine two",
-      deadline: "2026-12-10",
-      draw: "2026-12-12",
+      deadline,
+      draw,
     });
     await page.getByRole("button", { name: t("group.form.createButton") }).click();
     await expect(page).toHaveURL(/\/groups\/\d+$/);
     gid = groupId(page);
     await expect(page.getByText(t("flash.success.group_created"))).toBeVisible();
     await expect(page.getByRole("heading", { name: "Family 2026", exact: true })).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toBeVisible();
-    await expect(page.getByText("12 Dec 2026")).toBeVisible();
+    await expect(page.getByText(deadlineEn)).toBeVisible();
+    await expect(page.getByText(drawEn)).toBeVisible();
     await expect(page.getByText(t("group.show.drawDateInfo"))).toBeVisible();
 
     // The admin sees the code and the link, built from APP_URL.
@@ -215,22 +224,22 @@ test.describe("groups", () => {
     await waitForHydration(page);
 
     await expect(page.getByLabel(t("group.form.name"), { exact: true })).toHaveValue("Family 2026");
-    await expect(page.getByLabel(t("group.form.registrationDeadline"), { exact: true })).toHaveValue("2026-12-10");
-    await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue("2026-12-12");
+    await expect(page.getByLabel(t("group.form.registrationDeadline"), { exact: true })).toHaveValue(deadline);
+    await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue(draw);
 
     await fillGroupForm(page, { name: "Family", draw: "" });
     await page.getByRole("button", { name: t("group.form.updateButton") }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     await expect(page.getByText(t("flash.success.group_updated"))).toBeVisible();
     await expect(page.getByRole("heading", { name: "Family", exact: true })).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toBeVisible();
-    await expect(page.getByText("12 Dec 2026")).toHaveCount(0);
+    await expect(page.getByText(deadlineEn)).toBeVisible();
+    await expect(page.getByText(drawEn)).toHaveCount(0);
 
     // Put the draw date back for the German check below.
     await page.goto(`/groups/${gid}/edit`);
     await waitForHydration(page);
     await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue("");
-    await fillGroupForm(page, { draw: "2026-12-12" });
+    await fillGroupForm(page, { draw });
     await page.getByRole("button", { name: t("group.form.updateButton") }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     expect(errors).toEqual([]);
@@ -256,11 +265,21 @@ test.describe("groups", () => {
     await expect(page.getByText(t("group.join.previewTitle", { name: "Family" }))).toBeVisible();
     await expect(page.getByText("Alice Admin")).toBeVisible();
     await expect(page.getByText("1 member", { exact: true })).toBeVisible();
+    // Keep a second preview open so its submit races with an already-completed join.
+    const second = await page.context().newPage();
+    await second.goto(`/join/${inviteCode}`);
+    await waitForHydration(second);
+    await expect(second.getByRole("button", { name: t("group.join.submit") })).toBeVisible();
     await page.getByRole("button", { name: t("group.join.submit") }).click();
 
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     await expect(page.getByText(t("flash.success.group_joined"))).toBeVisible();
     await waitForHydration(page);
+
+    await second.getByRole("button", { name: t("group.join.submit") }).click();
+    await expect(second).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await expect(second.locator(".flash-messages").getByText(t("flash.info.already_member"))).toBeVisible();
+    await second.close();
 
     // AC11: names, "You", no emails, no code, no admin actions, a Leave button.
     await expect(page.getByText("Alice Admin").first()).toBeVisible();
@@ -361,13 +380,51 @@ test.describe("groups", () => {
     await page.goto(`/groups/${gid}`);
     await waitForHydration(page);
     await expect(page.locator("html")).toHaveAttribute("lang", "de");
-    await expect(page.getByText("10.12.2026")).toBeVisible();
-    await expect(page.getByText("12.12.2026")).toBeVisible();
+    await expect(page.getByText(`10.12.${year}`)).toBeVisible();
+    await expect(page.getByText(`12.12.${year}`)).toBeVisible();
     await expect(page.getByText(tDe("group.show.drawDateInfo"))).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toHaveCount(0);
+    await expect(page.getByText(deadlineEn)).toHaveCount(0);
     await page.goto("/groups/new");
     await expect(page.getByText(tDe("group.form.dateInputHelp"))).toHaveCount(2);
     expect(errors).toEqual([]);
+  });
+
+  test("clipboard feedback is discarded after leaving the source group", async () => {
+    const page = await users.alice.context.newPage();
+    const errors = collectPageErrors(page);
+    await page.goto(`/groups/${gid}`);
+    await waitForHydration(page);
+    await page.evaluate(() => {
+      const state = window as unknown as { resolveClipboard?: () => void };
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: () => new Promise<void>((resolve) => { state.resolveClipboard = resolve; }) },
+      });
+    });
+    const copy = page.getByRole("button", { name: t("group.show.copy"), exact: true });
+    await copy.click();
+    await expect.poll(() => page.evaluate(() => typeof (window as unknown as { resolveClipboard?: () => void }).resolveClipboard)).toBe("function");
+    await page.evaluate(async () => {
+      (window as unknown as { resolveClipboard: () => void }).resolveClipboard();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    await expect(page.getByText(t("group.show.copied"))).toBeVisible();
+
+    await copy.click();
+    await page.locator("nav").getByRole("link", { name: t("nav.groups") }).click();
+    await expect(page).toHaveURL(/\/groups$/);
+    // This would not exist after a full page reload: the Promise must finish in
+    // the same client-side document after the user has left the group.
+    await page.evaluate(async () => {
+      (window as unknown as { resolveClipboard: () => void }).resolveClipboard();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
+    await expect(page.getByText(t("group.show.copied"))).toHaveCount(0);
+    await page.locator(`main a[href="/groups/${gid}"]`).first().click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await expect(page.getByText(t("group.show.copied"))).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await page.close();
   });
 
   test("AC41 AC35: Alice hands over the admin role and then leaves", async () => {
@@ -378,6 +435,7 @@ test.describe("groups", () => {
 
     acceptNextDialog(alice);
     const bobRow = alice.getByTestId("group-members").locator("li").filter({ hasText: "Bob Member" });
+    await expect(bobRow.getByRole("button", { name: "Make admin: Bob Member", exact: true })).toBeVisible();
     await bobRow.getByRole("button", { name: t("group.show.makeAdmin") }).click();
     await expect(alice.getByText(t("flash.success.admin_transferred"))).toBeVisible();
     await expect(alice.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
@@ -408,6 +466,7 @@ test.describe("groups", () => {
     await bob.goto(`/groups/${gid}`);
     await waitForHydration(bob);
     const row = bob.getByTestId("group-members").locator("li").filter({ hasText: "Carol Newcomer" });
+    await expect(row.getByRole("button", { name: "Remove member: Carol Newcomer", exact: true })).toBeVisible();
     acceptNextDialog(bob);
     await row.getByRole("button", { name: t("group.show.removeMember") }).click();
     await expect(bob.getByText(t("flash.success.member_removed"))).toBeVisible();
@@ -454,15 +513,77 @@ test.describe("groups", () => {
     const link = alice.locator("main").getByText(/\/join\/[A-Z2-9]{8}$/).first();
     const code = ((await link.textContent()) ?? "").trim().slice(-8);
 
+    // Use a separate group for the confirmation path so the group used by the
+    // rest of this test remains available.
+    await alice.goto("/groups/new");
+    await waitForHydration(alice);
+    await fillGroupForm(alice, { name: "Hydration Group" });
+    await alice.getByRole("button", { name: t("group.form.createButton") }).click();
+    await expect(alice).toHaveURL(/\/groups\/\d+$/);
+    const hydrationGid = groupId(alice);
+
+    // Keep hydration pending while the user opens the SSR confirmation. Loading
+    // the app must neither close the disclosure nor move focus away from it.
+    for (const openBeforeHydration of [true, false]) {
+      const beforeHydration = await browser.newContext({ storageState: await alice.context().storageState() });
+      let releaseHydration!: () => void;
+      const hydrationGate = new Promise<void>((resolve) => { releaseHydration = resolve; });
+      await beforeHydration.route(/\/pkg\/.*\.(js|wasm)(\?.*)?$/, async (route) => {
+        await hydrationGate;
+        await route.continue();
+      });
+      const early = await beforeHydration.newPage();
+      await early.goto(`/groups/${openBeforeHydration ? hydrationGid : plainGid}`, { waitUntil: "commit" });
+      await expect(early.locator("html[data-hydrated]")).toHaveCount(0);
+      const earlyDelete = early.locator("details").filter({ has: early.locator("summary", { hasText: t("group.show.deleteGroup") }) });
+      const summary = earlyDelete.locator("summary");
+      if (openBeforeHydration) {
+        await summary.click();
+        await expect(earlyDelete.getByText(t("group.show.deleteGroupConfirm"))).toBeVisible();
+      } else {
+        await summary.focus();
+      }
+      await expect(summary).toBeFocused();
+      releaseHydration();
+      await waitForHydration(early);
+      // Effects may run after the marker is set. Let the reactive work and the
+      // resulting DOM updates run before checking for preservation.
+      await early.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }));
+      if (openBeforeHydration) {
+        await expect(earlyDelete).toHaveAttribute("open", "");
+        await expect(earlyDelete.getByText(t("group.show.deleteGroupConfirm"))).toBeVisible();
+      } else {
+        await expect(earlyDelete).not.toHaveAttribute("open", "");
+      }
+      await expect(summary).toBeFocused();
+      if (openBeforeHydration) {
+        await earlyDelete.getByRole("button", { name: t("common.confirm") }).click();
+        await expect(early).toHaveURL(/\/groups$/);
+        await expect(early.getByText(t("flash.success.group_deleted"))).toBeVisible();
+      } else {
+        await expect(early.getByRole("heading", { name: "Plain Group" })).toBeVisible();
+      }
+      await beforeHydration.close();
+    }
+
     const plainContext = await browser.newContext({ javaScriptEnabled: false, locale: "de-DE" });
     const p = await plainContext.newPage();
     await loginPlain(p, users.carol.email);
+    await p.setViewportSize({ width: 390, height: 844 });
+    const nav = p.locator("nav");
+    await expect(nav.getByRole("link", { name: tDe("nav.groups") })).toBeVisible();
+    await expect(nav.getByRole("link", { name: tDe("nav.profile") })).toBeVisible();
+    await nav.getByRole("link", { name: tDe("nav.profile") }).click();
+    await expect(p).toHaveURL(/\/user\/profile$/);
 
     // Create: a plain form post ends on the new group with the flash.
     await p.goto("/groups/new");
     await p.getByLabel(tDe("group.form.name"), { exact: true }).fill("Carols Plain Group");
     await p.getByRole("button", { name: tDe("group.form.createButton") }).click();
     await expect(p).toHaveURL(/\/groups\/\d+$/);
+    const carolGid = groupId(p);
     await expect(p.getByText(tDe("flash.success.group_created"))).toBeVisible();
     await expect(p.getByText("Carols Plain Group").first()).toBeVisible();
 
@@ -473,16 +594,37 @@ test.describe("groups", () => {
     await expect(p).toHaveURL(new RegExp(`/groups/${plainGid}$`));
     await expect(p.getByText(tDe("flash.success.group_joined"))).toBeVisible();
 
-    // Leave: ends on the list with the flash; the group is gone from it.
-    await p.getByRole("button", { name: tDe("group.show.leaveGroup") }).click();
+    // Leave requires an explicit confirmation even without JavaScript. Closing the
+    // disclosure cancels without losing membership.
+    const leave = p.locator("details").filter({ has: p.locator("summary", { hasText: tDe("group.show.leaveGroup") }) });
+    await leave.locator("summary").click();
+    await expect(leave.getByText(tDe("group.show.leaveGroupConfirm"))).toBeVisible();
+    await leave.locator("summary").click();
+    await expect(p.getByText("Plain Group").first()).toBeVisible();
+    await leave.locator("summary").click();
+    await leave.getByRole("button", { name: tDe("common.confirm") }).click();
     await expect(p).toHaveURL(/\/groups$/);
     await expect(p.getByText(tDe("flash.success.left_group"))).toBeVisible();
     await expect(p.getByText("Plain Group", { exact: true })).toHaveCount(0);
     await expect(p.getByText("Carols Plain Group")).toBeVisible();
 
+    // Group deletion similarly needs a separate explicit submission.
+    await p.goto(`/groups/${carolGid}`);
+    const deletion = p.locator("details").filter({ has: p.locator("summary", { hasText: tDe("group.show.deleteGroup") }) });
+    await deletion.locator("summary").click();
+    await expect(deletion.getByText(tDe("group.show.deleteGroupConfirm"))).toBeVisible();
+    await deletion.locator("summary").click();
+    await expect(p.getByRole("heading", { name: "Carols Plain Group" })).toBeVisible();
+    await deletion.locator("summary").click();
+    await deletion.getByRole("button", { name: tDe("common.confirm") }).click();
+    await expect(p).toHaveURL(/\/groups$/);
+    await expect(p.getByText(tDe("flash.success.group_deleted"))).toBeVisible();
+
     // A wrong code without JavaScript shows the invalid-code message.
     await p.goto("/join/ZZZZZZZZ");
     await expect(p.getByText(tDe("flash.error.invalid_invitation_code"))).toBeVisible();
+    await p.locator("nav").getByRole("button", { name: tDe("auth.logout") }).click();
+    await expect(p).toHaveURL(/\/$/);
     await plainContext.close();
     void browserRef;
   });

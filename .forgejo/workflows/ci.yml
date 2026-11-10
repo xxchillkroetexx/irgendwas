@@ -13,8 +13,12 @@
 # dependencies are compiled once and later runs rebuild only the workspace crates (the
 # runner's cache server would tar and upload several GB per run). The volume lives in the
 # dind engine, so it survives only if dind's /var/lib/docker is a volume itself. Each job
-# uses its own subdirectory (~5-10 GB) and wipes it above $TARGET_CACHE_MAX_MB;
-# `docker exec <dind container> docker volume rm irgendwas-ci-cache` starts over.
+# uses its own subdirectory (~5-10 GB) and an external lock for the entire build/test
+# phase. The v2 cache paths isolate them from older jobs that do not hold the lock.
+# Above $TARGET_CACHE_MAX_MB the job warns; clean the cache manually only after
+# ALL jobs have stopped (older runs do not use the lock). Never remove a lock file while
+# any job might use it. `docker exec <dind container> docker volume rm irgendwas-ci-cache`
+# starts over after the runner is idle.
 name: ci
 
 # Documentation-only changes skip the pipeline.
@@ -77,20 +81,16 @@ jobs:
       - name: Install git and node (needed by checkout)
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl git nodejs
+          apt-get install -y --no-install-recommends ca-certificates curl git nodejs util-linux
       - uses: actions/checkout@v4
       - name: Toolchain (rust-toolchain.toml) and cargo-leptos
         run: |
           rustup toolchain install
           sh scripts/install-cargo-leptos.sh
-      - name: Persistent target dir
-        run: sh scripts/ci-target-dir.sh /ci-cache/target-check
       - name: Configuration
         run: cp .env.example .env
-      - name: Format
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test cache coordination
+        run: sh scripts/test-ci-target-dir.sh
       - name: Wait for MariaDB
         run: |
           for i in $(seq 1 60); do
@@ -102,10 +102,14 @@ jobs:
       # What `cargo leptos test` runs, but one after the other: it builds both at once, and
       # two compilations of the app crate (ssr and hydrate) ran the runner out of memory
       # (rustc SIGKILLed, run 41).
-      - name: Tests (server)
-        run: cargo test --package=server --no-default-features
-      - name: Tests (frontend)
-        run: cargo test --package=frontend --lib --target-dir=target/front --no-default-features
+      - name: Format, clippy and tests
+        run: |
+          sh scripts/ci-target-dir.sh /ci-cache/target-check-v2 sh -ec '
+            cargo fmt --all --check
+            cargo clippy --all-targets --all-features -- -D warnings
+            cargo test --package=server --no-default-features
+            cargo test --package=frontend --lib --target-dir=target/front --no-default-features
+          '
 
   e2e:
     runs-on: docker
@@ -146,7 +150,7 @@ jobs:
       - name: Install build tools and rustup
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential ca-certificates curl git
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git util-linux
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v4
@@ -154,8 +158,6 @@ jobs:
         run: |
           rustup toolchain install
           sh scripts/install-cargo-leptos.sh
-      - name: Persistent target dir
-        run: sh scripts/ci-target-dir.sh /ci-cache/target-e2e
       - name: Configuration
         run: cp .env.example .env
       - name: Wait for MariaDB
@@ -168,12 +170,13 @@ jobs:
           exit 1
       # Frontend and server one after the other (see check: memory); end-to-end then finds
       # both up to date.
-      - name: Build frontend
-        run: cargo leptos build --frontend-only
-      - name: Build server
-        run: cargo leptos build --server-only
-      - name: End-to-end tests
-        run: cargo leptos end-to-end
+      - name: Build and end-to-end tests
+        run: |
+          sh scripts/ci-target-dir.sh /ci-cache/target-e2e-v2 sh -ec '
+            cargo leptos build --frontend-only
+            cargo leptos build --server-only
+            cargo leptos end-to-end
+          '
       - name: Playwright report
         if: failure()
         uses: actions/upload-artifact@v3

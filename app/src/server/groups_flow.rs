@@ -177,7 +177,15 @@ fn local_instant(
     zone: Tz,
 ) -> Result<DateTime<Utc>, GroupFieldError> {
     let time = NaiveTime::from_hms_opt(h, m, s).ok_or(GroupFieldError::InvalidDate)?;
-    tz::from_local(date.and_time(time), zone).map_err(|_| GroupFieldError::InvalidDate)
+    let instant =
+        tz::from_local(date.and_time(time), zone).map_err(|_| GroupFieldError::InvalidDate)?;
+    // MariaDB 11.8 TIMESTAMP stores the UTC Unix instant in 1..=2^32-1.
+    // Validate after converting the configured time zone; local dates around
+    // either boundary can land on different sides of the database limit.
+    if !(1..=u32::MAX as i64).contains(&instant.timestamp()) {
+        return Err(GroupFieldError::InvalidDate);
+    }
+    Ok(instant)
 }
 
 /// Checks every field and returns all problems together (spec "Validation").

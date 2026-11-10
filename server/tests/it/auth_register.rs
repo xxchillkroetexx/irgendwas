@@ -166,6 +166,72 @@ async fn ac22_registering_an_existing_address_looks_the_same_and_mails_a_notice(
     );
 }
 
+#[sqlx::test(migrations = "../migrations")]
+async fn concurrent_registration_requests_return_generic_success(pool: MySqlPool) {
+    let mailpit = Mailpit::from_env();
+    let email = unique_email("registration-race");
+    insert_pending_registration(&pool, &email, &tok('p'), None, 3600).await;
+    let app = router(&pool, &[], Opts::mail());
+
+    // Force both requests to overlap at the existing pending row. Depending on the
+    // database's scan plan, the expiry cleanup or the upsert reaches the lock first.
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("SELECT email FROM pending_registrations WHERE email = ? FOR UPDATE")
+        .bind(&email)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let a_email = email.clone();
+    let b_email = email.clone();
+    let a_app = app.clone();
+    let a = tokio::spawn(async move { Client::new(&a_app).register(&a_email, None).await });
+    let b = tokio::spawn(async move { Client::new(&app).register(&b_email, None).await });
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB = DATABASE() \
+                 AND (INFO LIKE ? OR INFO LIKE ?)",
+            )
+            .bind("INSERT INTO pending_registrations%")
+            .bind("DELETE FROM pending_registrations%")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if waiting >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("both registration requests should reach the locked row");
+    tx.commit().await.unwrap();
+
+    let a = a.await.unwrap();
+    let b = b.await.unwrap();
+    a.ok();
+    b.ok();
+    assert_eq!(a.status, b.status);
+    assert_eq!(a.body, b.body);
+    assert_eq!(pending_with(&pool, &email).await, 1);
+    let stored = pending_hash(&pool, &email).await;
+    let messages = mailpit.wait_for_count(&email, 2).await;
+    let mut valid_links = 0;
+    for mail in messages {
+        let link = mail
+            .first_url_with_path(CONFIRM)
+            .expect("registration link");
+        let token = token_in(&link, CONFIRM);
+        if sha256_hex(&pool, &token).await == stored {
+            valid_links += 1;
+        }
+    }
+    assert_eq!(
+        valid_links, 1,
+        "only the latest registration token is valid"
+    );
+}
+
 // --------------------------------------------------------------------- AC23
 
 #[sqlx::test(migrations = "../migrations")]

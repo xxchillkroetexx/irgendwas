@@ -8,6 +8,27 @@ use app::test_support::{self as ts, groups_snapshot};
 use chrono::{TimeZone, Utc};
 use sqlx::MySqlPool;
 
+#[sqlx::test(migrations = "../migrations")]
+async fn editing_rejects_out_of_range_dates_without_modifying_the_group(pool: MySqlPool) {
+    let w = world(&pool).await;
+    let mut alice = w.alice().await;
+    let before = groups_snapshot(&pool).await;
+    for (deadline, draw, field) in [
+        ("1969-12-31", "", GroupField::RegistrationDeadline),
+        ("", "2500-01-01", GroupField::DrawDate),
+    ] {
+        let response = update_group(&mut alice, w.g, "not saved", "", deadline, draw).await;
+        assert_eq!(response.status, 422);
+        match response.group_err() {
+            GroupError::Validation(errors) => {
+                assert!(errors.contains(&(field, GroupFieldError::InvalidDate)))
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
+        assert_eq!(groups_snapshot(&pool).await, before);
+    }
+}
+
 fn utc(y: i32, m: u32, d: u32, h: u32, mi: u32, s: u32) -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(y, m, d, h, mi, s).unwrap()
 }

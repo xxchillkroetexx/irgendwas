@@ -11,6 +11,9 @@ status: approved (implementation authorized in the 2026-11-03 issue task)
   a separate maskable declaration and a 180px Apple touch icon.
 - Public `/install` instructions in English and German, linked from every footer,
   describe iPhone/iPad Safari, Android Chrome and supported desktop browsers.
+- Hide installation links in standalone, minimal-ui and window-controls-overlay
+  display modes, and in older iOS Home Screen apps reporting `navigator.standalone`.
+  Keep the help URL available and keep the links visible in normal fullscreen tabs.
 - HTTPS is required in production; localhost is suitable for development.
 - Offline behavior is outside scope. No service worker or response cache is
   introduced; private pages continue to use the network and existing sessions.

@@ -3,9 +3,12 @@
 //! server answers with `302` back here and a flash). With JavaScript the page stays, reads
 //! the flash and re-reads the list. `?edit={item_id}` renders that item's row as an inline
 //! form; an id that is not one of my items in this group is ignored.
+//! Each item has an anchor so editing and cancelling remain discoverable without JS.
 
+use leptos::html::{Input, Li, Textarea};
 use leptos::prelude::*;
 use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_router::{NavigateOptions, components::Form};
 
 use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
 use crate::auth::use_session_resource;
@@ -31,6 +34,17 @@ struct Actions {
     delete: ServerAction<DeleteItem>,
     move_item: ServerAction<MoveItem>,
     clear: ServerAction<ClearWishlist>,
+}
+
+/// Retained across list re-reads and the guard's query-only remounts.
+#[derive(Clone, Copy)]
+struct Placement {
+    focused: StoredValue<Option<i32>>,
+    scroll_to: StoredValue<Option<i32>>,
+}
+
+fn item_anchor(item_id: i32) -> String {
+    format!("item-{item_id}")
 }
 
 /// The error of the last submission, if it failed.
@@ -95,6 +109,36 @@ pub fn WishlistEditPage() -> impl IntoView {
         move_item: ServerAction::new(),
         clear: ServerAction::new(),
     };
+    let add_title = NodeRef::<Input>::new();
+    let add_description = NodeRef::<Textarea>::new();
+    let add_link = NodeRef::<Input>::new();
+    let placement = Placement {
+        focused: StoredValue::new(None),
+        scroll_to: StoredValue::new(None),
+    };
+    Effect::new(move |_| match editing.get() {
+        Some(_) => placement.scroll_to.set_value(None),
+        None => placement.focused.set_value(None),
+    });
+    Effect::new(move |_| {
+        let busy = [
+            actions.add.pending(),
+            actions.delete.pending(),
+            actions.move_item.pending(),
+            actions.clear.pending(),
+            copy.pending(),
+        ];
+        if busy.map(|pending| pending.get()).contains(&true) {
+            placement.scroll_to.set_value(None);
+        }
+    });
+    // Source selection or a different group is a new task, not a request to revisit
+    // the previously saved row.
+    Effect::new(move |_| {
+        id.track();
+        source_group.track();
+        placement.scroll_to.set_value(None);
+    });
 
     // The server stored the flash of a success: read it and the new list. Field errors of
     // the add form show in the form; other failures as a notice.
@@ -112,6 +156,16 @@ pub fn WishlistEditPage() -> impl IntoView {
     };
     Effect::new(move |_| {
         if let Some(Ok(_)) = actions.add.value().get() {
+            if let Some(input) = add_title.get_untracked() {
+                input.set_value("");
+                let _ = input.focus();
+            }
+            if let Some(input) = add_description.get_untracked() {
+                input.set_value("");
+            }
+            if let Some(input) = add_link.get_untracked() {
+                input.set_value("");
+            }
             session.refetch();
             list.refetch();
         }
@@ -147,7 +201,7 @@ pub fn WishlistEditPage() -> impl IntoView {
                 {move || Suspend::new(async move {
                     match list.await {
                         Ok(wishlist) => {
-                            view! { <EditView wishlist editing list actions/> }.into_any()
+                            view! { <EditView wishlist editing list actions add_title add_description add_link placement/> }.into_any()
                         }
                         Err(error) => view! { <WishlistErrorView error/> }.into_any(),
                     }
@@ -164,6 +218,10 @@ fn EditView(
     editing: Memo<Option<i32>>,
     list: ListResource,
     actions: Actions,
+    add_title: NodeRef<Input>,
+    add_description: NodeRef<Textarea>,
+    add_link: NodeRef<Input>,
+    placement: Placement,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let group_id = wishlist.group.id;
@@ -180,10 +238,11 @@ fn EditView(
             .enumerate()
             .map(|(index, item)| {
                 if editing.get() == Some(item.id) {
-                    view! { <InlineEdit item=item.clone() group_id list/> }.into_any()
+                    view! { <InlineEdit item=item.clone() group_id list placement/> }.into_any()
                 } else {
                     let (first, last) = (index == 0, index == last);
-                    view! { <ItemRow item=item.clone() first last group_id actions/> }.into_any()
+                    view! { <ItemRow item=item.clone() first last group_id actions placement/> }
+                        .into_any()
                 }
             })
             .collect_view()
@@ -220,7 +279,7 @@ fn EditView(
                     <input type="hidden" name="group_id" value=group_id/>
                     <fieldset disabled=full>
                         <FormAlert error=add_error/>
-                        <ItemFields prefix="add" values=FormValues::default() error=add_error/>
+                        <ItemFields prefix="add" values=FormValues::default() error=add_error title_ref=add_title description_ref=add_description link_ref=add_link/>
                         <button type="submit" class="btn btn-primary">
                             {i18n.t("wishlist.edit.addItem")}
                         </button>
@@ -273,13 +332,18 @@ fn FormAlert(error: Signal<Option<WishlistError>>) -> impl IntoView {
 
 /// The `invalid-feedback` of `field`.
 #[component]
-fn FieldFeedback(field: WishlistField, error: Signal<Option<WishlistError>>) -> impl IntoView {
+fn FieldFeedback(
+    field: WishlistField,
+    error: Signal<Option<WishlistError>>,
+    id: String,
+) -> impl IntoView {
     let i18n = use_i18n();
     move || {
+        let id = id.clone();
         error
             .get()
             .and_then(|e| e.field_error(field))
-            .map(|problem| view! { <div class="invalid-feedback">{problem.text(&i18n)}</div> })
+            .map(|problem| view! { <div id=id class="invalid-feedback" role="alert">{problem.text(&i18n)}</div> })
     }
 }
 
@@ -303,13 +367,19 @@ fn ItemFields(
     #[prop(into)] prefix: String,
     values: FormValues,
     error: Signal<Option<WishlistError>>,
+    #[prop(optional)] title_ref: NodeRef<Input>,
+    #[prop(optional)] description_ref: NodeRef<Textarea>,
+    #[prop(optional)] link_ref: NodeRef<Input>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let title_id = format!("{prefix}-title");
+    let title_error = format!("{prefix}-title-error");
     let description_id = format!("{prefix}-description");
     let description_help = format!("{prefix}-description-help");
+    let description_error = format!("{prefix}-description-error");
     let link_id = format!("{prefix}-link");
     let link_help = format!("{prefix}-link-help");
+    let link_error = format!("{prefix}-link-error");
     view! {
         <div class="mb-3">
             <label for=title_id.clone() class="form-label">{i18n.t("wishlist.edit.itemTitle")}</label>
@@ -318,12 +388,15 @@ fn ItemFields(
                 id=title_id
                 name="title"
                 class=control_class(error, WishlistField::Title)
+                aria-describedby=title_error.clone()
+                aria-invalid=move || if error.get().and_then(|e| e.field_error(WishlistField::Title)).is_some() { "true" } else { "false" }
                 maxlength=TITLE_MAX.to_string()
                 required
                 placeholder=i18n.t("wishlist.edit.itemTitlePlaceholder")
                 value=values.title
+                node_ref=title_ref
             />
-            <FieldFeedback field=WishlistField::Title error/>
+            <FieldFeedback field=WishlistField::Title error id=title_error/>
         </div>
         <div class="mb-3">
             <label for=description_id.clone() class="form-label">
@@ -336,10 +409,12 @@ fn ItemFields(
                 class=Signal::derive(control_class(error, WishlistField::Description))
                 maxlength=DESCRIPTION_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.descriptionPlaceholder")
-                aria_describedby=description_help.clone()
+                aria_describedby=format!("{description_help} {description_error}")
+                aria_invalid=Signal::derive(move || error.get().and_then(|e| e.field_error(WishlistField::Description)).is_some())
                 value=values.description
+                node_ref=description_ref
             />
-            <FieldFeedback field=WishlistField::Description error/>
+            <FieldFeedback field=WishlistField::Description error id=description_error/>
             <div id=description_help class="form-text">{i18n.t("wishlist.edit.descriptionHelp")}</div>
         </div>
         <div class="mb-3">
@@ -352,10 +427,12 @@ fn ItemFields(
                 class=control_class(error, WishlistField::Link)
                 maxlength=LINK_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.linkPlaceholder")
-                aria-describedby=link_help.clone()
+                aria-describedby=format!("{link_help} {link_error}")
+                aria-invalid=move || if error.get().and_then(|e| e.field_error(WishlistField::Link)).is_some() { "true" } else { "false" }
                 value=values.link
+                node_ref=link_ref
             />
-            <FieldFeedback field=WishlistField::Link error/>
+            <FieldFeedback field=WishlistField::Link error id=link_error/>
             <div id=link_help class="form-text">{i18n.t("wishlist.edit.linkHelp")}</div>
         </div>
     }
@@ -369,13 +446,22 @@ fn ItemRow(
     last: bool,
     group_id: i32,
     actions: Actions,
+    placement: Placement,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let id = item.id;
     let title = item.title.clone();
     let host = item.link_host.clone();
+    let row = NodeRef::<Li>::new();
+    Effect::new(move |_| {
+        if let Some(row) = row.get()
+            && placement.scroll_to.get_value() == Some(id)
+        {
+            row.scroll_into_view();
+        }
+    });
     view! {
-        <li class="list-group-item">
+        <li class="list-group-item" id=item_anchor(id) node_ref=row>
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
                 <div class="flex-grow-1 text-break">
                     <div class="fw-semibold">{item.title}</div>
@@ -384,7 +470,7 @@ fn ItemRow(
                         .map(|text| {
                             view! { <div class="small text-muted" style="white-space: pre-line">{text}</div> }
                         })}
-                    {item.link.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
+                    {item.link_target.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
                 </div>
                 <div class="d-flex flex-wrap gap-1">
                     {(!first)
@@ -400,7 +486,7 @@ fn ItemRow(
                             }
                         })}
                     <a
-                        href=format!("{}?edit={id}", wishlist_edit_path(group_id))
+                        href=format!("{}?edit={id}#{}", wishlist_edit_path(group_id), item_anchor(id))
                         class="btn btn-sm btn-outline-secondary"
                         aria-label=row_label(&i18n, "wishlist.edit.edit", &title)
                     >
@@ -452,16 +538,44 @@ fn MoveButton(
 /// The inline form of `?edit={id}`. It has its own action, so its errors show under its own
 /// fields (never in the add form). Saved: back to the page without `?edit`.
 #[component]
-fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoView {
+fn InlineEdit(
+    item: ItemView,
+    group_id: i32,
+    list: ListResource,
+    placement: Placement,
+) -> impl IntoView {
     let i18n = use_i18n();
     let action = ServerAction::<UpdateItem>::new();
     let error = last_error(action);
     let navigate = use_navigate();
+    let id = item.id;
+    let anchor = item_anchor(id);
+    let title_ref = NodeRef::<Input>::new();
+    Effect::new(move |_| {
+        let Some(title) = title_ref.get() else {
+            return;
+        };
+        let idle = document()
+            .active_element()
+            .is_none_or(|el| el.tag_name().eq_ignore_ascii_case("body"));
+        if placement.focused.get_value() != Some(id) || idle {
+            placement.focused.set_value(Some(id));
+            let _ = title.focus();
+        }
+    });
+    let cancel_href = format!("{}#{anchor}", wishlist_edit_path(group_id));
     Effect::new(move |_| {
         if let Some(Ok(())) = action.value().get() {
+            placement.scroll_to.set_value(Some(id));
             list.refetch();
             // A new search string: the layout re-reads the session and shows the flash.
-            navigate(&wishlist_edit_path(group_id), Default::default());
+            navigate(
+                &wishlist_edit_path(group_id),
+                NavigateOptions {
+                    scroll: false,
+                    ..Default::default()
+                },
+            );
         }
     });
     let values = FormValues {
@@ -470,16 +584,17 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
         link: item.link.unwrap_or_default(),
     };
     view! {
-        <li class="list-group-item">
+        <li class="list-group-item" id=anchor>
             <ActionForm action>
                 <input type="hidden" name="item_id" value=item.id/>
                 <FormAlert error/>
-                <ItemFields prefix=format!("edit-{}", item.id) values error/>
+                <ItemFields prefix=format!("edit-{id}") values error title_ref/>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-primary">
                         {i18n.t("wishlist.edit.save")}
                     </button>
-                    <a href=wishlist_edit_path(group_id) class="btn btn-sm btn-outline-secondary">
+                    <a href=cancel_href class="btn btn-sm btn-outline-secondary"
+                       on:click=move |_| placement.scroll_to.set_value(Some(id))>
                         {i18n.t("wishlist.edit.cancel")}
                     </a>
                 </div>
@@ -537,7 +652,9 @@ fn CopySection(
                     <section class="card my-4">
                         <div class="card-body">
                             <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
-                            <form method="get" action=wishlist_edit_path(group_id)>
+                            // A normal GET still works without JS; after hydration only
+                            // the query changes, keeping unsaved editor values and scroll.
+                            <Form method="get" action=wishlist_edit_path(group_id) noscroll=true>
                                 <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
                                 <select id="copy-source" name="source" class="form-select mb-2" required>
                                     <option value="">{i18n.t("wishlist.copy.choose")}</option>
@@ -546,7 +663,7 @@ fn CopySection(
                                     }).collect_view()}
                                 </select>
                                 <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
-                            </form>
+                            </Form>
                             <Suspense fallback=|| ()>
                                 {move || Suspend::new(async move {
                                     match source_list.await {

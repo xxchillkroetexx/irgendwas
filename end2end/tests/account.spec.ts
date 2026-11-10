@@ -196,6 +196,12 @@ test.describe("account", () => {
 
     await a.goto(PROFILE);
     await waitForHydration(a);
+    const pendingEmail = uniqueEmail("pw-pending");
+    const emailCard = card(a, "user.profile.changeEmail.title");
+    await emailCard.getByLabel(t("user.profile.changeEmail.new")).fill(pendingEmail);
+    await emailCard.getByLabel(t("user.profile.changeEmail.currentPassword")).fill(PASSWORD);
+    await emailCard.getByRole("button", { name: t("user.profile.changeEmail.submit") }).click();
+    await expect(a.getByText(t("user.profile.emailPendingVerification", { email: pendingEmail }))).toBeVisible();
     const pwCard = card(a, "user.profile.changePassword.title");
     const fill = async (current: string, next: string, confirm: string) => {
       await pwCard.getByLabel(t("user.profile.changePassword.current"), { exact: true }).fill(current);
@@ -214,7 +220,8 @@ test.describe("account", () => {
 
     // AC14: success message, fields cleared, still logged in here.
     await fill(PASSWORD, fresh, fresh);
-    await expect(a.getByText(t("flash.success.password_changed"))).toBeVisible();
+    await expect(a.getByText(t("flash.success.password_changed_email_change_cancelled"), { exact: true })).toBeVisible();
+    await expect(a.getByText(t("user.profile.emailPendingVerification", { email: pendingEmail }))).toHaveCount(0);
     await expect(pwCard.getByLabel(t("user.profile.changePassword.current"), { exact: true })).toHaveValue("");
     await a.goto(PROFILE);
     await expect(a).toHaveURL(new RegExp(`${PROFILE}$`));
@@ -407,6 +414,16 @@ test.describe("account", () => {
     await fillPasswords(PASSWORD, fresh, fresh);
     await expect(p).toHaveURL(profileUrl);
     await expect(flash("flash.success.password_changed")).toBeVisible();
+    await expect(flash("flash.success.password_changed_email_change_cancelled")).toHaveCount(0);
+    // A live pending change is reported distinctly by a plain HTML form as well.
+    const laterEmail = uniqueEmail("nojsform-later");
+    await emailCard.getByLabel(t("user.profile.changeEmail.new")).fill(laterEmail);
+    await emailCard.getByLabel(t("user.profile.changeEmail.currentPassword")).fill(fresh);
+    await emailCard.getByRole("button", { name: t("user.profile.changeEmail.submit") }).click();
+    await expect(p.getByText(t("user.profile.emailPendingVerification", { email: laterEmail }))).toBeVisible();
+    await fillPasswords(fresh, "brand-new-password-3", "brand-new-password-3");
+    await expect(flash("flash.success.password_changed_email_change_cancelled")).toBeVisible();
+    await expect(p.getByText(t("user.profile.emailPendingVerification", { email: laterEmail }))).toHaveCount(0);
 
     await plain.close();
     await context.close();

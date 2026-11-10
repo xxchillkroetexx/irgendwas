@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;
 
-use crate::account_api::{AccountError, ConfirmResult, ProfileView};
+use crate::account_api::{AccountError, ConfirmResult, PasswordChanged, ProfileView};
 use crate::auth_api::FieldError;
 use crate::error::AppError;
 use crate::flash::FlashMessage;
@@ -37,6 +37,13 @@ fn db_error(context: &'static str, err: sqlx::Error) -> AccountError {
 fn internal(context: &'static str, err: impl std::fmt::Display) -> AccountError {
     tracing::error!(context, error = %err, "account: internal error");
     AccountError::Internal
+}
+
+fn password_error(context: &'static str, err: password::PasswordError) -> AccountError {
+    match err {
+        password::PasswordError::Busy => AccountError::Busy,
+        other => internal(context, other),
+    }
 }
 
 fn state() -> Result<AppState, AccountError> {
@@ -71,7 +78,15 @@ async fn check_current_password(
             minutes: rate_limit::minutes_rounded_up(wait),
         });
     }
-    if password::verify_async(password, Some(stored_hash)).await {
+    let verified = match password::verify_async(password, Some(stored_hash)).await {
+        Ok(verified) => verified,
+        Err(err) => {
+            // Overload is not an incorrect password and must not use an attempt.
+            state.rate_limiter.release(&key);
+            return Err(password_error("verify_password", err));
+        }
+    };
+    if verified {
         state.rate_limiter.clear(&key);
         Ok(())
     } else {
@@ -196,7 +211,7 @@ pub async fn change_password(
     current_password: String,
     new_password: String,
     new_password_confirm: String,
-) -> Result<(), AccountError> {
+) -> Result<PasswordChanged, AccountError> {
     let user_id = user_id().await?;
     // Length first (too short, then too long), then the confirmation.
     if let Some((_, problem)) = password_errors(&new_password, &new_password_confirm)
@@ -220,18 +235,31 @@ pub async fn change_password(
     check_current_password(&state, user_id, current_password, stored.clone()).await?;
     let hash = password::hash_async(new_password)
         .await
-        .map_err(|e| internal("change_password: hash", e))?;
+        .map_err(|e| password_error("change_password: hash", e))?;
 
-    // One statement for the credentials, the epoch and the reset token. The old hash in the
+    // One statement for the credentials, epoch, and outstanding recovery tokens. The old hash in the
     // condition: a concurrent change in between makes this one fail instead of winning.
     let mut tx = state
         .pool
         .begin()
         .await
         .map_err(|e| db_error("change_password: begin", e))?;
+    // Inspect the pending change under the same row lock as its cancellation.
+    let pending_live: i64 = sqlx::query_scalar(
+        "SELECT CAST(COALESCE(pending_email IS NOT NULL AND \
+         email_verification_expires > CURRENT_TIMESTAMP, 0) AS SIGNED) \
+         FROM users WHERE id = ? FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| db_error("change_password: lock", e))?
+    .ok_or(AccountError::Unauthorized)?;
     let updated = sqlx::query(
         "UPDATE users SET password = ?, session_epoch = session_epoch + 1, \
-         reset_token = NULL, reset_token_expires = NULL WHERE id = ? AND password = ?",
+         reset_token = NULL, reset_token_expires = NULL, pending_email = NULL, \
+         email_verification_token = NULL, email_verification_expires = NULL \
+         WHERE id = ? AND password = ?",
     )
     .bind(&hash)
     .bind(user_id)
@@ -258,7 +286,9 @@ pub async fn change_password(
     auth::login_with_epoch(&session, user_id, epoch)
         .await
         .map_err(|_| AccountError::Internal)?;
-    Ok(())
+    Ok(PasswordChanged {
+        pending_email_cancelled: pending_live != 0,
+    })
 }
 
 // -------------------------------------------------------------- email change
@@ -268,6 +298,7 @@ struct EmailChangeRow {
     email: String,
     name: String,
     password: String,
+    session_epoch: u32,
     locale: Option<String>,
 }
 
@@ -277,6 +308,7 @@ struct PendingColumns {
     pending_email: Option<String>,
     email_verification_token: Option<String>,
     email_verification_expires: Option<DateTime<Utc>>,
+    session_epoch: u32,
     /// 1 if a live change was issued less than [`REQUEST_INTERVAL_SECS`] ago.
     too_soon: i64,
 }
@@ -291,7 +323,7 @@ pub async fn request_email_change(
     let state = state()?;
 
     let user = sqlx::query_as::<_, EmailChangeRow>(
-        "SELECT email, name, password, locale FROM users WHERE id = ?",
+        "SELECT email, name, password, session_epoch, locale FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_optional(&state.pool)
@@ -313,7 +345,7 @@ pub async fn request_email_change(
         .await
         .map_err(|e| db_error("request_email_change: begin", e))?;
     let before = sqlx::query_as::<_, PendingColumns>(
-        "SELECT pending_email, email_verification_token, email_verification_expires, \
+        "SELECT pending_email, email_verification_token, email_verification_expires, session_epoch, \
          CAST(COALESCE(pending_email IS NOT NULL \
               AND email_verification_expires > CURRENT_TIMESTAMP \
               AND email_verification_expires > CURRENT_TIMESTAMP \
@@ -326,6 +358,11 @@ pub async fn request_email_change(
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| db_error("request_email_change: lock", e))?;
+    // Password reset/change increments the epoch while holding this same row lock.
+    // A request verified before that change must not issue a fresh token afterwards.
+    if before.session_epoch != user.session_epoch {
+        return Err(AccountError::CurrentPasswordIncorrect);
+    }
     if before.too_soon != 0 {
         return Err(AccountError::EmailChangeTooSoon);
     }

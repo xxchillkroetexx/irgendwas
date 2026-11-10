@@ -257,8 +257,11 @@ pub struct ItemView {
     pub id: i32,
     pub title: String,
     pub description: Option<String>,
+    /// Stored value, retained so a legacy URL can be corrected in the editor.
     pub link: Option<String>,
-    /// The link's host (computed on the server, punycode as is).
+    /// A verified absolute HTTP(S) URL used for navigation, if the stored link is safe.
+    pub link_target: Option<String>,
+    /// The verified link's host (computed on the server, punycode as is).
     pub link_host: Option<String>,
 }
 

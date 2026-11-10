@@ -51,6 +51,21 @@ test("a long shared product link survives login and registration without automat
   expect(draft.title).toBe("Birthday present");
   expect(draft.link).toBe(product);
   await expect(page.getByText("Safari on iPhone and iPad cannot offer this PWA", { exact: false })).toBeVisible();
+  const installLinks = page.locator('a[href="/install"]');
+  await expect(installLinks).toHaveCount(2);
+  await expect(installLinks.nth(0)).toBeVisible();
+  await expect(installLinks.nth(1)).toBeVisible();
+  // Apply the installed-mode rule to check both links without requiring native installation.
+  await page.evaluate(() => {
+    const sheet = Array.from(document.styleSheets).find((s) => s.href?.endsWith("/assets/css/styles.css"));
+    const rule = Array.from(sheet?.cssRules ?? []).find(
+      (r): r is CSSMediaRule => r instanceof CSSMediaRule && r.conditionText.includes("display-mode: standalone"),
+    );
+    if (!rule) throw new Error("installed-app CSS rule missing");
+    rule.media.mediaText = "all";
+  });
+  await expect(installLinks.nth(0)).toBeHidden();
+  await expect(installLinks.nth(1)).toBeHidden();
 
   // The current rewrite can create an actual target group. The draft survives
   // leaving the review and only the explicit confirmation adds the wishlist item.

@@ -145,6 +145,18 @@ footer {
   margin-top: auto;
 }
 
+/* Fullscreen is intentionally excluded: an ordinary F11 browser tab matches it. */
+@media (display-mode: standalone), (display-mode: minimal-ui), (display-mode: window-controls-overlay) {
+  .browser-install-link {
+    display: none;
+  }
+}
+
+/* Older iOS Home Screen apps report navigator.standalone via a head script. */
+html[data-standalone] .browser-install-link {
+  display: none;
+}
+
 /* Custom classes for the app */
 .wishlist-item {
   border-left: 4px solid var(--accent-color);

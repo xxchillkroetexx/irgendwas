@@ -1,23 +1,13 @@
-//! The draw mail worker (spec: draw, "Notification worker", D8).
+//! Durable, at-least-once delivery for draw and reset notifications.
 //!
-//! One Tokio task takes jobs from a channel **one at a time**, so the same rows are never
-//! sent twice in parallel:
-//! - [`DrawWorker::draw_result`] (`DrawResult { group_id }`): the group's unsent rows below
-//!   the attempt limit, oldest first. Each row is re-read with all conditions **right before
-//!   its mail is sent** (a reset or a group delete in the meantime drops it), sent to the
-//!   giver's stored address in the giver's account language, then its delivery state is
-//!   recorded. A failure is retried after `retry_delays[attempts - 1]`, up to
-//!   [`MAX_ATTEMPTS`]; failures never undo the draw.
-//! - [`DrawWorker::draw_reset`] (`DrawReset`): one reset mail per recipient, best effort,
-//!   held in memory with the same retries (a restart loses them).
-//! - [`DrawWorker::recover`]: at startup, a `DrawResult` for every drawn group with rows
-//!   left to send (delivery is at-least-once).
-//!
-//! The mails go through a [`MailTransport`] (production: the [`Mailer`]; tests inject
-//! failures and blocking). No DB connection is held while a mail is sent.
-//!
-//! Secrecy (S5): logs carry the group id, the giver's user id and attempt numbers only;
-//! never names, addresses, mail texts or receiver ids.
+//! Assignment rows are the result outbox; reset rows are inserted in the same
+//! transaction as the reset. The channel is only a wake-up hint: periodic recovery
+//! finds committed work even when a request or worker exits before enqueuing it.
+//! Per-row leases prevent concurrent workers or application replicas from sending
+//! the same row at once under normal operation. SMTP success followed by a crash or
+//! failed database acknowledgement can still cause a duplicate after lease expiry.
+//! No database connection is held while sending mail, and logs never contain names,
+//! addresses, mail bodies or giver/receiver pairings.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -27,7 +17,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 use sqlx::{FromRow, MySqlPool};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Semaphore, mpsc, watch};
 
 use super::config::Config;
 use super::draw_mail;
@@ -35,71 +25,48 @@ use super::i18n::mail_i18n;
 use super::mail::{MailError, Mailer, Message};
 use crate::error::AppError;
 
-/// Delivery attempts per mail (the first one included).
 pub const MAX_ATTEMPTS: u8 = 3;
+const RECONCILE_INTERVAL: Duration = Duration::from_secs(10);
+// Keep the lease longer than the entire cancellable delivery, not merely one SMTP command.
+const SEND_TIMEOUT: Duration = Duration::from_secs(180);
+const LEASE_SECONDS: i64 = 240;
+const MAX_CONCURRENT_JOBS: usize = 4;
+const BUSY_RETRY_DELAY: Duration = Duration::from_secs(1);
 
-/// Production waits before the second and the third attempt.
 pub fn default_retry_delays() -> Vec<Duration> {
     vec![Duration::from_secs(60), Duration::from_secs(300)]
 }
 
 pub type SendFuture<'a> = Pin<Box<dyn Future<Output = Result<(), MailError>> + Send + 'a>>;
 
-/// What the worker sends mails with. [`Mailer`] is the production implementation; tests
-/// wrap a Mailpit-backed `Mailer` with failure/blocking hooks.
 pub trait MailTransport: Send + Sync + 'static {
     fn send(&self, message: Message) -> SendFuture<'_>;
 }
 
 impl MailTransport for Mailer {
     fn send(&self, message: Message) -> SendFuture<'_> {
-        let handle = Mailer::send(self, message);
-        Box::pin(handle.outcome())
+        Box::pin(self.send_direct(message))
     }
 }
 
-/// One reset mail (held in memory only: D7, best effort).
-#[derive(Clone)]
-pub struct ResetRecipient {
-    pub user_id: i32,
-    /// The stored address.
-    pub email: String,
-    pub name: String,
-    /// The stored `users.locale` (NULL or unknown: `APP_LOCALE`).
-    pub locale: Option<String>,
-}
-
-/// The reset of one group's draw, for every former giver except the admin who reset it.
-#[derive(Clone)]
-pub struct DrawReset {
-    pub group_id: i32,
-    pub group_name: String,
-    pub admin_name: String,
-    pub recipients: Vec<ResetRecipient>,
-}
-
 enum Job {
-    /// Send the group's unsent draw mails.
     DrawResult { group_id: i32 },
-    /// The retry of one assignment row's draw mail.
+    RetryGroup { group_id: i32 },
     RetryRow { row_id: i32 },
-    /// One reset mail; `attempt` is the number of this attempt (1-based).
-    ResetMail {
-        group_id: i32,
-        group_name: Arc<str>,
-        admin_name: Arc<str>,
-        recipient: ResetRecipient,
-        attempt: u8,
-    },
+    ResetGroup { group_id: i32 },
+    RetryResetGroup { group_id: i32 },
+    RetryReset { row_id: i32 },
 }
 
 impl Job {
-    /// The job's kind and its id (group or row) for logs; nothing else.
     fn label(&self) -> (&'static str, i32) {
         match self {
-            Job::DrawResult { group_id } => ("draw_result", *group_id),
-            Job::RetryRow { row_id } => ("retry_row", *row_id),
-            Job::ResetMail { group_id, .. } => ("reset_mail", *group_id),
+            Self::DrawResult { group_id } => ("draw_result", *group_id),
+            Self::RetryGroup { group_id } => ("retry_group", *group_id),
+            Self::RetryRow { row_id } => ("retry_row", *row_id),
+            Self::ResetGroup { group_id } => ("reset_group", *group_id),
+            Self::RetryResetGroup { group_id } => ("retry_reset_group", *group_id),
+            Self::RetryReset { row_id } => ("retry_reset", *row_id),
         }
     }
 }
@@ -110,13 +77,16 @@ struct Shared {
     transport: Arc<dyn MailTransport>,
     retry_delays: Vec<Duration>,
     jobs: mpsc::UnboundedSender<Job>,
-    /// Jobs queued or running plus retries waiting for their delay.
     outstanding: watch::Sender<usize>,
-    /// Rows whose retry is scheduled: a `DrawResult` of the group leaves them to the retry.
     retrying: Mutex<HashSet<i32>>,
+    retrying_reset: Mutex<HashSet<i32>>,
+    // Prevent periodic scans from piling up group hints behind a slow transport.
+    queued_draw_groups: Mutex<HashSet<i32>>,
+    queued_reset_groups: Mutex<HashSet<i32>>,
+    deferred_draw_groups: Mutex<HashSet<i32>>,
+    deferred_reset_groups: Mutex<HashSet<i32>>,
 }
 
-/// Handle to the single worker task. Cheap to clone.
 #[derive(Clone)]
 pub struct DrawWorker {
     shared: Arc<Shared>,
@@ -131,14 +101,32 @@ impl fmt::Debug for DrawWorker {
 }
 
 impl DrawWorker {
-    /// Spawns the worker (inside a Tokio runtime). `retry_delays[attempts - 1]` is the wait
-    /// before attempt `attempts + 1` (production: 60 s, 300 s; tests: zero). The task ends
-    /// when the last handle is dropped.
     pub fn new(
         pool: MySqlPool,
         config: Arc<Config>,
         transport: Arc<dyn MailTransport>,
         retry_delays: Vec<Duration>,
+    ) -> Self {
+        Self::with_interval(pool, config, transport, retry_delays, RECONCILE_INTERVAL)
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn with_reconcile_interval(
+        pool: MySqlPool,
+        config: Arc<Config>,
+        transport: Arc<dyn MailTransport>,
+        retry_delays: Vec<Duration>,
+        interval: Duration,
+    ) -> Self {
+        Self::with_interval(pool, config, transport, retry_delays, interval)
+    }
+
+    fn with_interval(
+        pool: MySqlPool,
+        config: Arc<Config>,
+        transport: Arc<dyn MailTransport>,
+        retry_delays: Vec<Duration>,
+        interval: Duration,
     ) -> Self {
         let (jobs, mut receiver) = mpsc::unbounded_channel();
         let (outstanding, _) = watch::channel(0usize);
@@ -150,86 +138,84 @@ impl DrawWorker {
             jobs,
             outstanding,
             retrying: Mutex::new(HashSet::new()),
+            retrying_reset: Mutex::new(HashSet::new()),
+            queued_draw_groups: Mutex::new(HashSet::new()),
+            queued_reset_groups: Mutex::new(HashSet::new()),
+            deferred_draw_groups: Mutex::new(HashSet::new()),
+            deferred_reset_groups: Mutex::new(HashSet::new()),
         });
         let weak: Weak<Shared> = Arc::downgrade(&shared);
         tokio::spawn(async move {
+            let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_JOBS));
             while let Some(job) = receiver.recv().await {
                 let Some(shared) = weak.upgrade() else { break };
-                // Each job runs in its own task and is awaited here (still one at a time): a
-                // panic ends only that job, never the worker.
+                let Ok(permit) = permits.clone().acquire_owned().await else {
+                    break;
+                };
                 let (kind, id) = job.label();
                 let runner = shared.clone();
-                if tokio::spawn(async move { runner.run(job).await })
-                    .await
-                    .is_err()
-                {
-                    tracing::error!(job = kind, id, "draw worker: a job panicked; skipped");
-                }
-                shared.finish_one();
+                tokio::spawn(async move {
+                    let _permit = permit;
+                    if tokio::spawn(async move { runner.run(job).await })
+                        .await
+                        .is_err()
+                    {
+                        tracing::error!(
+                            job = kind,
+                            id,
+                            "draw worker: job panicked; recovery will retry"
+                        );
+                    }
+                    match kind {
+                        "draw_result" => {
+                            lock(&shared.queued_draw_groups).remove(&id);
+                        }
+                        "reset_group" => {
+                            lock(&shared.queued_reset_groups).remove(&id);
+                        }
+                        _ => {}
+                    }
+                    shared.finish_one();
+                });
             }
         });
-        DrawWorker { shared }
+        let weak = Arc::downgrade(&shared);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let Some(shared) = weak.upgrade() else { break };
+                if let Err(err) = shared.recover().await {
+                    tracing::warn!(?err, "draw worker: periodic recovery failed");
+                }
+            }
+        });
+        Self { shared }
     }
 
-    /// Queues the delivery of the group's unsent draw mails (after a draw or a resend).
     pub fn draw_result(&self, group_id: i32) {
-        self.shared.enqueue(Job::DrawResult { group_id });
+        self.shared.enqueue_draw_group(group_id);
     }
 
-    /// Queues the reset mails of one group.
-    pub fn draw_reset(&self, reset: DrawReset) {
-        let group_name: Arc<str> = reset.group_name.into();
-        let admin_name: Arc<str> = reset.admin_name.into();
-        for recipient in reset.recipients {
-            self.shared.enqueue(Job::ResetMail {
-                group_id: reset.group_id,
-                group_name: group_name.clone(),
-                admin_name: admin_name.clone(),
-                recipient,
-                attempt: 1,
-            });
-        }
+    pub fn draw_reset(&self, group_id: i32) {
+        self.shared.enqueue_reset_group(group_id);
     }
 
-    /// Startup recovery: enqueues a `DrawResult` for every drawn group with unsent rows
-    /// below the attempt limit.
     pub async fn recover(&self) -> Result<(), AppError> {
-        let groups = sqlx::query_scalar::<_, i32>(
-            "SELECT DISTINCT ga.group_id FROM gift_assignments ga \
-             JOIN `groups` g ON g.id = ga.group_id \
-             WHERE g.is_drawn = TRUE AND ga.notification_sent = FALSE \
-               AND ga.notification_attempts < ? \
-             ORDER BY ga.group_id",
-        )
-        .bind(MAX_ATTEMPTS)
-        .fetch_all(&self.shared.pool)
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %super::db::redacted(&err), "draw worker: recovery query failed");
-            AppError::internal("draw worker recovery")
-        })?;
-        if !groups.is_empty() {
-            tracing::info!(
-                groups = groups.len(),
-                "draw worker: resuming unsent draw mails"
-            );
-        }
-        for group_id in groups {
-            self.draw_result(group_id);
-        }
-        Ok(())
+        self.shared.recover().await
     }
 
-    /// Returns once the worker has nothing queued, in flight, or waiting for a retry.
     pub async fn wait_idle(&self) {
         let mut outstanding = self.shared.outstanding.subscribe();
-        // The sender lives in `self.shared`, so the channel cannot close while we wait.
         let _ = outstanding.wait_for(|n| *n == 0).await;
     }
 }
 
-/// The columns of one assignment row the draw mail needs. Read only by the worker, only to
-/// mail the giver their own receiver.
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[derive(FromRow)]
 struct MailRow {
     group_id: i32,
@@ -242,12 +228,48 @@ struct MailRow {
     group_name: String,
 }
 
+#[derive(FromRow)]
+struct ResetRow {
+    group_id: i32,
+    recipient_id: i32,
+    attempts: u8,
+    recipient_email: String,
+    recipient_name: String,
+    recipient_locale: Option<String>,
+    group_name: String,
+    admin_name: String,
+}
+
 impl Shared {
     fn enqueue(self: &Arc<Self>, job: Job) {
         self.outstanding.send_modify(|n| *n += 1);
         if self.jobs.send(job).is_err() {
-            tracing::error!("draw worker: the worker task is gone; job dropped");
+            tracing::error!("draw worker: wake-up dropped; recovery will retry");
             self.finish_one();
+        }
+    }
+
+    fn enqueue_draw_group(self: &Arc<Self>, group_id: i32) {
+        if lock(&self.queued_draw_groups).insert(group_id) {
+            self.enqueue(Job::DrawResult { group_id });
+        }
+    }
+
+    fn enqueue_reset_group(self: &Arc<Self>, group_id: i32) {
+        if lock(&self.queued_reset_groups).insert(group_id) {
+            self.enqueue(Job::ResetGroup { group_id });
+        }
+    }
+
+    fn defer_draw_group(self: &Arc<Self>, group_id: i32) {
+        if lock(&self.deferred_draw_groups).insert(group_id) {
+            self.schedule(BUSY_RETRY_DELAY, Job::RetryGroup { group_id });
+        }
+    }
+
+    fn defer_reset_group(self: &Arc<Self>, group_id: i32) {
+        if lock(&self.deferred_reset_groups).insert(group_id) {
+            self.schedule(BUSY_RETRY_DELAY, Job::RetryResetGroup { group_id });
         }
     }
 
@@ -255,7 +277,6 @@ impl Shared {
         self.outstanding.send_modify(|n| *n = n.saturating_sub(1));
     }
 
-    /// The wait before attempt `attempts + 1`.
     fn delay_after(&self, attempts: u8) -> Duration {
         let index = usize::from(attempts.max(1) - 1);
         self.retry_delays
@@ -265,7 +286,6 @@ impl Shared {
             .unwrap_or(Duration::ZERO)
     }
 
-    /// Enqueues `job` after `delay`; counts as outstanding while it waits.
     fn schedule(self: &Arc<Self>, delay: Duration, job: Job) {
         self.outstanding.send_modify(|n| *n += 1);
         let shared = self.clone();
@@ -276,38 +296,89 @@ impl Shared {
         });
     }
 
+    async fn recover(self: &Arc<Self>) -> Result<(), AppError> {
+        // A user who has left or been removed must not receive a still-pending
+        // notice. A send already in flight cannot be recalled.
+        sqlx::query(
+            "DELETE n FROM draw_reset_notifications n LEFT JOIN group_members gm \
+             ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
+             WHERE gm.user_id IS NULL",
+        ).execute(&self.pool).await.map_err(|err| {
+            tracing::error!(error = %super::db::redacted(&err), "draw worker: stale reset cleanup failed");
+            AppError::internal("draw reset cleanup")
+        })?;
+        let groups = sqlx::query_scalar::<_, i32>(
+            "SELECT DISTINCT ga.group_id FROM gift_assignments ga \
+             JOIN `groups` g ON g.id = ga.group_id \
+             WHERE g.is_drawn = TRUE AND ga.notification_sent = FALSE \
+             AND ga.notification_attempts < ? \
+             AND (ga.notification_claim_until IS NULL OR ga.notification_claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6)) \
+             ORDER BY ga.group_id",
+        ).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await.map_err(|err| {
+            tracing::error!(error = %super::db::redacted(&err), "draw worker: recovery query failed");
+            AppError::internal("draw worker recovery")
+        })?;
+        for group in groups {
+            self.enqueue_draw_group(group);
+        }
+        let groups = sqlx::query_scalar::<_, i32>(
+            "SELECT DISTINCT n.group_id FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
+             WHERE g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? \
+             AND (n.claim_until IS NULL OR n.claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (n.next_attempt_at IS NULL OR n.next_attempt_at <= CURRENT_TIMESTAMP(6)) ORDER BY n.group_id",
+        ).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await.map_err(|err| {
+            tracing::error!(error = %super::db::redacted(&err), "draw worker: reset recovery query failed");
+            AppError::internal("draw reset recovery")
+        })?;
+        for group in groups {
+            self.enqueue_reset_group(group);
+        }
+        Ok(())
+    }
+
     async fn run(self: &Arc<Self>, job: Job) {
         match job {
             Job::DrawResult { group_id } => self.send_group(group_id).await,
-            Job::RetryRow { row_id } => {
-                self.retrying_lock().remove(&row_id);
-                self.send_row(row_id).await;
+            Job::RetryGroup { group_id } => {
+                lock(&self.deferred_draw_groups).remove(&group_id);
+                let queued = lock(&self.queued_draw_groups).contains(&group_id);
+                if queued {
+                    self.defer_draw_group(group_id);
+                } else {
+                    self.enqueue_draw_group(group_id);
+                }
             }
-            Job::ResetMail {
-                group_id,
-                group_name,
-                admin_name,
-                recipient,
-                attempt,
-            } => {
-                self.send_reset(group_id, group_name, admin_name, recipient, attempt)
-                    .await
+            Job::RetryRow { row_id } => {
+                lock(&self.retrying).remove(&row_id);
+                if let Some(group_id) = self.send_row(row_id).await {
+                    self.defer_draw_group(group_id);
+                }
+            }
+            Job::ResetGroup { group_id } => self.send_reset_group(group_id).await,
+            Job::RetryResetGroup { group_id } => {
+                lock(&self.deferred_reset_groups).remove(&group_id);
+                let queued = lock(&self.queued_reset_groups).contains(&group_id);
+                if queued {
+                    self.defer_reset_group(group_id);
+                } else {
+                    self.enqueue_reset_group(group_id);
+                }
+            }
+            Job::RetryReset { row_id } => {
+                lock(&self.retrying_reset).remove(&row_id);
+                if let Some(group_id) = self.send_reset(row_id).await {
+                    self.defer_reset_group(group_id);
+                }
             }
         }
-    }
-
-    fn retrying_lock(&self) -> std::sync::MutexGuard<'_, HashSet<i32>> {
-        self.retrying
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     async fn send_group(self: &Arc<Self>, group_id: i32) {
         let rows = sqlx::query_scalar::<_, i32>(
             "SELECT ga.id FROM gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
              WHERE ga.group_id = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE \
-               AND ga.notification_attempts < ? \
-             ORDER BY ga.id",
+             AND ga.notification_attempts < ? ORDER BY ga.id",
         )
         .bind(group_id)
         .bind(MAX_ATTEMPTS)
@@ -316,45 +387,126 @@ impl Shared {
         let rows = match rows {
             Ok(rows) => rows,
             Err(err) => {
-                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: could not read the rows to send");
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: could not read rows; recovery will retry");
                 return;
             }
         };
         for row_id in rows {
-            if self.retrying_lock().contains(&row_id) {
-                continue;
+            let retrying = lock(&self.retrying).contains(&row_id);
+            if !retrying && self.send_row(row_id).await.is_some() {
+                // Another replica owns this group's SMTP lease. Retry after this
+                // group hint has left the deduplication set.
+                self.defer_draw_group(group_id);
+                break;
             }
-            self.send_row(row_id).await;
         }
     }
 
-    /// Sends one row's draw mail if the row still needs it (re-checked right now).
-    async fn send_row(self: &Arc<Self>, row_id: i32) {
-        let row = sqlx::query_as::<_, MailRow>(
-            "SELECT ga.group_id, ga.giver_id, ga.notification_attempts, \
-                    giver.email AS giver_email, giver.name AS giver_name, \
-                    giver.locale AS giver_locale, receiver.name AS receiver_name, \
-                    g.name AS group_name \
-             FROM gift_assignments ga \
-             JOIN `groups` g ON g.id = ga.group_id \
-             JOIN users giver ON giver.id = ga.giver_id \
-             JOIN users receiver ON receiver.id = ga.receiver_id \
-             WHERE ga.id = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE \
-               AND ga.notification_attempts < ?",
+    /// Returns the group only when another worker currently owns its lease.
+    async fn send_row(self: &Arc<Self>, row_id: i32) -> Option<i32> {
+        let group_id = match sqlx::query_scalar::<_, i32>(
+            "SELECT group_id FROM gift_assignments WHERE id = ?",
         )
         .bind(row_id)
-        .bind(MAX_ATTEMPTS)
         .fetch_optional(&self.pool)
-        .await;
+        .await
+        {
+            Ok(Some(group_id)) => group_id,
+            Ok(None) => return None,
+            Err(err) => {
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: cannot find group; recovery will retry");
+                return None;
+            }
+        };
+        let Ok(claim) = super::token::generate() else {
+            tracing::error!("draw worker: could not generate claim");
+            return None;
+        };
+        // Claim/renew/release are technical writes: preserve the current value of
+        // groups.updated_at (which otherwise changes via ON UPDATE CURRENT_TIMESTAMP).
+        let group_claim = sqlx::query(
+            "UPDATE `groups` SET draw_mail_claim = ?, draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), updated_at = updated_at \
+             WHERE id = ? AND is_drawn = TRUE AND (draw_mail_claim_until IS NULL OR draw_mail_claim_until <= CURRENT_TIMESTAMP(6))",
+        ).bind(&claim).bind(LEASE_SECONDS).bind(group_id).execute(&self.pool).await;
+        match group_claim {
+            Ok(result) if result.rows_affected() == 1 => {}
+            Ok(_) => {
+                // A reset or deletion is not contention; do not retry forever.
+                return match sqlx::query_scalar::<_, bool>(
+                    "SELECT is_drawn FROM `groups` WHERE id = ?",
+                )
+                .bind(group_id)
+                .fetch_optional(&self.pool)
+                .await
+                {
+                    Ok(Some(true)) => Some(group_id),
+                    Ok(Some(false)) | Ok(None) => None,
+                    Err(err) => {
+                        tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: cannot read group status");
+                        None
+                    }
+                };
+            }
+            Err(err) => {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: group claim failed; recovery will retry");
+                return None;
+            }
+        }
+        self.send_claimed_row(row_id, group_id, &claim).await;
+        if let Err(err) = sqlx::query("UPDATE `groups` SET draw_mail_claim = NULL, draw_mail_claim_until = NULL, updated_at = updated_at WHERE id = ? AND draw_mail_claim = ?")
+            .bind(group_id).bind(&claim).execute(&self.pool).await {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: group release failed; lease will expire");
+            }
+        None
+    }
+
+    async fn send_claimed_row(self: &Arc<Self>, row_id: i32, group_id: i32, claim: &str) {
+        let claimed = sqlx::query(
+            "UPDATE gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
+             SET ga.notification_claim = ?, ga.notification_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
+             WHERE ga.id = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE AND ga.notification_attempts < ? \
+             AND (ga.notification_claim_until IS NULL OR ga.notification_claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6))",
+        ).bind(claim).bind(LEASE_SECONDS).bind(row_id).bind(MAX_ATTEMPTS).execute(&self.pool).await;
+        match claimed {
+            Ok(result) if result.rows_affected() == 1 => {}
+            Ok(_) => return,
+            Err(err) => {
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: claim failed; recovery will retry");
+                return;
+            }
+        }
+        let row = sqlx::query_as::<_, MailRow>(
+            "SELECT ga.group_id, ga.giver_id, ga.notification_attempts, giver.email AS giver_email, \
+                    giver.name AS giver_name, giver.locale AS giver_locale, receiver.name AS receiver_name, g.name AS group_name \
+             FROM gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
+             JOIN users giver ON giver.id = ga.giver_id JOIN users receiver ON receiver.id = ga.receiver_id \
+             WHERE ga.id = ? AND ga.notification_claim = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE",
+        ).bind(row_id).bind(claim).fetch_optional(&self.pool).await;
         let row = match row {
             Ok(Some(row)) => row,
-            // Sent, out of attempts, reset or deleted meanwhile: nothing to do.
             Ok(None) => return,
             Err(err) => {
-                tracing::error!(error = %super::db::redacted(&err), "draw worker: could not read a row to send");
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: could not read claimed row; recovery will retry");
                 return;
             }
         };
+        // Verify that neither lease was superseded while a database query stalled.
+        // Both are extended immediately before the bounded, cancellable SMTP call.
+        let renewed = sqlx::query(
+            "UPDATE `groups` g JOIN gift_assignments ga ON ga.group_id = g.id \
+             SET g.draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), g.updated_at = g.updated_at, \
+                 ga.notification_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
+             WHERE g.id = ? AND ga.id = ? AND g.is_drawn = TRUE AND g.draw_mail_claim = ? AND ga.notification_claim = ?",
+        ).bind(LEASE_SECONDS).bind(LEASE_SECONDS).bind(group_id).bind(row_id).bind(claim).bind(claim).execute(&self.pool).await;
+        match renewed {
+            Ok(result) if result.rows_affected() > 0 => {}
+            Ok(_) => return,
+            Err(err) => {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: could not renew claims");
+                return;
+            }
+        }
         let i18n = mail_i18n(row.giver_locale.as_deref(), &self.config);
         let message = draw_mail::draw_result(
             &i18n,
@@ -365,31 +517,33 @@ impl Shared {
             row.group_id,
             &row.group_name,
         );
-        let result = self.transport.send(message).await;
+        let result = tokio::time::timeout(SEND_TIMEOUT, self.transport.send(message))
+            .await
+            .unwrap_or_else(|_| Err(MailError::Smtp("delivery timeout".into())));
         let attempt = row.notification_attempts.saturating_add(1);
-        let sent = result.is_ok();
-        let update = sqlx::query(
+        let delay = self.delay_after(attempt);
+        let micros = i64::try_from(delay.as_micros()).unwrap_or(i64::MAX);
+        let updated = sqlx::query(
             "UPDATE gift_assignments SET notification_sent = notification_sent OR ?, \
-                    notification_attempts = LEAST(notification_attempts + 1, 255), \
-                    notification_last_attempt_at = CURRENT_TIMESTAMP \
-             WHERE id = ?",
-        )
-        .bind(sent)
-        .bind(row_id)
-        .execute(&self.pool)
-        .await;
-        if let Err(err) = update {
-            tracing::error!(group_id = row.group_id, user_id = row.giver_id, error = %super::db::redacted(&err), "draw worker: could not record a delivery");
-        }
-        match result {
-            Ok(()) => {
-                tracing::debug!(
-                    group_id = row.group_id,
-                    user_id = row.giver_id,
-                    attempt,
-                    "draw mail sent"
-                );
+             notification_attempts = LEAST(notification_attempts + 1, 255), notification_last_attempt_at = CURRENT_TIMESTAMP, \
+             notification_claim = NULL, notification_claim_until = NULL, \
+             notification_next_attempt_at = TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(6)) \
+             WHERE id = ? AND notification_claim = ?",
+        ).bind(result.is_ok()).bind(micros).bind(row_id).bind(claim).execute(&self.pool).await;
+        let recorded = match updated {
+            Ok(result) => result.rows_affected() == 1,
+            Err(err) => {
+                tracing::error!(group_id = row.group_id, user_id = row.giver_id, error = %super::db::redacted(&err), "draw worker: acknowledgement failed; recovery will retry");
+                false
             }
+        };
+        match result {
+            Ok(()) => tracing::debug!(
+                group_id = row.group_id,
+                user_id = row.giver_id,
+                attempt,
+                "draw mail sent"
+            ),
             Err(err) => {
                 tracing::warn!(
                     group_id = row.group_id,
@@ -398,61 +552,192 @@ impl Shared {
                     error = err.kind(),
                     "draw mail not delivered"
                 );
-                if attempt < MAX_ATTEMPTS {
-                    self.retrying_lock().insert(row_id);
-                    self.schedule(self.delay_after(attempt), Job::RetryRow { row_id });
+                if recorded && attempt < MAX_ATTEMPTS {
+                    lock(&self.retrying).insert(row_id);
+                    self.schedule(delay, Job::RetryRow { row_id });
                 }
             }
         }
     }
 
-    async fn send_reset(
-        self: &Arc<Self>,
-        group_id: i32,
-        group_name: Arc<str>,
-        admin_name: Arc<str>,
-        recipient: ResetRecipient,
-        attempt: u8,
-    ) {
-        let i18n = mail_i18n(recipient.locale.as_deref(), &self.config);
+    async fn send_reset_group(self: &Arc<Self>, group_id: i32) {
+        let rows = sqlx::query_scalar::<_, i32>(
+            "SELECT n.id FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
+             WHERE n.group_id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? ORDER BY n.id",
+        ).bind(group_id).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await;
+        let rows = match rows {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: could not read reset rows; recovery will retry");
+                return;
+            }
+        };
+        for row_id in rows {
+            let retrying = lock(&self.retrying_reset).contains(&row_id);
+            if !retrying && self.send_reset(row_id).await.is_some() {
+                self.defer_reset_group(group_id);
+                break;
+            }
+        }
+    }
+
+    async fn send_reset(self: &Arc<Self>, row_id: i32) -> Option<i32> {
+        let target = sqlx::query_as::<_, (i32, u64)>(
+            "SELECT n.group_id, n.generation FROM draw_reset_notifications n \
+             JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id WHERE n.id = ?",
+        ).bind(row_id).fetch_optional(&self.pool).await;
+        let (group_id, generation) = match target {
+            Ok(Some(target)) => target,
+            Ok(None) => return None,
+            Err(err) => {
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: cannot find reset group");
+                return None;
+            }
+        };
+        let Ok(claim) = super::token::generate() else {
+            tracing::error!("draw worker: could not generate reset claim");
+            return None;
+        };
+        let group_claim = sqlx::query(
+            "UPDATE `groups` SET draw_mail_claim = ?, draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), updated_at = updated_at \
+             WHERE id = ? AND is_drawn = FALSE AND draw_generation = ? \
+             AND (draw_mail_claim_until IS NULL OR draw_mail_claim_until <= CURRENT_TIMESTAMP(6))",
+        ).bind(&claim).bind(LEASE_SECONDS).bind(group_id).bind(generation).execute(&self.pool).await;
+        match group_claim {
+            Ok(result) if result.rows_affected() == 1 => {}
+            Ok(_) => {
+                return match sqlx::query_as::<_, (bool, u64)>(
+                    "SELECT is_drawn, draw_generation FROM `groups` WHERE id = ?",
+                )
+                .bind(group_id)
+                .fetch_optional(&self.pool)
+                .await
+                {
+                    Ok(Some((false, current))) if current == generation => Some(group_id),
+                    Ok(_) => None,
+                    Err(err) => {
+                        tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: cannot read reset group status");
+                        None
+                    }
+                };
+            }
+            Err(err) => {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: reset group claim failed");
+                return None;
+            }
+        }
+        self.send_claimed_reset(row_id, group_id, &claim).await;
+        if let Err(err) = sqlx::query("UPDATE `groups` SET draw_mail_claim = NULL, draw_mail_claim_until = NULL, updated_at = updated_at WHERE id = ? AND draw_mail_claim = ?")
+            .bind(group_id).bind(&claim).execute(&self.pool).await {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: reset group release failed; lease will expire");
+            }
+        None
+    }
+
+    async fn send_claimed_reset(self: &Arc<Self>, row_id: i32, group_id: i32, claim: &str) {
+        let claimed = sqlx::query(
+            "UPDATE draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
+             JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
+             SET n.claim = ?, n.claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
+             WHERE n.id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? \
+             AND (n.claim_until IS NULL OR n.claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (n.next_attempt_at IS NULL OR n.next_attempt_at <= CURRENT_TIMESTAMP(6))",
+        ).bind(claim).bind(LEASE_SECONDS).bind(row_id).bind(MAX_ATTEMPTS).execute(&self.pool).await;
+        match claimed {
+            Ok(result) if result.rows_affected() == 1 => {}
+            Ok(_) => return,
+            Err(err) => {
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: reset claim failed; recovery will retry");
+                return;
+            }
+        }
+        let row = sqlx::query_as::<_, ResetRow>(
+            "SELECT n.group_id, n.recipient_id, n.attempts, u.email AS recipient_email, u.name AS recipient_name, \
+                    u.locale AS recipient_locale, n.group_name, n.admin_name \
+             FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id JOIN users u ON u.id = n.recipient_id \
+             JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
+             WHERE n.id = ? AND n.claim = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation",
+        ).bind(row_id).bind(claim).fetch_optional(&self.pool).await;
+        let row = match row {
+            Ok(Some(row)) => row,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::error!(error = %super::db::redacted(&err), "draw worker: could not read reset claim; recovery will retry");
+                return;
+            }
+        };
+        let renewed = sqlx::query(
+            "UPDATE `groups` g JOIN draw_reset_notifications n ON n.group_id = g.id \
+             JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
+             SET g.draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), g.updated_at = g.updated_at, \
+                 n.claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
+             WHERE g.id = ? AND n.id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation \
+             AND g.draw_mail_claim = ? AND n.claim = ?",
+        ).bind(LEASE_SECONDS).bind(LEASE_SECONDS).bind(group_id).bind(row_id).bind(claim).bind(claim).execute(&self.pool).await;
+        match renewed {
+            Ok(result) if result.rows_affected() > 0 => {}
+            Ok(_) => return,
+            Err(err) => {
+                tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: could not renew reset claims");
+                return;
+            }
+        }
+        let i18n = mail_i18n(row.recipient_locale.as_deref(), &self.config);
         let message = draw_mail::draw_reset(
             &i18n,
             &self.config,
-            &recipient.email,
-            &recipient.name,
-            &admin_name,
-            group_id,
-            &group_name,
+            &row.recipient_email,
+            &row.recipient_name,
+            &row.admin_name,
+            row.group_id,
+            &row.group_name,
         );
-        match self.transport.send(message).await {
+        let result = tokio::time::timeout(SEND_TIMEOUT, self.transport.send(message))
+            .await
+            .unwrap_or_else(|_| Err(MailError::Smtp("delivery timeout".into())));
+        let attempt = row.attempts.saturating_add(1);
+        if result.is_ok() || attempt >= MAX_ATTEMPTS {
+            if let Err(err) =
+                sqlx::query("DELETE FROM draw_reset_notifications WHERE id = ? AND claim = ?")
+                    .bind(row_id)
+                    .bind(claim)
+                    .execute(&self.pool)
+                    .await
+            {
+                tracing::error!(group_id = row.group_id, user_id = row.recipient_id, error = %super::db::redacted(&err), "draw worker: reset acknowledgement failed; recovery will retry");
+            }
+        } else {
+            let delay = self.delay_after(attempt);
+            let micros = i64::try_from(delay.as_micros()).unwrap_or(i64::MAX);
+            let updated = sqlx::query(
+                "UPDATE draw_reset_notifications SET attempts = attempts + 1, claim = NULL, claim_until = NULL, \
+                 next_attempt_at = TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(6)) WHERE id = ? AND claim = ?",
+            ).bind(micros).bind(row_id).bind(claim).execute(&self.pool).await;
+            match updated {
+                Ok(result) if result.rows_affected() == 1 => {
+                    lock(&self.retrying_reset).insert(row_id);
+                    self.schedule(delay, Job::RetryReset { row_id });
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    tracing::error!(group_id = row.group_id, user_id = row.recipient_id, error = %super::db::redacted(&err), "draw worker: reset retry save failed")
+                }
+            }
+        }
+        match result {
             Ok(()) => tracing::debug!(
-                group_id,
-                user_id = recipient.user_id,
+                group_id = row.group_id,
+                user_id = row.recipient_id,
                 attempt,
                 "draw reset mail sent"
             ),
-            Err(err) => {
-                tracing::warn!(
-                    group_id,
-                    user_id = recipient.user_id,
-                    attempt,
-                    error = err.kind(),
-                    "draw reset mail not delivered"
-                );
-                if attempt < MAX_ATTEMPTS {
-                    let delay = self.delay_after(attempt);
-                    self.schedule(
-                        delay,
-                        Job::ResetMail {
-                            group_id,
-                            group_name,
-                            admin_name,
-                            recipient,
-                            attempt: attempt + 1,
-                        },
-                    );
-                }
-            }
+            Err(err) => tracing::warn!(
+                group_id = row.group_id,
+                user_id = row.recipient_id,
+                attempt,
+                error = err.kind(),
+                "draw reset mail not delivered"
+            ),
         }
     }
 }
