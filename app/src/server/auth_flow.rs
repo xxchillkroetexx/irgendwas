@@ -123,10 +123,11 @@ pub async fn login(email: String, password: String, next: Option<String>) -> Res
                 // Only over the hash that was verified: a password reset/change that
                 // committed meanwhile must not be undone by the old password's rehash.
                 let rehashed =
-                    sqlx::query("UPDATE users SET password = ? WHERE id = ? AND password = ?")
+                    sqlx::query("UPDATE users SET password = ? WHERE id = ? AND BINARY password = BINARY ? AND session_epoch = ?")
                         .bind(hash)
                         .bind(user.id)
                         .bind(&user.password)
+                        .bind(user.session_epoch)
                         .execute(&state.pool)
                         .await
                         .map_err(db_error)?;

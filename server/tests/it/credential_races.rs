@@ -85,6 +85,23 @@ fn outdated_hash(password: &str) -> String {
     weak.hash_password(password.as_bytes()).unwrap().to_string()
 }
 
+// Simulate a distinct stored hash that the table's case-insensitive collation equates
+// with the verified one. Randomly salted real hashes are exceedingly unlikely to collide
+// this way, but the compare-and-swap must still compare bytes exactly.
+fn case_variant(hash: &str) -> String {
+    let mut parts: Vec<_> = hash.split('$').map(str::to_owned).collect();
+    let salt = &mut parts[4];
+    let position = salt.bytes().position(|b| b.is_ascii_alphabetic()).unwrap();
+    let old = salt.as_bytes()[position];
+    let replacement = if old.is_ascii_lowercase() {
+        old.to_ascii_uppercase()
+    } else {
+        old.to_ascii_lowercase()
+    };
+    salt.replace_range(position..position + 1, &(replacement as char).to_string());
+    parts.join("$")
+}
+
 // ------------------------------------- 1: a pending email change dies with the password
 
 #[sqlx::test(migrations = "../migrations")]
@@ -276,6 +293,86 @@ async fn a_reset_request_racing_an_email_confirmation_mails_no_link(pool: MySqlP
 }
 
 // ------------------------------------ 3: a login rehash never undoes a password change
+
+#[sqlx::test(migrations = "../migrations")]
+async fn a_login_rehash_compares_hash_bytes_not_the_table_collation(pool: MySqlPool) {
+    let email = unique_email("alice");
+    let alice = create_alice(&pool, &email).await;
+    let old_hash = outdated_hash(ALICE_PASSWORD);
+    let other_hash = case_variant(&old_hash);
+    sqlx::query("UPDATE users SET password = ? WHERE id = ?")
+        .bind(&old_hash)
+        .bind(alice)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let app = router(&pool, &[], Opts::default());
+    let mut lock = hold_user_row(&pool, alice).await;
+    let mut racer = Client::new(&app);
+    let login = tokio::spawn(async move { racer.login(&email, ALICE_PASSWORD).await });
+    assert_waiting(&login, "login (rehash)").await;
+    sqlx::query("UPDATE users SET password = ? WHERE id = ?")
+        .bind(&other_hash)
+        .bind(alice)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    lock.commit().await.unwrap();
+    let _ = login.await.unwrap();
+    assert_eq!(user_row(&pool, alice).await.password, other_hash);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn a_login_rehash_checks_the_epoch_before_writing(pool: MySqlPool) {
+    let email = unique_email("alice");
+    let alice = create_alice(&pool, &email).await;
+    let old_hash = outdated_hash(ALICE_PASSWORD);
+    sqlx::query("UPDATE users SET password = ? WHERE id = ?")
+        .bind(&old_hash)
+        .bind(alice)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let app = router(&pool, &[], Opts::default());
+    let mut lock = hold_user_row(&pool, alice).await;
+    let mut racer = Client::new(&app);
+    let login = tokio::spawn(async move { racer.login(&email, ALICE_PASSWORD).await });
+    assert_waiting(&login, "login (rehash)").await;
+    sqlx::query("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?")
+        .bind(alice)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    lock.commit().await.unwrap();
+    assert_eq!(login.await.unwrap().err(), AuthError::InvalidCredentials);
+    assert_eq!(user_row(&pool, alice).await.password, old_hash);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn a_password_change_compares_hash_bytes_not_the_table_collation(pool: MySqlPool) {
+    let w = alice_world(&pool).await;
+    let other_hash = case_variant(&user_row(&pool, w.id).await.password);
+    let mut lock = hold_user_row(&pool, w.id).await;
+    let mut tab = w.c.fork();
+    let change = tokio::spawn(async move {
+        change_password(&mut tab, ALICE_PASSWORD, NEW_PASSWORD, NEW_PASSWORD)
+            .await
+            .account_result::<PasswordChanged>()
+    });
+    assert_waiting(&change, "password change").await;
+    sqlx::query("UPDATE users SET password = ? WHERE id = ?")
+        .bind(&other_hash)
+        .bind(w.id)
+        .execute(&mut *lock)
+        .await
+        .unwrap();
+    lock.commit().await.unwrap();
+    assert_eq!(
+        change.await.unwrap(),
+        Err(AccountError::CurrentPasswordIncorrect)
+    );
+    assert_eq!(user_row(&pool, w.id).await.password, other_hash);
+}
 
 #[sqlx::test(migrations = "../migrations")]
 async fn a_login_rehash_does_not_undo_a_concurrent_password_change(pool: MySqlPool) {

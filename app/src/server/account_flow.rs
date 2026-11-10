@@ -246,7 +246,7 @@ pub async fn change_password(
         "UPDATE users SET password = ?, session_epoch = session_epoch + 1, \
          reset_token = NULL, reset_token_expires = NULL, pending_email = NULL, \
          email_verification_token = NULL, email_verification_expires = NULL \
-         WHERE id = ? AND password = ?",
+         WHERE id = ? AND BINARY password = BINARY ?",
     )
     .bind(&hash)
     .bind(user_id)
