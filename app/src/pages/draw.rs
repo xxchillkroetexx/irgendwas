@@ -1,8 +1,7 @@
-//! The draw UI (spec: draw, "UI notes"): the [`DrawPanel`] on the group page and the
-//! assignments card on the dashboard ([`AssignmentsCard`]).
+//! The draw UI (spec: draw, "UI notes"): the [`DrawPanel`] on the group page.
 //!
 //! Secrecy (S1–S4): the only receiver data on any page is the caller's own, fetched through
-//! `get_my_assignment` / `list_my_assignments` inside the caller's own request. The admin's
+//! `get_my_assignment` inside the caller's own request. The admin's
 //! part shows counts and the names of members whose mail failed, never a pairing.
 //!
 //! Perform, reset and resend are `ActionForm`s (plain form posts without JavaScript, which
@@ -12,37 +11,21 @@
 //!
 //! Test markers (`data-testid`) are the contract in `server/tests/it/common/draw.rs`.
 
-use std::future::Future;
-
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::AppError;
-use crate::auth::get_current_user;
 use crate::draw_api::{
-    DrawAdminStatus, DrawApiError, DrawBlocker, MyAssignment, MyAssignmentSummary, PerformDraw,
-    ResendDrawNotifications, ResetDraw,
+    DrawAdminStatus, DrawApiError, DrawBlocker, MyAssignment, PerformDraw, ResendDrawNotifications,
+    ResetDraw,
 };
 #[cfg(not(feature = "ssr"))]
-use crate::draw_api::{get_draw_admin_status, get_my_assignment, list_my_assignments};
+use crate::draw_api::{get_draw_admin_status, get_my_assignment};
 use crate::format::LocalDate;
 use crate::groups_api::{GroupDetail, GroupError};
-use crate::i18n::{I18n, use_i18n};
+use crate::i18n::use_i18n;
 use crate::pages::groups::confirmed;
-use crate::paths::{group_path, wishlist_view_path};
+use crate::paths::wishlist_view_path;
 use crate::{t, t_plural};
-
-/// Runs `fetch` only for a logged-in visitor: the guard redirects everyone else, and the
-/// protected fn's error status must not end up in that redirect response.
-async fn when_logged_in<T>(
-    fetch: impl Future<Output = Result<T, DrawApiError>>,
-) -> Result<T, DrawApiError> {
-    match get_current_user().await {
-        Ok(Some(_)) => fetch.await,
-        Ok(None) | Err(AppError::Unauthorized) => Err(DrawApiError::Unauthorized),
-        Err(_) => Err(DrawApiError::Internal),
-    }
-}
 
 // --------------------------------------------------------------- group page
 
@@ -266,7 +249,9 @@ fn AssignmentCard(group_id: i32, mine: MyAssignment) -> impl IntoView {
             <div class="card-body">
                 <h3 class="h5 card-title">{i18n.t("group.show.assignment")}</h3>
                 <p class="mb-1">{i18n.t("group.show.assignmentDescription")}</p>
-                <p class="fs-3 fw-semibold mb-1" data-testid="assignment-receiver">
+                <details data-testid="assignment-disclosure">
+                    <summary class="btn btn-outline-success">{i18n.t("group.draw.revealAssignment")}</summary>
+                <p class="fs-3 fw-semibold mb-1 mt-3" data-testid="assignment-receiver">
                     {mine.receiver_name}
                 </p>
                 <p class="small text-muted" data-testid="assignment-drawn-on">
@@ -281,6 +266,7 @@ fn AssignmentCard(group_id: i32, mine: MyAssignment) -> impl IntoView {
                 >
                     {i18n.t("group.show.viewWishlist")}
                 </a>
+                </details>
             </div>
         </div>
     }
@@ -349,84 +335,5 @@ fn DrawnAdminSection(
                 {i18n.t("group.draw.reset")}
             </button>
         </ActionForm>
-    }
-}
-
-// ---------------------------------------------------------------- dashboard
-
-pub type AssignmentsResource = Resource<Result<Vec<MyAssignmentSummary>, DrawApiError>>;
-
-/// The dashboard card's data (create at page level).
-pub fn assignments_resource() -> AssignmentsResource {
-    Resource::new(
-        || (),
-        |()| async move { when_logged_in(fetch_my_assignments()).await },
-    )
-}
-
-/// Like the panel: during SSR a failure leaves the card out, the page keeps its status.
-#[cfg(feature = "ssr")]
-async fn fetch_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiError> {
-    crate::server::draw_flow::list_my_assignments().await
-}
-
-#[cfg(not(feature = "ssr"))]
-async fn fetch_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiError> {
-    list_my_assignments().await
-}
-
-/// The dashboard's assignments card: one row per drawn group the caller is in, newest draw
-/// first; each with the caller's own receiver only.
-#[component]
-pub fn AssignmentsCard(list: Vec<MyAssignmentSummary>) -> impl IntoView {
-    let i18n = use_i18n();
-    let content = if list.is_empty() {
-        view! {
-            <div data-testid="dashboard-assignments-empty">
-                <p class="mb-1">{i18n.t("user.dashboard.assignments.empty")}</p>
-                <p class="text-muted mb-0">{i18n.t("user.dashboard.assignments.emptyDescription")}</p>
-            </div>
-        }
-        .into_any()
-    } else {
-        let rows = list
-            .into_iter()
-            .map(|row| view! { <AssignmentRow row i18n/> })
-            .collect_view();
-        view! { <ul class="list-group list-group-flush">{rows}</ul> }.into_any()
-    };
-    view! {
-        <div class="card h-100" data-testid="dashboard-assignments">
-            <div class="card-body">
-                <h2 class="h5 card-title">{i18n.t("user.dashboard.assignments.title")}</h2>
-                {content}
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn AssignmentRow(row: MyAssignmentSummary, i18n: I18n) -> impl IntoView {
-    view! {
-        <li
-            class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
-            data-testid="dashboard-assignment"
-        >
-            <div>
-                <div class="small text-muted">{i18n.t("user.dashboard.assignments.group")}</div>
-                <a href=group_path(row.group_id)>{row.group_name}</a>
-                <div class="small text-muted mt-1">
-                    {i18n.t("user.dashboard.assignments.recipient")}
-                </div>
-                <span class="fw-semibold">{row.receiver_name}</span>
-            </div>
-            <a
-                href=wishlist_view_path(row.group_id, row.receiver_id)
-                rel="external"
-                class="btn btn-sm btn-outline-primary"
-            >
-                {i18n.t("user.dashboard.assignments.viewWishlist")}
-            </a>
-        </li>
     }
 }

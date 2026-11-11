@@ -140,17 +140,11 @@ async fn ac47_the_panel_and_the_dashboard_come_from_the_german_catalog(pool: MyS
         )
     );
 
-    // The dashboard card, empty and with an assignment.
+    // The dashboard groups and empty state are localized; no assignment card.
     let dash = bob.get("/user/dashboard").await;
-    let card = text_of(block(&dash.body, "dashboard-assignments").unwrap());
-    assert!(
-        card.contains(&de("user.dashboard.assignments.title")),
-        "{card}"
-    );
-    assert!(
-        card.contains(&de("user.dashboard.assignments.empty")),
-        "{card}"
-    );
+    let cards = text_of(block(&dash.body, "dashboard-groups").unwrap());
+    assert!(cards.contains(&de("group.title")), "{cards}");
+    assert_eq!(testid_count(&dash.body, "dashboard-assignments"), 0);
 
     d.draw_and_deliver(d.g).await;
     let page = bob.get(&group_path(d.g)).await;

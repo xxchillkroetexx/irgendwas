@@ -185,6 +185,12 @@ test.describe("draw", () => {
     await expect(alice).toHaveURL(new RegExp(`${groupUrl}$`));
 
     await expect(alice.getByTestId("my-assignment")).toHaveCount(1);
+    const disclosure = alice.getByTestId("assignment-disclosure");
+    await expect(alice.getByTestId("assignment-receiver")).toBeHidden();
+    await expect(alice.getByTestId("assignment-wishlist")).toBeHidden();
+    await disclosure.locator("summary").focus();
+    await alice.keyboard.press("Enter");
+    await expect(alice.getByTestId("assignment-receiver")).toBeVisible();
     const receiver = ((await alice.getByTestId("assignment-receiver").textContent()) ?? "").trim();
     expect([users.bob.name, users.carol.name]).toContain(receiver);
     receivers.alice = receiver;
@@ -218,28 +224,37 @@ test.describe("draw", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
   });
 
-  test("AC14 AC31: every member sees their own receiver, gets one mail naming them, and finds them on the dashboard", async () => {
+  test("AC14 AC31: every member can reveal their own receiver and the dashboard only shows groups", async () => {
     for (const key of ["bob", "carol"] as const) {
       const page = users[key].page;
       const errors = collectPageErrors(page);
       await page.goto(groupUrl);
       await waitForHydration(page);
       await expect(page.getByTestId("my-assignment")).toHaveCount(1);
+      const disclosure = page.getByTestId("assignment-disclosure");
+      await expect(page.getByTestId("assignment-receiver")).toBeHidden();
+      await disclosure.locator("summary").click();
+      await expect(page.getByTestId("assignment-receiver")).toBeVisible();
       const receiver = ((await page.getByTestId("assignment-receiver").textContent()) ?? "").trim();
       expect(receiver).not.toBe(users[key].name);
       receivers[key] = receiver;
+      await disclosure.locator("summary").click();
+      await expect(page.getByTestId("assignment-receiver")).toBeHidden();
+      await page.reload();
+      await waitForHydration(page);
+      await expect(page.getByTestId("assignment-receiver")).toBeHidden();
       for (const id of ["draw-perform", "draw-reset", "draw-resend", "draw-notifications"]) {
         await expect(page.getByTestId(id)).toHaveCount(0);
       }
 
       await page.goto(DASHBOARD);
       await waitForHydration(page);
-      const row = page.getByTestId("dashboard-assignment");
-      await expect(row).toHaveCount(1);
-      await expect(row).toContainText(GROUP_NAME);
-      await expect(row).toContainText(receiver);
-      await expect(row.getByRole("link", { name: GROUP_NAME })).toHaveAttribute("href", groupUrl);
-      await expect(row.locator(`a[href^="/groups/${gid}/wishlist/"]`)).toHaveCount(1);
+      const card = page.getByTestId("dashboard-group").filter({ hasText: GROUP_NAME });
+      await expect(card).toHaveCount(1);
+      await expect(card.getByRole("link", { name: GROUP_NAME })).toHaveAttribute("href", groupUrl);
+      await expect(card).not.toContainText(receiver);
+      await expect(page.getByTestId("dashboard-assignments")).toHaveCount(0);
+      await expect(page.locator(`a[href^="/groups/${gid}/wishlist/"]`)).toHaveCount(0);
       expect(errors, errors.join("\n")).toEqual([]);
     }
 
@@ -298,7 +313,8 @@ test.describe("draw", () => {
       await expect(page.getByText(t("group.draw.pending"))).toBeVisible();
       await page.goto(DASHBOARD);
       await waitForHydration(page);
-      await expect(page.getByText(t("user.dashboard.assignments.empty"))).toBeVisible();
+      await expect(page.getByTestId("dashboard-group").filter({ hasText: GROUP_NAME })).toBeVisible();
+      await expect(page.getByTestId("dashboard-assignments")).toHaveCount(0);
     }
     // Alice reset it herself: she gets no reset mail.
     expect((await messagesFor(users.alice.email)).filter((m) => m.Subject === resetSubject())).toHaveLength(0);
@@ -315,7 +331,12 @@ test.describe("draw", () => {
     await expect(p).toHaveURL(new RegExp(`${groupUrl}$`));
     await expect(p.getByText(t("flash.success.draw_success"))).toBeVisible();
     await expect(p.getByTestId("my-assignment")).toHaveCount(1);
+    await expect(p.getByTestId("assignment-receiver")).toBeHidden();
+    await p.getByTestId("assignment-disclosure").locator("summary").click();
+    await expect(p.getByTestId("assignment-receiver")).toBeVisible();
     await expect(p.getByTestId("assignment-receiver")).not.toBeEmpty();
+    await p.getByTestId("assignment-disclosure").locator("summary").click();
+    await expect(p.getByTestId("assignment-receiver")).toBeHidden();
 
     // Bob (also without JavaScript) sees his card.
     const bobPlain = await browser.newContext({ javaScriptEnabled: false });

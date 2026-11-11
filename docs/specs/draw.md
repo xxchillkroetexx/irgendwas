@@ -4,7 +4,7 @@ status: approved
 ---
 # Draw
 
-Scope: the Secret Santa draw (algorithm, persistence, concurrency), revealing the caller's own assignment (group page and dashboard card), draw notification mails with retry, and the admin's "reset draw". Also covered: dropping the unused `email_templates` table, which the groups spec left to this slice.
+Scope: the Secret Santa draw (algorithm, persistence, concurrency), revealing the caller's own assignment on the group page, draw notification mails with retry, and the admin's "reset draw". The dashboard assignment card was removed by #47. Also covered: dropping the unused `email_templates` table, which the groups spec left to this slice.
 Not in scope: managing exclusion rules and the feasibility check (the **exclusions** slice; this spec uses its `check_feasibility` and `load_rules` exactly as defined there), and viewing wishlists (the **wishlists** slice; this spec only links to its view page).
 
 Fresh start: no production data is migrated. Migration numbers are placeholders (`NNNN_…`).
@@ -152,7 +152,7 @@ No new URLs.
 | URL | What this slice adds | Who |
 |---|---|---|
 | `/groups/:id` | `<DrawPanel group_id is_admin is_drawn member_count>` (hook defined by the groups spec) | member (others: groups' 404) |
-| `/user/dashboard` | Assignments card (column defined by the account spec D10) | logged in |
+| `/user/dashboard` | Group cards; no assignment card (#47) | logged in |
 
 Both pages send `Cache-Control: no-store` (S4). The wishlist buttons on both link to the wishlists slice's view page `/groups/:id/wishlist/:user_id` with `:user_id` = the caller's own receiver.
 
@@ -247,17 +247,17 @@ DROP TABLE email_templates;
   - Otherwise the button calls `perform_draw` after a confirm dialog: `group.show.performDrawConfirm` (reworded), plus `group.draw.confirmRegistrationOpen {date}` (`date = LocalDate(registration_open_until)`) if `registration_open_until` is set.
   - Errors returned by `perform_draw` (for example, a race) are shown with the same keys.
   - This is the **only** draw entry point (no second button, no dropdown entry).
-- **Drawn, any member** (`get_my_assignment`): card `group.show.assignment`, `group.show.assignmentDescription`, receiver name (large), `group.draw.drawnOn {date}` (`date = LocalDate(drawn_at)`), and button `group.show.viewWishlist` → `/groups/{group_id}/wishlist/{receiver_id}` (wishlists view page).
+- **Drawn, any member** (`get_my_assignment`): card `group.show.assignment`, `group.show.assignmentDescription`, a native disclosure initially closed (#47) containing the receiver name (large), `group.draw.drawnOn {date}` (`date = LocalDate(drawn_at)`), and button `group.show.viewWishlist` → `/groups/{group_id}/wishlist/{receiver_id}` (wishlists view page).
 - **Drawn, admin**, in addition: `group.draw.notifications.title`, `group.draw.notifications.summary {sent} {total}` (plural, selected by `total`), `…pending {count}` (plural) if > 0, `…failed {names}` if failed > 0, and button `group.draw.notifications.resend` (only if failed > 0). Then a danger button `group.draw.reset` with confirm `group.draw.resetConfirm`. The admin's panel shows **only their own** assignment card, the same as any member.
 - Dates are shown with `app::format` (`I18n::date`: `APP_TIMEZONE`, date only; en `10 Dec 2026`, de `10.12.2026`). The "registration open" state comes from the server (no `Utc::now()` during render).
 
-**Dashboard assignments card** (`list_my_assignments`): title `user.dashboard.assignments.title`. One row per assignment: `user.dashboard.assignments.group`: group name → `/groups/{id}`; `user.dashboard.assignments.recipient`: receiver name; button `user.dashboard.assignments.viewWishlist` → `/groups/{group_id}/wishlist/{receiver_id}`. Empty: `…empty` + `…emptyDescription`. It does not list undrawn groups (the groups card shows their status).
+**Dashboard (#47):** displays group cards and does not fetch or show assignment data. The assignment is disclosed only on the group page; `list_my_assignments` remains an authorized API for compatibility. See `dashboard.md`.
 
 Implementation note: the wishlists slice comes before this one in the tracker, so `/groups/:id/wishlist/:user_id` normally exists. Only if it is not implemented yet when this slice is built, leave both wishlist buttons out and add them when the wishlists slice lands.
 
 **Error → key mapping**: `NotFound` → 404 page; `Forbidden` → `flash.error.forbidden_admin_only` (groups); `AlreadyDrawn` → `flash.error.already_drawn`; `NotDrawn` → `flash.error.not_drawn`; `NothingToResend` → `flash.error.nothing_to_resend`; `TooFewMembers` → `group.draw.blocked.tooFewMembers`; `TooManyMembers` → `group.draw.blocked.tooManyMembers`; `DrawImpossible` → `exclusion.warning.drawImpossible` + `group.draw.impossible.hint`.
 
-**i18n.** Reused unchanged: `group.show.performDraw`, `group.show.assignment`, `group.show.assignmentDescription`, `group.show.viewWishlist`, `group.status.drawn`, `flash.error.already_drawn`, `flash.error.forbidden_admin_only` (groups), `exclusion.warning.drawImpossible` (exclusions), `user.dashboard.assignments.*`.
+**i18n.** Reused unchanged: `group.show.performDraw`, `group.show.assignment`, `group.show.assignmentDescription`, `group.show.viewWishlist`, `group.status.drawn`, `flash.error.already_drawn`, `flash.error.forbidden_admin_only` (groups), `exclusion.warning.drawImpossible` (exclusions); the obsolete dashboard assignment keys are removed (#47). `group.draw.revealAssignment` labels the native disclosure.
 Reworded:
 
 | Key | en | de |
@@ -336,14 +336,14 @@ Fixtures: users Alice, Bob, Carol, Dave, Erin. G = group with admin Alice, membe
 **Secrecy**
 - AC25: After drawing G, `get_my_assignment(G)` returns, for each of Alice, Bob and Carol, exactly their own receiver. Dave gets `NotFound`. For an undrawn group it returns `None`.
 - AC26: The response types of `get_draw_admin_status`, `perform_draw`, `reset_draw` and `resend_draw_notifications` contain no receiver id or name and no giver→receiver data. This is checked on the types and on a serialized `get_draw_admin_status` response for Alice (admin) with one injected mail failure for Bob: the only member name in it is "Bob" inside `failed_member_names`, and no field refers to a receiver.
-- AC27: Given G is drawn, with members named with unique markers, when Alice loads `/groups/{G}` and `/user/dashboard`, then the full response bodies (HTML + hydration data) contain exactly one assignment element and exactly one serialized assignment (`receiver_id`/`receiver_name`), both for her own receiver. Other members' names appear only in the members card and the wishlists panel (which lists every member alike), never in an assignment context. The same holds for Bob.
+- AC27 (#47): Given G is drawn, the group response contains only the caller's own assignment in an initially closed disclosure; the dashboard response and hydration data contain no assignment. Other members' names appear only in non-assignment contexts. The same holds for Bob.
 - AC28: Responses for `/groups/{G}` and `/user/dashboard` have `Cache-Control: no-store`.
 - AC29: Given a captured `tracing` subscriber during `perform_draw`, worker delivery (including one injected failure), `get_my_assignment`, `list_my_assignments` and `reset_draw`, then the captured output contains no receiver names, no receiver ids paired with givers, no email addresses and no mail bodies.
 - AC30: There is no server fn that accepts a user id and returns assignment data. (Review check, plus a test listing the slice's registered server fns.)
 
 **Dashboard**
-- AC31: Given Bob is in drawn groups G (drawn first) and H (drawn later) and undrawn K, when he opens `/user/dashboard`, then the card lists H then G, each with the group name linked to the group, his own receiver's name, and a wishlist button linking to `/groups/{group}/wishlist/{his receiver's id}`. K is not listed.
-- AC32: Given Dave has no assignments, then the card shows `user.dashboard.assignments.empty` and `.emptyDescription`.
+- AC31 (#47): Given Bob is in drawn groups G and H and undrawn K, the dashboard lists all three as group cards, with no assignment data or recipient-specific links.
+- AC32 (#47): Given Dave belongs to no groups, the dashboard shows the localized group empty state.
 - AC33: Given a `gift_assignments` row for Bob in a group where he has no `group_members` row (inserted directly), then `list_my_assignments` does not return it and `get_my_assignment` returns `NotFound` for that group.
 
 **Notifications**
@@ -355,7 +355,7 @@ Fixtures: users Alice, Bob, Carol, Dave, Erin. G = group with admin Alice, membe
 - AC39: While mails are pending, Alice's panel shows `group.draw.notifications.pending` with the pending count.
 
 **Reset**
-- AC40: Given G is drawn and all mails are sent, when Alice confirms "Reset draw", then G has 0 assignment rows, `is_drawn = FALSE`, `drawn_at = NULL`, and Alice sees `draw_reset`. Bob and Carol each get one reset mail that contains no receiver name; Alice gets none. `get_my_assignment(G)` returns `None` for everyone, and the dashboard cards no longer list G.
+- AC40: Given G is drawn and all mails are sent, when Alice confirms "Reset draw", then G has 0 assignment rows, `is_drawn = FALSE`, `drawn_at = NULL`, and Alice sees `draw_reset`. Bob and Carol each get one reset mail that contains no receiver name; Alice gets none. `get_my_assignment(G)` returns `None` for everyone, and the dashboard group card no longer shows a drawn status or assignment.
 - AC41: Given AC40, then Bob can leave G, Alice can remove Carol, Dave can join (no deadline), exclusions can be edited again, and a new `perform_draw` succeeds and sends new draw mails to the current members.
 - AC42: Given Bob calls `reset_draw(G)`, then `Forbidden`. Given Dave calls it, then `NotFound`. Given G is not drawn, then `NotDrawn`. Nothing changes in any case.
 - AC43: Given draw mails for G are still pending (mailer blocked) when Alice resets, then after unblocking no draw-result mail for the deleted rows is sent, and the reset mails are sent.

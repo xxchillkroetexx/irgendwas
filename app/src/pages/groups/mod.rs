@@ -43,7 +43,7 @@ fn route_group_id() -> Memo<Option<i32>> {
 
 /// Runs `fetch` only for a logged-in visitor: the guard redirects everyone else, and the
 /// protected fn's error status must not end up in that redirect response.
-async fn when_logged_in<T>(
+pub(super) async fn when_logged_in<T>(
     fetch: impl Future<Output = Result<T, GroupError>>,
 ) -> Result<T, GroupError> {
     match get_current_user().await {
@@ -57,7 +57,7 @@ async fn when_logged_in<T>(
 /// member, indistinguishable), the 403 page, nothing while the guard redirects, else the
 /// 500 page.
 #[component]
-fn GroupErrorView(error: GroupError) -> impl IntoView {
+pub(super) fn GroupErrorView(error: GroupError) -> impl IntoView {
     match error {
         GroupError::NotFound => view! { <NotFound/> }.into_any(),
         GroupError::Forbidden => view! { <Forbidden/> }.into_any(),

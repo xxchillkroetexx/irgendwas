@@ -41,6 +41,12 @@ async fn ac14_the_admin_draws_and_every_member_gets_exactly_their_own_mail(pool:
     assert_eq!(page.status, 200);
     assert_eq!(testid_count(&page.body, "my-assignment"), 1);
     let card = block(&page.body, "my-assignment").expect("assignment card");
+    let disclosure = open_tag(card, "assignment-disclosure").expect("disclosure");
+    assert!(
+        !has_flag(disclosure, "open"),
+        "initially concealed: {disclosure}"
+    );
+    assert!(text_of(card).contains(&en("group.draw.revealAssignment")));
     let link = open_tag(card, "assignment-wishlist").expect("wishlist button");
     assert_eq!(
         attr(link, "href"),

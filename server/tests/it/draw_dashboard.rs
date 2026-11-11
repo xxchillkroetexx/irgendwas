@@ -1,5 +1,6 @@
-//! draw slice: the dashboard assignments card and `list_my_assignments` (AC31-AC33).
+//! Draw assignment API and dashboard group-card behavior (#47).
 
+use crate::common::auth::html_contains;
 use crate::common::draw::*;
 use crate::common::groups::*;
 use app::draw_api::DrawApiError;
@@ -7,7 +8,7 @@ use app::test_support as ts;
 use sqlx::MySqlPool;
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac31_the_card_lists_drawn_groups_newest_first_with_the_callers_receiver(pool: MySqlPool) {
+async fn dashboard_lists_drawn_and_undrawn_groups_without_assignments(pool: MySqlPool) {
     let d = draw_world(&pool).await;
     let h = ts::create_group(&pool, d.alice, "Office").await;
     ts::add_member(&pool, h, d.bob).await;
@@ -36,24 +37,39 @@ async fn ac31_the_card_lists_drawn_groups_newest_first_with_the_callers_receiver
 
     let page = bob.get("/user/dashboard").await;
     assert_eq!(page.status, 200);
-    assert_eq!(testid_count(&page.body, "dashboard-assignment"), 2);
-    let card = block(&page.body, "dashboard-assignments").expect("card");
-    let office_at = card.find("Office").expect("Office listed");
-    let family_at = card.find(GROUP_NAME).expect("Family listed");
-    assert!(office_at < family_at, "H (drawn later) comes first");
-    assert!(!card.contains("Undrawn"), "undrawn groups are not listed");
-    assert!(text_of(card).contains(&en("user.dashboard.assignments.title")));
-    // Each row links to the group and to the receiver's wishlist.
-    for (group, receiver) in [(h, to_h), (d.g, to_g)] {
-        assert!(
-            card.contains(&format!("href=\"/groups/{group}\"")),
-            "group link {group}"
-        );
-        assert!(
-            card.contains(&format!("href=\"/groups/{group}/wishlist/{receiver}\"")),
-            "wishlist link {group}/{receiver}"
-        );
+    assert_eq!(testid_count(&page.body, "dashboard-group"), 3);
+    assert_eq!(testid_count(&page.body, "dashboard-assignments"), 0);
+    assert!(!page.body.contains("receiver_name"));
+    assert!(!page.body.contains("receiver_id"));
+    for group in [d.g, h, k] {
+        assert!(page.body.contains(&format!("href=\"/groups/{group}\"")));
     }
+    assert!(
+        !page
+            .body
+            .contains(&format!("/groups/{}/wishlist/{to_g}", d.g))
+    );
+    assert!(!page.body.contains(&format!("/groups/{h}/wishlist/{to_h}")));
+    assert!(page.body.contains("Undrawn"));
+    assert!(html_contains(&page.body, &en("group.status.drawn")));
+    assert!(html_contains(&page.body, &en("group.status.open")));
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn dashboard_escapes_group_names_and_hides_nonmember_groups(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    let group = ts::create_group(&pool, d.alice, "<script>group-marker</script>").await;
+    ts::add_member(&pool, group, d.bob).await;
+    let private = ts::create_group(&pool, d.alice, "Private group marker").await;
+    let page = d.bob().await.get("/user/dashboard").await;
+    assert_eq!(page.status, 200);
+    assert!(
+        page.body
+            .contains("&lt;script&gt;group-marker&lt;/script&gt;")
+    );
+    assert!(!page.body.contains("<script>group-marker</script>"));
+    assert!(!page.body.contains("Private group marker"));
+    assert!(!page.body.contains(&format!("href=\"/groups/{private}\"")));
 }
 
 #[sqlx::test(migrations = "../migrations")]
@@ -74,21 +90,15 @@ async fn ac31_groups_drawn_in_the_same_second_are_ordered_by_group_id_descending
 }
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac32_a_member_without_assignments_sees_the_empty_card(pool: MySqlPool) {
+async fn a_user_without_groups_sees_the_empty_state(pool: MySqlPool) {
     let d = draw_world(&pool).await;
     let mut dave = d.dave().await;
     assert!(list_mine(&mut dave).await.is_empty());
     let page = dave.get("/user/dashboard").await;
-    let card = text_of(block(&page.body, "dashboard-assignments").expect("card"));
-    assert!(
-        card.contains(&en("user.dashboard.assignments.empty")),
-        "{card}"
-    );
-    assert!(
-        card.contains(&en("user.dashboard.assignments.emptyDescription")),
-        "{card}"
-    );
-    assert_eq!(testid_count(&page.body, "dashboard-assignment"), 0);
+    let section = text_of(block(&page.body, "dashboard-groups").expect("groups"));
+    assert!(section.contains(&en("group.emptyMessage")), "{section}");
+    assert_eq!(testid_count(&page.body, "dashboard-group"), 0);
+    assert_eq!(testid_count(&page.body, "dashboard-assignments"), 0);
 }
 
 #[sqlx::test(migrations = "../migrations")]

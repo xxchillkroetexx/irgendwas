@@ -1,13 +1,15 @@
 //! `/user/dashboard` (spec: account, "UI notes"): welcome, subtitle, the tips card and the
-//! draw slice's assignments card (the caller's own receivers only). The default landing page
+//! caller's group cards. The default landing page
 //! after login. Personal data: never cached (draw S4).
 
 use leptos::prelude::*;
 
 use crate::auth::use_session_resource;
 use crate::components::RequireUser;
+use crate::groups_api::{GroupError, GroupSummary, list_my_groups};
 use crate::i18n::use_i18n;
-use crate::pages::draw::{AssignmentsCard, AssignmentsResource, assignments_resource};
+use crate::pages::groups::{GroupErrorView, when_logged_in};
+use crate::paths::group_path;
 use crate::t;
 
 #[component]
@@ -15,16 +17,17 @@ pub fn DashboardPage() -> impl IntoView {
     #[cfg(feature = "ssr")]
     crate::server::respond::no_store();
     // Page level (never inside the guard's async children).
-    let assignments = assignments_resource();
+    let groups: Resource<Result<Vec<GroupSummary>, GroupError>> =
+        Resource::new(|| (), |_| when_logged_in(list_my_groups()));
     view! {
         <RequireUser>
-            <Dashboard assignments/>
+            <Dashboard groups/>
         </RequireUser>
     }
 }
 
 #[component]
-fn Dashboard(assignments: AssignmentsResource) -> impl IntoView {
+fn Dashboard(groups: Resource<Result<Vec<GroupSummary>, GroupError>>) -> impl IntoView {
     let i18n = use_i18n();
     let session = use_session_resource().0;
 
@@ -57,9 +60,43 @@ fn Dashboard(assignments: AssignmentsResource) -> impl IntoView {
             <div class="col-lg-8 mb-4">
                 <Transition fallback=|| ()>
                     {move || Suspend::new(async move {
-                        assignments.await.ok().map(|list| view! { <AssignmentsCard list/> })
+                        match groups.await {
+                            Ok(list) if list.is_empty() => view! {
+                                <section data-testid="dashboard-groups">
+                                    <h2 class="h4">{i18n.t("group.title")}</h2>
+                                    <p data-testid="dashboard-groups-empty">{i18n.t("group.emptyMessage")}</p>
+                                </section>
+                            }.into_any(),
+                            Ok(list) => view! {
+                                <section data-testid="dashboard-groups">
+                                    <h2 class="h4">{i18n.t("group.title")}</h2>
+                                    <div class="row">
+                                        {list.into_iter().map(|group| view! { <DashboardGroupCard group/> }).collect_view()}
+                                    </div>
+                                </section>
+                            }.into_any(),
+                            Err(error) => view! { <GroupErrorView error/> }.into_any(),
+                        }
                     })}
                 </Transition>
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn DashboardGroupCard(group: GroupSummary) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <div class="col-md-6 mb-3" data-testid="dashboard-group">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h3 class="h5 card-title"><a href=group_path(group.id)>{group.name}</a></h3>
+                    <div class="d-flex flex-wrap gap-1">
+                        {group.is_admin.then(|| view! { <span class="badge bg-primary">{i18n.t("group.admin")}</span> })}
+                        <span class=group.status.badge_class()>{i18n.t(group.status.label_key())}</span>
+                    </div>
+                </div>
             </div>
         </div>
     }

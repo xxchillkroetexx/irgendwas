@@ -306,20 +306,20 @@ async fn ac27_the_group_page_and_the_dashboard_show_only_the_callers_receiver(po
 
         let dash = c.get("/user/dashboard").await;
         assert_eq!(dash.status, 200);
-        assert_eq!(testid_count(&dash.body, "dashboard-assignment"), 1, "{who}");
-        let row = text_of(block(&dash.body, "dashboard-assignment").unwrap());
-        assert!(row.contains(&own), "{who}: {row}");
-        for other in &others {
-            assert!(
-                !row.contains(other.as_str()),
-                "{who}'s dashboard row shows {other}"
-            );
-            assert!(
-                !text_of(block(&dash.body, "dashboard-assignments").unwrap())
-                    .contains(other.as_str())
-            );
-        }
-        assert_one_serialized_assignment(&dash.body, &own, &others, &format!("{who} dashboard"));
+        assert_eq!(testid_count(&dash.body, "dashboard-group"), 1, "{who}");
+        assert_eq!(
+            testid_count(&dash.body, "dashboard-assignments"),
+            0,
+            "{who}"
+        );
+        assert_eq!(count(&dash.body, "receiver_name"), 0, "{who}");
+        assert_eq!(count(&dash.body, "receiver_id"), 0, "{who}");
+        assert!(
+            !dash
+                .body
+                .contains(&format!("/groups/{}/wishlist/{receiver}", d.g)),
+            "{who}"
+        );
     }
 }
 

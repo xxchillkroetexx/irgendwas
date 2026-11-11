@@ -19,10 +19,9 @@
 //!   the reset button.
 //! - `draw-ready`, `draw-small-hint`: the "{count} members will take part" line and the
 //!   small-group hint.
-//! - Dashboard: `dashboard-assignments` (the card), one `dashboard-assignment` per row
-//!   (containing a link to `/groups/{id}` with the group name, the receiver's name, and an
-//!   `<a>` to `/groups/{id}/wishlist/{receiver}`), `dashboard-assignments-empty` (the empty
-//!   texts).
+//! - Dashboard: `dashboard-groups` is the section and `dashboard-group` identifies each
+//!   group card. It contains no assignment data; the group-page `assignment-disclosure`
+//!   is a native, initially closed disclosure around the caller's receiver.
 //! - The no-JS forms are `<form method="post" action="/api/perform_draw">` etc. with a
 //!   hidden `group_id`; a plain post answers 302 back to `/groups/{id}` with a flash.
 #![allow(dead_code)]
