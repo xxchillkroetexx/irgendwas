@@ -143,8 +143,16 @@ fn Profile(profile: ProfileResource) -> impl IntoView {
     });
     Effect::new(move |_| {
         if let Some(result) = password_action.value().get() {
-            password_notice.set(Some(Notice::of(&result, "flash.success.password_changed")));
+            password_notice.set(Some(match &result {
+                Ok(changed) => Notice::Success(changed.message_key()),
+                Err(err) => Notice::Error(err.clone()),
+            }));
             clear(&[current_password, new_password, confirm_password]);
+            if result.is_ok() {
+                // A password change cancels a pending email change: the email card's
+                // pending box must go.
+                profile.refetch();
+            }
         }
     });
 

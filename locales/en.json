@@ -147,6 +147,7 @@
     "flash.success.email_verification_sent": "A verification link has been sent to your new email address",
     "flash.success.email_verified": "Your email address has been successfully changed",
     "flash.success.password_changed": "Your password has been changed. All other sessions have been logged out.",
+    "flash.success.password_changed_email_change_cancelled": "Your password has been changed. All other sessions have been logged out. Your pending email change was cancelled; please request it again.",
     "flash.success.email_change_cancelled": "The email change has been cancelled.",
     "flash.error.name_required": "Please enter your name.",
     "flash.error.name_too_long": "The name must not be longer than {max} characters.",

@@ -12,6 +12,8 @@ Fresh start: no production data is migrated and users register again. The Rust a
 
 Revised 2026-10-31: aligned with i18n-foundation (built before this slice). `safe_next` builds on `safe_return_path`; login adopts the account language (`users.locale`); registration completion stores it; mails to existing accounts use it; dates and plurals go through `app::format` / `t_plural!`; `generic_error_message` → `error.generic.message`. AC2, AC33, AC43 and AC45 were revised; AC47–AC51 were added.
 
+Amended 2026-11-09 (#71, credential races): login refuses credentials that changed between verification and session creation, and its rehash only replaces the hash it verified (step 5); a reset request writes its token only while the account still has the address it mails (step 3); a registration whose token a concurrent request replaced answers the same success without a mail (step 4); `reset_password` also clears a pending email change (step 2).
+
 ## Current PHP behaviour
 
 ### Routes
@@ -160,7 +162,8 @@ Error type (serialisable enum, each variant maps to one i18n key in the UI):
 3. Look up the user. Unknown email → verify the password against a process-wide argon2id dummy hash (computed once at startup with the production parameters), record a failure, return `InvalidCredentials`.
 4. Verify the password against the stored argon2id hash. Mismatch → record a failure, return `InvalidCredentials`.
 5. Success:
-   - Read the previous `last_login`, then `UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id`.
+   - First, a rehash (`needs_rehash`) is written with `WHERE id = :id AND password = :verified_hash`; 0 rows → skipped (amended 2026-11-09, #71).
+   - Then read the previous `last_login` (from the step-3 row) and `UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = :id AND session_epoch = :epoch_read_with_the_hash`. 0 rows (a password reset/change committed since the read) → `InvalidCredentials`, no session (amended 2026-11-09, #71).
    - Clear the failure counter for `login:email:<email>` (the IP counter is left as is).
    - **Cycle the session id**, then store `user_id` and `session_epoch` (the user's current value).
    - **Adopt the account language**: `adopt_account_locale(&session, users.locale, config.secure_cookies())` (i18n-foundation); if it returns a cookie, `append_set_cookie` it. A NULL or unknown `users.locale` changes nothing (the page keeps its current locale and no `locale` cookie is set). The `locale` column is read with the user row in step 3.
@@ -174,7 +177,7 @@ Idempotent, works anonymously. Deletes the session record and all its data (`flu
 1. Validate email → `Validation`.
 2. Per-IP limiter `mail:ip:<ip>` blocked → `TooManyRequests` (this depends only on the caller's IP, never on whether the account exists).
 3. `DELETE FROM pending_registrations WHERE expires_at < CURRENT_TIMESTAMP`.
-4. If `users` has the email: queue the **existing-account mail**. Else: generate a token (below), upsert `pending_registrations` by email (`token_hash`, `expires_at = now + 24h`, `next_path = safe_next(next)`, `created_at = now`), and queue the **registration mail** with link `APP_URL/auth/register/confirm/<token>`. An upsert replaces an earlier pending token (and its `next_path`) for the same email, so the earlier link stops working.
+4. If `users` has the email: queue the **existing-account mail**. Else: generate a token (below), upsert `pending_registrations` by email (`token_hash`, `expires_at = now + 24h`, `next_path = safe_next(next)`, `created_at = now`), and queue the **registration mail** with link `APP_URL/auth/register/confirm/<token>` to the address re-read by the new token hash; if no row has that hash any more (a concurrent request for the same address replaced it), no mail and the same `Ok(())` (amended 2026-11-09, #71). An upsert replaces an earlier pending token (and its `next_path`) for the same email, so the earlier link stops working.
 5. Mail queueing is subject to `mail:email:<email>`. When that limit is exceeded, the mail is silently not sent. No DB row is written in that case either (so the last delivered link stays valid).
 6. Return `Ok(())`. The UI shows `flash.success.registration_instructions` and stays on a "check your inbox" state. Same response in every branch of step 4/5.
 
@@ -193,7 +196,7 @@ No welcome mail (the registration mail replaces it).
 #### `request_password_reset(email) -> Result<(), AuthError>`
 1. Empty → `Validation(email_required)`. Malformed → `Validation(email_invalid)`. These are format checks only, the same for any address.
 2. Per-IP limiter `mail:ip:<ip>` blocked → `TooManyRequests`.
-3. If the user exists and `mail:email:<email>` allows: generate token, `UPDATE users SET reset_token = sha256hex(token), reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ?` (a newer request replaces an older token), queue the **password-reset mail** with link `APP_URL/auth/reset-password/<token>`.
+3. If the user exists and `mail:email:<email>` allows: generate token, `UPDATE users SET reset_token = sha256hex(token), reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ? AND email = <the address read in this request>` (a newer request replaces an older token; 0 rows = the address changed meanwhile → no mail, same response; amended 2026-11-09, #71), queue the **password-reset mail** with link `APP_URL/auth/reset-password/<token>`.
 4. Always `Ok(())`. The UI shows `flash.success.reset_instructions` and redirects to `/auth/login`.
 
 #### `check_reset_token(token) -> Result<(), AuthError>`
@@ -201,7 +204,7 @@ Read-only validity check used by the reset page. Invalid/expired → `InvalidRes
 
 #### `reset_password(token, password, password_confirm) -> Result<(), AuthError>`
 1. Validate password/confirm → `Validation` (token not consumed).
-2. Single statement: `UPDATE users SET password = :argon2, reset_token = NULL, reset_token_expires = NULL, session_epoch = session_epoch + 1 WHERE reset_token = :sha256hex AND reset_token_expires > CURRENT_TIMESTAMP`. If 0 rows are affected → `InvalidResetToken`. This makes the token single-use, also under concurrent submits.
+2. Single statement: `UPDATE users SET password = :argon2, reset_token = NULL, reset_token_expires = NULL, session_epoch = session_epoch + 1, pending_email = NULL, email_verification_token = NULL, email_verification_expires = NULL WHERE reset_token = :sha256hex AND reset_token_expires > CURRENT_TIMESTAMP`. If 0 rows are affected → `InvalidResetToken`. This makes the token single-use, also under concurrent submits.
 3. Clear the limiter counter `login:email:<that user's email>`.
 4. Does not log in. Flash `flash.success.password_reset`, redirect `/auth/login`. Because the epoch changed, every existing session of that user (including the caller's, if it is the same user) is now anonymous.
 

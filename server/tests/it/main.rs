@@ -16,6 +16,7 @@ mod auth_unit;
 mod authz;
 mod client_ip;
 mod config;
+mod credential_races;
 mod draw_algorithm;
 mod draw_concurrency;
 mod draw_dashboard;
