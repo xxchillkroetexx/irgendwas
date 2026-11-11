@@ -1,0 +1,45 @@
+# Keep the pilot independent from the application build and database services. The
+# path filter limits the extra toolchain/build cost to changes relevant to this target.
+name: fuzz
+
+on:
+  push:
+    paths:
+      - "app/src/paths.rs"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "app/src/paths.rs"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
+
+jobs:
+  redirect-paths:
+    runs-on: docker
+    timeout-minutes: 20
+    container:
+      image: docker.io/library/rust:1.99.1-slim-trixie
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Install checkout and C++ build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git nodejs
+      - uses: actions/checkout@v4
+      - name: Install pinned fuzzing tools
+        run: |
+          rustup toolchain install nightly-2026-11-01 --profile minimal
+          cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Replay seeds and explore
+        run: sh scripts/fuzz-smoke.sh
+      - name: Upload a reproducer on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: fuzz-redirect-paths-artifacts
+          path: fuzz/artifacts/
