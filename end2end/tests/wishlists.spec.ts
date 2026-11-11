@@ -364,4 +364,49 @@ test.describe("wishlists", () => {
     }
   });
 
+  test("#69 #71: a success flash is shown once, toasts stay on their page", async () => {
+    const page = users.bob.page;
+    const errors = collectPageErrors(page);
+    const ownList = `/groups/${gid}/wishlist`;
+    const flashes = page.locator(".flash-messages .alert");
+    const added = flashes.filter({ hasText: t("flash.success.item_added") });
+    await page.goto(ownList);
+    await waitForHydration(page);
+    for (const title of ["Bob 1", "Bob 2"]) {
+      await page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill(title);
+      await page.getByRole("button", { name: t("wishlist.edit.addItem") }).click();
+      await expect(page.locator(".list-group-item .fw-semibold").getByText(title, { exact: true })).toBeVisible();
+      await expect(added.first()).toBeVisible();
+      expect(await added.count()).toBeLessThanOrEqual(1);
+    }
+    // The flash was taken; the parallel list read must not have written it back.
+    await page.reload();
+    await waitForHydration(page);
+    await expect(added).toHaveCount(0);
+    await page.goto(`/groups/${gid}/exclusions`);
+    await waitForHydration(page);
+    await expect(page.locator(".flash-messages .alert-success")).toHaveCount(0);
+
+    // An error toast (it does not dismiss itself) stays behind on a client-side navigation.
+    await page.goto(ownList);
+    await waitForHydration(page);
+    const other = await users.bob.context.newPage();
+    await other.goto(ownList);
+    await waitForHydration(other);
+    other.once("dialog", (d) => void d.accept());
+    await control(other, "button", "wishlist.edit.removeItem", "Bob 1").click();
+    await expect(other.locator(".list-group-item .fw-semibold").getByText("Bob 1", { exact: true })).toHaveCount(0);
+    await other.close();
+    const notFound = flashes.filter({ hasText: t("error.notFound.message") });
+    await expectingFailedRequest(errors, async () => {
+      page.once("dialog", (d) => void d.accept());
+      await control(page, "button", "wishlist.edit.removeItem", "Bob 1").click();
+      await expect(notFound).toBeVisible();
+    });
+    await page.locator("nav").getByRole("link", { name: t("nav.groups") }).click();
+    await expect(page).toHaveURL(/\/groups$/);
+    await expect(page.locator("main")).toBeVisible();
+    await expect(notFound).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
 });

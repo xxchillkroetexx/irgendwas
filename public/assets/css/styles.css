@@ -145,6 +145,20 @@ footer {
   margin-top: auto;
 }
 
+/* Install links are pointless inside the installed app (#74). The manifest asks for
+   standalone (fallback: minimal-ui; window-controls-overlay is installed-only too).
+   Not fullscreen: Chromium also matches it for a normal tab in F11 fullscreen.
+   `data-standalone` is set by the head script for older iOS Safari. */
+@media (display-mode: standalone), (display-mode: minimal-ui), (display-mode: window-controls-overlay) {
+  .install-link {
+    display: none !important;
+  }
+}
+
+html[data-standalone] .install-link {
+  display: none !important;
+}
+
 /* Custom classes for the app */
 .wishlist-item {
   border-left: 4px solid var(--accent-color);
