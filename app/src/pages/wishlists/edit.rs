@@ -196,7 +196,14 @@ fn EditView(
             <a href=group_path(group_id)>{wishlist.group.name}</a>
         </p>
         <p class="text-muted">{i18n.t("wishlist.edit.description")}</p>
-        <p><a href="/wishes/shared">{i18n.t("share.title")}</a></p>
+        <p>
+            <a href="/wishes/shared" aria-describedby="shared-link-help">
+                {i18n.t("share.wishlist_link")}
+            </a>
+            <span id="shared-link-help" class="d-block small text-muted">
+                {i18n.t("share.wishlist_help")}
+            </span>
+        </p>
         <p>
             <a href=wishlist_view_path(group_id, wishlist.owner.id)>
                 {i18n.t("group.show.viewYourWishlist")}

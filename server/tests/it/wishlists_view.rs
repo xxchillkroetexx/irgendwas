@@ -530,6 +530,33 @@ async fn ac8_the_panel_only_counts_the_list_of_this_group(pool: MySqlPool) {
 // ------------------------------------------------------------------ AC32 / AC33
 
 #[sqlx::test(migrations = "../migrations")]
+async fn share_link_explains_the_fallback_in_both_languages(pool: MySqlPool) {
+    let f = fixture(&pool).await;
+    let mut english = f.w.bob().await;
+    let mut german = f.w.german(&f.w.emails[1], BOB_PASSWORD).await;
+    for (client, link, help) in [
+        (
+            &mut english,
+            en("share.wishlist_link"),
+            en("share.wishlist_help"),
+        ),
+        (
+            &mut german,
+            de("share.wishlist_link"),
+            de("share.wishlist_help"),
+        ),
+    ] {
+        let page = client.get(&edit_path(f.w.g)).await;
+        assert_eq!(page.status, 200);
+        assert!(page.body.contains("href=\"/wishes/shared\""));
+        assert!(page.body.contains("aria-describedby=\"shared-link-help\""));
+        assert!(html_contains(&page.body, &link));
+        assert!(html_contains(&page.body, &help));
+    }
+    assert_ne!(en("share.wishlist_help"), de("share.wishlist_help"));
+}
+
+#[sqlx::test(migrations = "../migrations")]
 async fn ac32_the_edit_and_view_pages_render_without_missing_keys_in_both_locales(pool: MySqlPool) {
     let f = fixture(&pool).await;
     let mut english = f.w.bob().await;

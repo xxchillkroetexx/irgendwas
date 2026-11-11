@@ -135,6 +135,10 @@ test.describe("wishlists", () => {
     await page.getByRole("link", { name: t("group.show.editWishlist") }).click();
     await expect(page).toHaveURL(new RegExp(`${editUrl}$`));
     await waitForHydration(page);
+    const sharedLink = page.getByRole("link", { name: t("share.wishlist_link"), exact: true });
+    await expect(sharedLink).toBeVisible();
+    await expect(sharedLink).toHaveAttribute("href", "/wishes/shared");
+    await expect(sharedLink).toHaveAccessibleDescription(t("share.wishlist_help"));
     await expect(page.getByText(t("wishlist.edit.noItems"))).toBeVisible();
     // AC10: no clear section for an empty list.
     await expect(page.getByText(t("wishlist.edit.deleteWishlistConfirm"))).toHaveCount(0);

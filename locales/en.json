@@ -412,6 +412,8 @@
     "app.install.desktop.steps": "In Chrome or Edge, use the install icon in the address bar or Install this site as an app in the browser menu. In Safari on Mac, use File → Add to Dock. Available commands depend on your browser.",
     "app.install.help": "If installation is unavailable, open the site in a supported browser. You can also keep using it in your browser.",
     "share.title": "Add a shared link",
+    "share.wishlist_link": "Use a product link from another app",
+    "share.wishlist_help": "Paste a copied link, review its details and choose a wishlist. Or enter the link directly in the new wish below.",
     "share.intro": "Choose a wishlist and review the product details before saving. You can also paste a copied link here.",
     "share.list": "Wishlist",
     "share.item_title": "Wish title",

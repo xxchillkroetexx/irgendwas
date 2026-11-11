@@ -412,6 +412,8 @@
     "app.install.desktop.steps": "Nutzen Sie in Chrome oder Edge das Installationssymbol in der Adressleiste oder Diese Seite als App installieren im Browsermenü. In Safari auf dem Mac wählen Sie Ablage → Zum Dock hinzufügen. Die verfügbaren Befehle hängen vom Browser ab.",
     "app.install.help": "Falls die Installation nicht angeboten wird, öffnen Sie die Seite in einem unterstützten Browser. Sie können sie auch weiterhin im Browser nutzen.",
     "share.title": "Geteilten Link hinzufügen",
+    "share.wishlist_link": "Produktlink aus einer anderen App übernehmen",
+    "share.wishlist_help": "Fügen Sie einen kopierten Link ein, prüfen Sie die Angaben und wählen Sie eine Wunschliste. Alternativ können Sie den Link direkt unten bei einem neuen Wunsch eintragen.",
     "share.intro": "Wählen Sie eine Wunschliste und prüfen Sie die Produktdetails vor dem Speichern. Hier können Sie auch einen kopierten Link einfügen.",
     "share.list": "Wunschliste",
     "share.item_title": "Titel des Wunsches",
