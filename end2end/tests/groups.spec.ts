@@ -168,26 +168,27 @@ test.describe("groups", () => {
       await expect(page.getByText(t("validation.group.name_required"))).toBeVisible();
     });
     // AC6: a draw date before the deadline is refused inline.
-    await fillGroupForm(page, { name: "Family 2026", deadline: "2026-12-12", draw: "2026-12-10" });
+    await fillGroupForm(page, { name: "Family 2026", deadline: "2099-12-12", draw: "2099-12-10" });
     await expectingFailedRequest(errors, async () => {
       await page.getByRole("button", { name: t("group.form.createButton") }).click();
       await expect(page.getByText(t("validation.group.draw_before_deadline"))).toBeVisible();
     });
 
-    // AC1 + AC5: trimmed name, dates, flash, landing on the group.
+    // AC1 + AC5: trimmed name, dates, flash, landing on the group. The deadline lies far in
+    // the future: later tests join this group, which closes once the deadline has passed.
     await fillGroupForm(page, {
       name: "  Family 2026  ",
       description: "Line one\nLine two",
-      deadline: "2026-12-10",
-      draw: "2026-12-12",
+      deadline: "2099-12-10",
+      draw: "2099-12-12",
     });
     await page.getByRole("button", { name: t("group.form.createButton") }).click();
     await expect(page).toHaveURL(/\/groups\/\d+$/);
     gid = groupId(page);
     await expect(page.getByText(t("flash.success.group_created"))).toBeVisible();
     await expect(page.getByRole("heading", { name: "Family 2026", exact: true })).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toBeVisible();
-    await expect(page.getByText("12 Dec 2026")).toBeVisible();
+    await expect(page.getByText("10 Dec 2099")).toBeVisible();
+    await expect(page.getByText("12 Dec 2099")).toBeVisible();
     await expect(page.getByText(t("group.show.drawDateInfo"))).toBeVisible();
 
     // The admin sees the code and the link, built from APP_URL.
@@ -215,22 +216,22 @@ test.describe("groups", () => {
     await waitForHydration(page);
 
     await expect(page.getByLabel(t("group.form.name"), { exact: true })).toHaveValue("Family 2026");
-    await expect(page.getByLabel(t("group.form.registrationDeadline"), { exact: true })).toHaveValue("2026-12-10");
-    await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue("2026-12-12");
+    await expect(page.getByLabel(t("group.form.registrationDeadline"), { exact: true })).toHaveValue("2099-12-10");
+    await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue("2099-12-12");
 
     await fillGroupForm(page, { name: "Family", draw: "" });
     await page.getByRole("button", { name: t("group.form.updateButton") }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     await expect(page.getByText(t("flash.success.group_updated"))).toBeVisible();
     await expect(page.getByRole("heading", { name: "Family", exact: true })).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toBeVisible();
-    await expect(page.getByText("12 Dec 2026")).toHaveCount(0);
+    await expect(page.getByText("10 Dec 2099")).toBeVisible();
+    await expect(page.getByText("12 Dec 2099")).toHaveCount(0);
 
     // Put the draw date back for the German check below.
     await page.goto(`/groups/${gid}/edit`);
     await waitForHydration(page);
     await expect(page.getByLabel(t("group.form.drawDate"), { exact: true })).toHaveValue("");
-    await fillGroupForm(page, { draw: "2026-12-12" });
+    await fillGroupForm(page, { draw: "2099-12-12" });
     await page.getByRole("button", { name: t("group.form.updateButton") }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     expect(errors).toEqual([]);
@@ -361,10 +362,10 @@ test.describe("groups", () => {
     await page.goto(`/groups/${gid}`);
     await waitForHydration(page);
     await expect(page.locator("html")).toHaveAttribute("lang", "de");
-    await expect(page.getByText("10.12.2026")).toBeVisible();
-    await expect(page.getByText("12.12.2026")).toBeVisible();
+    await expect(page.getByText("10.12.2099")).toBeVisible();
+    await expect(page.getByText("12.12.2099")).toBeVisible();
     await expect(page.getByText(tDe("group.show.drawDateInfo"))).toBeVisible();
-    await expect(page.getByText("10 Dec 2026")).toHaveCount(0);
+    await expect(page.getByText("10 Dec 2099")).toHaveCount(0);
     await page.goto("/groups/new");
     await expect(page.getByText(tDe("group.form.dateInputHelp"))).toHaveCount(2);
     expect(errors).toEqual([]);
