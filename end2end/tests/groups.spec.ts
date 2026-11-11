@@ -257,11 +257,22 @@ test.describe("groups", () => {
     await expect(page.getByText(t("group.join.previewTitle", { name: "Family" }))).toBeVisible();
     await expect(page.getByText("Alice Admin")).toBeVisible();
     await expect(page.getByText("1 member", { exact: true })).toBeVisible();
+    // A second tab with the same preview (joined from the first one below).
+    const second = await page.context().newPage();
+    await second.goto(`/join/${inviteCode}`);
+    await waitForHydration(second);
+    await expect(second.getByRole("button", { name: t("group.join.submit") })).toBeVisible();
     await page.getByRole("button", { name: t("group.join.submit") }).click();
 
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
     await expect(page.getByText(t("flash.success.group_joined"))).toBeVisible();
     await waitForHydration(page);
+
+    // Join from the stale tab: AlreadyMember leads to the group with the info notice.
+    await second.getByRole("button", { name: t("group.join.submit") }).click();
+    await expect(second).toHaveURL(new RegExp(`/groups/${gid}$`));
+    await expect(second.locator(".flash-messages").getByText(t("flash.info.already_member"))).toBeVisible();
+    await second.close();
 
     // AC11: names, "You", no emails, no code, no admin actions, a Leave button.
     await expect(page.getByText("Alice Admin").first()).toBeVisible();

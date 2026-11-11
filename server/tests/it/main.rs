@@ -60,5 +60,6 @@ mod wishlists_reorder;
 mod wishlists_security;
 mod wishlists_view;
 
+mod session_concurrency;
 mod session_policy;
 mod wishlist_copy;

@@ -131,8 +131,10 @@ fn JoinPreview(code: Memo<String>, preview: PreviewResource) -> impl IntoView {
     // Success navigates by the server's redirect. An existing member goes to the group.
     Effect::new(move |_| {
         if let Some(Err(GroupError::AlreadyMember { group_id })) = action.value().get() {
-            toasts.push(FlashMessage::info("flash.info.already_member"));
-            navigate(&group_path(group_id), Default::default());
+            let path = group_path(group_id);
+            // Shown on the group page (a plain `push` would stay behind on /join).
+            toasts.push_for(&path, FlashMessage::info("flash.info.already_member"));
+            navigate(&path, Default::default());
         }
     });
     let error = Signal::derive(move || {
