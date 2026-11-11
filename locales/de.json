@@ -147,6 +147,7 @@
     "flash.success.email_verification_sent": "Ein Bestätigungslink wurde an Ihre neue E-Mail-Adresse gesendet",
     "flash.success.email_verified": "Ihre E-Mail-Adresse wurde erfolgreich geändert",
     "flash.success.password_changed": "Ihr Passwort wurde geändert. Alle anderen Sitzungen wurden abgemeldet.",
+    "flash.success.password_changed_email_change_cancelled": "Ihr Passwort wurde geändert. Alle anderen Sitzungen wurden abgemeldet. Ihre ausstehende E-Mail-Änderung wurde abgebrochen; bitte fordern Sie sie erneut an.",
     "flash.success.email_change_cancelled": "Die E-Mail-Änderung wurde abgebrochen.",
     "flash.error.name_required": "Bitte geben Sie Ihren Namen ein.",
     "flash.error.name_too_long": "Der Name darf höchstens {max} Zeichen lang sein.",

@@ -141,12 +141,52 @@ impl FlashMessage {
 
 /// Client-side notices (e.g. after an action that does not redirect). Empty during SSR,
 /// so it never causes hydration mismatches.
+///
+/// Every toast belongs to one page (pathname): it shows only there, and the layout drops
+/// the toasts of other pages on every navigation ([`Toasts::keep_only`]), so warnings and
+/// errors (which do not dismiss themselves) do not follow the visitor around.
 #[derive(Debug, Clone, Copy)]
-pub struct Toasts(pub RwSignal<Vec<FlashMessage>>);
+pub struct Toasts {
+    list: RwSignal<Vec<(String, FlashMessage)>>,
+    pathname: Memo<String>,
+}
 
 impl Toasts {
+    /// Toasts for the router's current `pathname`.
+    pub fn new(pathname: Memo<String>) -> Self {
+        Toasts {
+            list: RwSignal::new(Vec::new()),
+            pathname,
+        }
+    }
+
+    /// Shows `message` on the current page.
     pub fn push(&self, message: FlashMessage) {
-        self.0.update(|list| list.push(message));
+        let path = self.pathname.get_untracked();
+        self.list.update(|list| list.push((path, message)));
+    }
+
+    /// Shows `message` on the page at `to` (path, optionally with a query), the target of
+    /// a client-side redirect that follows.
+    pub fn push_for(&self, to: &str, message: FlashMessage) {
+        let path = to.split(['?', '#']).next().unwrap_or_default().to_string();
+        self.list.update(|list| list.push((path, message)));
+    }
+
+    /// The current page's toasts (tracked).
+    pub fn current(&self) -> Vec<FlashMessage> {
+        let path = self.pathname.get();
+        self.list.with(|list| {
+            list.iter()
+                .filter(|(p, _)| *p == path)
+                .map(|(_, message)| message.clone())
+                .collect()
+        })
+    }
+
+    /// Drops every toast that does not belong to `pathname`.
+    pub fn keep_only(&self, pathname: &str) {
+        self.list.update(|list| list.retain(|(p, _)| p == pathname));
     }
 }
 

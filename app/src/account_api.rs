@@ -163,6 +163,24 @@ pub struct ConfirmResult {
     pub logged_in: bool,
 }
 
+/// Result of a password change: whether it cancelled a live (unexpired) pending email
+/// change (a password change voids it, #71; the user has to request it again).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PasswordChanged {
+    pub pending_email_cancelled: bool,
+}
+
+impl PasswordChanged {
+    /// i18n key of the success message.
+    pub fn message_key(&self) -> &'static str {
+        if self.pending_email_cancelled {
+            "flash.success.password_changed_email_change_cancelled"
+        } else {
+            "flash.success.password_changed"
+        }
+    }
+}
+
 /// The caller's name, email and live pending change.
 #[server(prefix = "/api", endpoint = "get_profile")]
 pub async fn get_profile() -> Result<ProfileView, AccountError> {
@@ -185,16 +203,19 @@ pub async fn change_password(
     current_password: String,
     new_password: String,
     new_password_confirm: String,
-) -> Result<(), AccountError> {
+) -> Result<PasswordChanged, AccountError> {
     let result = crate::server::account_flow::change_password(
         current_password,
         new_password,
         new_password_confirm,
     )
     .await;
+    let success_key = match &result {
+        Ok(changed) => changed.message_key(),
+        Err(_) => "flash.success.password_changed",
+    };
     crate::server::respond::with_error_status(
-        crate::server::account_flow::plain_form_outcome(result, "flash.success.password_changed")
-            .await,
+        crate::server::account_flow::plain_form_outcome(result, success_key).await,
     )
 }
 

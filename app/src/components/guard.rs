@@ -97,18 +97,12 @@ fn apply_redirect(redirect: Option<&str>) {
 #[component]
 pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     let here = current_path_and_query();
-    let location = use_location();
     let access = Resource::new_blocking(
-        // Query-only navigation stays on the same protected page.
-        move || location.pathname.get(),
-        move |_| async move {
+        move || here.get(),
+        |here| async move {
             let access = match get_current_user().await {
                 Ok(Some(_)) => Access::Allowed,
-                Ok(None) | Err(AppError::Unauthorized) => match here.try_get_untracked() {
-                    Some(here) => Access::Redirect(login_url(&here)),
-                    // The route can be disposed while the request is in flight.
-                    None => Access::Failed,
-                },
+                Ok(None) | Err(AppError::Unauthorized) => Access::Redirect(login_url(&here)),
                 Err(_) => Access::Failed,
             };
             if let Access::Redirect(to) = &access {
@@ -143,17 +137,10 @@ pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
 /// sent to `to`. Renders nothing.
 #[component]
 pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>) -> impl IntoView {
-    let location = use_location();
     let target = Resource::new_blocking(
-        move || location.pathname.get(),
-        move |_| async move {
-            let logged_in = matches!(get_current_user().await, Ok(Some(_)));
-            // Use the latest query and tolerate route disposal during the request.
-            let redirect = if logged_in {
-                to.try_get_untracked()
-            } else {
-                None
-            };
+        move || to.get(),
+        |to| async move {
+            let redirect = matches!(get_current_user().await, Ok(Some(_))).then_some(to);
             apply_redirect(redirect.as_deref());
             redirect
         },

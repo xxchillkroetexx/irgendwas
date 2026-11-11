@@ -11,6 +11,9 @@ status: approved (implementation authorized in the 2026-11-03 issue task)
   a separate maskable declaration and a 180px Apple touch icon.
 - Public `/install` instructions in English and German, linked from every footer,
   describe iPhone/iPad Safari, Android Chrome and supported desktop browsers.
+  Amendment 2026-11-09 (#74): install links (footer and share page) are hidden when the
+  page runs as the installed app (`display-mode` standalone/minimal-ui/window-controls-overlay,
+  or `navigator.standalone` on older iOS Safari); `/install` stays reachable by URL.
 - HTTPS is required in production; localhost is suitable for development.
 - Offline behavior is outside scope. No service worker or response cache is
   introduced; private pages continue to use the network and existing sessions.

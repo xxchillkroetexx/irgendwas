@@ -5,7 +5,6 @@
 //! form; an id that is not one of my items in this group is ignored.
 
 use leptos::prelude::*;
-use leptos_router::components::Form;
 use leptos_router::hooks::{use_navigate, use_query_map};
 
 use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
@@ -538,7 +537,7 @@ fn CopySection(
                     <section class="card my-4">
                         <div class="card-body">
                             <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
-                            <Form method="get" action=wishlist_edit_path(group_id) noscroll=true>
+                            <form method="get" action=wishlist_edit_path(group_id)>
                                 <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
                                 <select id="copy-source" name="source" class="form-select mb-2" required>
                                     <option value="">{i18n.t("wishlist.copy.choose")}</option>
@@ -547,7 +546,7 @@ fn CopySection(
                                     }).collect_view()}
                                 </select>
                                 <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
-                            </Form>
+                            </form>
                             <Suspense fallback=|| ()>
                                 {move || Suspend::new(async move {
                                     match source_list.await {

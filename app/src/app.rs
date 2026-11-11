@@ -24,6 +24,12 @@ const BOOTSTRAP_CSS: &str =
 const BOOTSTRAP_JS: &str =
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js";
 
+/// Older iOS Safari does not match `(display-mode: standalone)` in a Home Screen web
+/// app but sets `navigator.standalone`. Marks `<html data-standalone>` so the stylesheet
+/// can hide install links there too (#74). `<html>` is outside the hydrated `<body>`, so
+/// the attribute cannot cause a hydration mismatch.
+const STANDALONE_JS: &str = "if(window.navigator.standalone===true)document.documentElement.setAttribute('data-standalone','')";
+
 /// Server-rendered document. `lang` and `data-timezone` carry the request locale and
 /// `APP_TIMEZONE` to the client so hydration renders identical text.
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -40,6 +46,9 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="theme-color" content="#dc3545"/>
                 <meta name="apple-mobile-web-app-capable" content="yes"/>
                 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+                // Before the stylesheets: an inline script after a pending stylesheet
+                // blocks the parser until that stylesheet has loaded.
+                <script inner_html=STANDALONE_JS></script>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
                 <script defer src=BOOTSTRAP_JS></script>
