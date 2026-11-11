@@ -466,6 +466,61 @@ test.describe("groups", () => {
     const link = alice.locator("main").getByText(/\/join\/[A-Z2-9]{8}$/).first();
     const code = ((await link.textContent()) ?? "").trim().slice(-8);
 
+    // Use a separate group for the confirmation path so the group used by the
+    // rest of this test remains available.
+    await alice.goto("/groups/new");
+    await waitForHydration(alice);
+    await fillGroupForm(alice, { name: "Hydration Group" });
+    await alice.getByRole("button", { name: t("group.form.createButton") }).click();
+    await expect(alice).toHaveURL(/\/groups\/\d+$/);
+    const hydrationGid = groupId(alice);
+
+    // Keep hydration pending while the user opens the SSR confirmation. Loading
+    // the app must neither close the disclosure nor move focus away from it.
+    for (const openBeforeHydration of [true, false]) {
+      const beforeHydration = await browser.newContext({ storageState: await alice.context().storageState() });
+      let releaseHydration!: () => void;
+      const hydrationGate = new Promise<void>((resolve) => { releaseHydration = resolve; });
+      await beforeHydration.route(/\/pkg\/.*\.(js|wasm)(\?.*)?$/, async (route) => {
+        await hydrationGate;
+        await route.continue();
+      });
+      const early = await beforeHydration.newPage();
+      await early.goto(`/groups/${openBeforeHydration ? hydrationGid : plainGid}`, { waitUntil: "commit" });
+      await expect(early.locator("html[data-hydrated]")).toHaveCount(0);
+      const earlyDelete = early.locator("details").filter({ has: early.locator("summary", { hasText: t("group.show.deleteGroup") }) });
+      const summary = earlyDelete.locator("summary");
+      if (openBeforeHydration) {
+        await summary.click();
+        await expect(earlyDelete.getByText(t("group.show.deleteGroupConfirm"))).toBeVisible();
+      } else {
+        await summary.focus();
+      }
+      await expect(summary).toBeFocused();
+      releaseHydration();
+      await waitForHydration(early);
+      // Effects may run after the marker is set. Let the reactive work and the
+      // resulting DOM updates run before checking for preservation.
+      await early.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }));
+      if (openBeforeHydration) {
+        await expect(earlyDelete).toHaveAttribute("open", "");
+        await expect(earlyDelete.getByText(t("group.show.deleteGroupConfirm"))).toBeVisible();
+      } else {
+        await expect(earlyDelete).not.toHaveAttribute("open", "");
+      }
+      await expect(summary).toBeFocused();
+      if (openBeforeHydration) {
+        await earlyDelete.getByRole("button", { name: t("common.confirm") }).click();
+        await expect(early).toHaveURL(/\/groups$/);
+        await expect(early.getByText(t("flash.success.group_deleted"))).toBeVisible();
+      } else {
+        await expect(early.getByRole("heading", { name: "Plain Group" })).toBeVisible();
+      }
+      await beforeHydration.close();
+    }
+
     const plainContext = await browser.newContext({ javaScriptEnabled: false, locale: "de-DE" });
     const p = await plainContext.newPage();
     await loginPlain(p, users.carol.email);
@@ -475,6 +530,7 @@ test.describe("groups", () => {
     await p.getByLabel(tDe("group.form.name"), { exact: true }).fill("Carols Plain Group");
     await p.getByRole("button", { name: tDe("group.form.createButton") }).click();
     await expect(p).toHaveURL(/\/groups\/\d+$/);
+    const carolGid = groupId(p);
     await expect(p.getByText(tDe("flash.success.group_created"))).toBeVisible();
     await expect(p.getByText("Carols Plain Group").first()).toBeVisible();
 
@@ -485,12 +541,31 @@ test.describe("groups", () => {
     await expect(p).toHaveURL(new RegExp(`/groups/${plainGid}$`));
     await expect(p.getByText(tDe("flash.success.group_joined"))).toBeVisible();
 
-    // Leave: ends on the list with the flash; the group is gone from it.
-    await p.getByRole("button", { name: tDe("group.show.leaveGroup") }).click();
+    // Leave requires an explicit confirmation even without JavaScript. Closing the
+    // disclosure cancels without losing membership.
+    const leave = p.locator("details").filter({ has: p.locator("summary", { hasText: tDe("group.show.leaveGroup") }) });
+    await leave.locator("summary").click();
+    await expect(leave.getByText(tDe("group.show.leaveGroupConfirm"))).toBeVisible();
+    await leave.locator("summary").click();
+    await expect(p.getByText("Plain Group").first()).toBeVisible();
+    await leave.locator("summary").click();
+    await leave.getByRole("button", { name: tDe("common.confirm") }).click();
     await expect(p).toHaveURL(/\/groups$/);
     await expect(p.getByText(tDe("flash.success.left_group"))).toBeVisible();
     await expect(p.getByText("Plain Group", { exact: true })).toHaveCount(0);
     await expect(p.getByText("Carols Plain Group")).toBeVisible();
+
+    // Group deletion similarly needs a separate explicit submission.
+    await p.goto(`/groups/${carolGid}`);
+    const deletion = p.locator("details").filter({ has: p.locator("summary", { hasText: tDe("group.show.deleteGroup") }) });
+    await deletion.locator("summary").click();
+    await expect(deletion.getByText(tDe("group.show.deleteGroupConfirm"))).toBeVisible();
+    await deletion.locator("summary").click();
+    await expect(p.getByRole("heading", { name: "Carols Plain Group" })).toBeVisible();
+    await deletion.locator("summary").click();
+    await deletion.getByRole("button", { name: tDe("common.confirm") }).click();
+    await expect(p).toHaveURL(/\/groups$/);
+    await expect(p.getByText(tDe("flash.success.group_deleted"))).toBeVisible();
 
     // A wrong code without JavaScript shows the invalid-code message.
     await p.goto("/join/ZZZZZZZZ");

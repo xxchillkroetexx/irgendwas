@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
+use super::{GroupErrorView, SafeConfirmSubmit, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
 use crate::components::{PageLoading, RequireUser};
 use crate::flash::{Toasts, use_toasts};
@@ -167,7 +167,7 @@ fn GroupDetailView(
         view! {
             <ActionForm action=actions.leave>
                 <input type="hidden" name="group_id" value=id/>
-                <ConfirmSubmit
+                <SafeConfirmSubmit
                     label=i18n.t("group.show.leaveGroup")
                     confirm=i18n.t("group.show.leaveGroupConfirm")
                     class="btn btn-outline-danger"
@@ -227,7 +227,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView
             {(status == GroupStatus::Open).then(|| view! {
                 <ActionForm action=actions.regenerate>
                     <input type="hidden" name="group_id" value=id/>
-                    <ConfirmSubmit
+                    <SafeConfirmSubmit
                         label=i18n.t("group.show.regenerateCode")
                         confirm=i18n.t("group.show.regenerateCodeConfirm")
                         class="btn btn-outline-secondary"
@@ -236,7 +236,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView
             })}
             <ActionForm action=actions.delete>
                 <input type="hidden" name="group_id" value=id/>
-                <ConfirmSubmit
+                <SafeConfirmSubmit
                     label=i18n.t("group.show.deleteGroup")
                     confirm=i18n.t("group.show.deleteGroupConfirm")
                     class="btn btn-outline-danger"
@@ -373,7 +373,7 @@ fn MembersCard(
                         <ActionForm action=actions.transfer>
                             <input type="hidden" name="group_id" value=group_id/>
                             <input type="hidden" name="user_id" value=user_id/>
-                            <ConfirmSubmit
+                            <SafeConfirmSubmit
                                 label=i18n.t("group.show.makeAdmin")
                                 confirm=i18n.t("group.show.makeAdminConfirm")
                                 class="btn btn-sm btn-outline-primary"
@@ -385,7 +385,7 @@ fn MembersCard(
                                     <ActionForm action=actions.remove>
                                         <input type="hidden" name="group_id" value=group_id/>
                                         <input type="hidden" name="user_id" value=user_id/>
-                                        <ConfirmSubmit
+                                        <SafeConfirmSubmit
                                             label=i18n.t("group.show.removeMember")
                                             confirm=i18n.t("group.show.removeMemberConfirm")
                                             class="btn btn-sm btn-outline-danger"

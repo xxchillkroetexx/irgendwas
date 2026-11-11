@@ -30,6 +30,7 @@
     "language.switchTo": "Sprache wechseln zu {language}",
     "nav.toggle": "Navigation umschalten",
     "common.close": "Schließen",
+    "common.confirm": "Bestätigen",
     "common.loading": "Seite wird geladen…",
     "error.notFound.title": "Seite nicht gefunden",
     "error.notFound.message": "Die gesuchte Seite existiert nicht.",

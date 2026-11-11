@@ -100,3 +100,66 @@ pub(crate) fn ConfirmSubmit(
         </button>
     }
 }
+
+/// An SSR-safe confirmation for consequential actions. The native disclosure is
+/// usable before hydration and without JavaScript; once hydrated the usual browser
+/// dialog replaces it, so interactive users only confirm once.
+#[component]
+pub(crate) fn SafeConfirmSubmit(
+    #[prop(into)] label: String,
+    #[prop(into)] confirm: String,
+    class: &'static str,
+    #[prop(optional, into)] aria_label: Option<String>,
+    #[prop(optional)] disabled: bool,
+    #[prop(optional, into)] testid: Option<&'static str>,
+) -> impl IntoView {
+    let i18n = crate::i18n::use_i18n();
+    let hydrated = RwSignal::new(false);
+    let disclosure = NodeRef::<leptos::html::Details>::new();
+    Effect::new(move |_| {
+        // A user may already be interacting with the server-rendered disclosure
+        // while the application loads. Do not replace it, lose focus, or hide the
+        // confirmation they just opened when hydration finishes.
+        #[cfg(not(feature = "ssr"))]
+        {
+            // Track the ref so an effect scheduled before the node is mounted waits
+            // for it rather than replacing an as-yet-unexamined disclosure.
+            let Some(details) = disclosure.get() else {
+                return;
+            };
+            let focused_inside = document()
+                .active_element()
+                .is_some_and(|active| details.contains(Some(&active)));
+            if details.has_attribute("open") || focused_inside {
+                return;
+            }
+        }
+        hydrated.set(true);
+    });
+    let dialog_text = confirm.clone();
+    let plain_label = label.clone();
+    let plain_aria = aria_label.clone();
+    let on_click = move |ev: leptos::ev::MouseEvent| {
+        if !confirmed(&dialog_text) {
+            ev.prevent_default();
+        }
+    };
+    view! {
+        <Show
+            when=move || hydrated.get() || disabled
+            fallback=move || view! {
+                <details node_ref=disclosure>
+                    <summary class=class aria-label=plain_aria.clone() data-testid=testid>
+                        {plain_label.clone()}
+                    </summary>
+                    <p class="mt-2 mb-2" style="white-space: pre-line">{confirm.clone()}</p>
+                    <button type="submit" class=class>{i18n.t("common.confirm")}</button>
+                </details>
+            }
+        >
+            <button type="submit" class=class aria-label=aria_label.clone() data-testid=testid disabled=disabled on:click=on_click.clone()>
+                {label.clone()}
+            </button>
+        </Show>
+    }
+}

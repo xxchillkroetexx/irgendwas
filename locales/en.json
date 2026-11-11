@@ -30,6 +30,7 @@
     "language.switchTo": "Switch language to {language}",
     "nav.toggle": "Toggle navigation",
     "common.close": "Close",
+    "common.confirm": "Confirm",
     "common.loading": "Loading page…",
     "error.notFound.title": "Page not found",
     "error.notFound.message": "The page you are looking for does not exist.",
