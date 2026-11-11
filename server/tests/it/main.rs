@@ -50,6 +50,7 @@ mod migrations;
 mod origin;
 mod password;
 mod paths;
+mod pwa_install_link;
 mod session;
 mod share_target;
 mod tz;
