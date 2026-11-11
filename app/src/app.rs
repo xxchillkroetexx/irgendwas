@@ -24,10 +24,6 @@ const BOOTSTRAP_CSS: &str =
 const BOOTSTRAP_JS: &str =
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js";
 
-// Older iOS home-screen apps expose navigator.standalone without matching the
-// CSS display-mode media query. The html attribute stays outside hydrated body.
-const STANDALONE_JS: &str = "if(window.navigator.standalone===true)document.documentElement.setAttribute('data-standalone','')";
-
 /// Server-rendered document. `lang` and `data-timezone` carry the request locale and
 /// `APP_TIMEZONE` to the client so hydration renders identical text.
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -44,10 +40,8 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta name="theme-color" content="#dc3545"/>
                 <meta name="apple-mobile-web-app-capable" content="yes"/>
                 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-                <script inner_html=STANDALONE_JS></script>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
-                <noscript><link rel="stylesheet" href="/assets/css/no-js.css"/></noscript>
                 <script defer src=BOOTSTRAP_JS></script>
                 <AutoReload options=options.clone()/>
                 <HydrationScripts options/>

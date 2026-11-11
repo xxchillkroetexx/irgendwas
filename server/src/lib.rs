@@ -91,6 +91,7 @@ async fn legacy_join(Query(query): Query<HashMap<String, String>>) -> Response {
 /// Used by integration tests to exercise session helpers directly.
 pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
     let routes = route_list();
+    let session_layer = session_layer(state.pool.clone(), &state.config);
     let leptos_options = state.leptos_options.clone();
     let app_origin: Arc<str> = state.config.app_origin().into();
 
@@ -121,12 +122,7 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
             state.clone(),
             middleware::locale,
         ))
-        // Each request gets its own store snapshot, so concurrent writes can be
-        // merged against the record that request actually read.
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::session,
-        ))
+        .layer(session_layer)
         // Outermost: cross-origin writes are rejected before they touch the session.
         .layer(axum::middleware::from_fn_with_state(
             app_origin,

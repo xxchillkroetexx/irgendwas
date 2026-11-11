@@ -123,15 +123,6 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
     await expect(page.locator("nav").getByText("Carol")).toBeVisible();
 
-    // #72: the brand goes straight to the dashboard, without rendering the anonymous home.
-    await page.goto("/groups");
-    await waitForHydration(page);
-    const brand = page.locator("a.navbar-brand");
-    await expect(brand).toHaveAttribute("href", DASHBOARD);
-    await brand.click();
-    await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
-    await expect(page.locator("main").getByRole("heading", { name: "Secret Santa", exact: true })).toHaveCount(0);
-
     // #60: registration/login cookies persist when the browser/app is closed and reopened.
     const stored = await page.context().storageState();
     const session = stored.cookies.find((cookie) => cookie.name === "irgendwas_session");
@@ -148,7 +139,6 @@ test.describe("auth", () => {
     await logout(page);
     await expect(page.getByText(T.loggedOut)).toBeVisible();
     await expect(page.locator("nav").getByRole("link", { name: "Login" })).toBeVisible();
-    await expect(page.locator("a.navbar-brand")).toHaveAttribute("href", "/");
 
     // The link cannot be used a second time.
     await page.goto(link);

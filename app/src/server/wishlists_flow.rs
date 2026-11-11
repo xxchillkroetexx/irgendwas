@@ -240,8 +240,7 @@ fn normalize_link(raw: &str) -> Result<Option<String>, WishlistFieldError> {
     Ok(Some(normalized.to_string()))
 }
 
-/// Validate imported values at the output boundary too: old data predates W9.
-/// Keep the original separately for editing; never turn an invalid value into a link.
+/// Imported data can predate validation; validate again before making it clickable.
 fn safe_link(link: &str) -> Option<(String, String)> {
     let url = url::Url::parse(link).ok()?;
     if !matches!(url.scheme(), "http" | "https")

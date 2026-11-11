@@ -311,13 +311,7 @@ test.describe("draw", () => {
     await loginPlain(p, users.alice.email);
     await p.goto(groupUrl);
 
-    const perform = p.locator("details").filter({ has: p.getByTestId("draw-perform") });
-    await perform.locator("summary").click();
-    await expect(perform.getByText(t("group.show.performDrawConfirm"), { exact: false })).toBeVisible();
-    await perform.locator("summary").click();
-    await expect(p.getByTestId("my-assignment")).toHaveCount(0);
-    await perform.locator("summary").click();
-    await perform.getByRole("button", { name: t("common.confirm") }).click();
+    await p.getByRole("button", { name: t("group.show.performDraw") }).click();
     await expect(p).toHaveURL(new RegExp(`${groupUrl}$`));
     await expect(p.getByText(t("flash.success.draw_success"))).toBeVisible();
     await expect(p.getByTestId("my-assignment")).toHaveCount(1);
@@ -334,13 +328,7 @@ test.describe("draw", () => {
 
     // A second draw is not offered; reset works as a plain form too.
     await expect(p.getByTestId("draw-perform")).toHaveCount(0);
-    const reset = p.locator("details").filter({ has: p.getByTestId("draw-reset") });
-    await reset.locator("summary").click();
-    await expect(reset.getByText(t("group.draw.resetConfirm"))).toBeVisible();
-    await reset.locator("summary").click();
-    await expect(p.getByTestId("my-assignment")).toHaveCount(1);
-    await reset.locator("summary").click();
-    await reset.getByRole("button", { name: t("common.confirm") }).click();
+    await p.getByRole("button", { name: t("group.draw.reset") }).click();
     await expect(p).toHaveURL(new RegExp(`${groupUrl}$`));
     await expect(p.getByText(t("flash.success.draw_reset"))).toBeVisible();
     await expect(p.getByTestId("my-assignment")).toHaveCount(0);

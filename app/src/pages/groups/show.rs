@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use super::{GroupErrorView, SafeConfirmSubmit, route_group_id, when_logged_in};
+use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
 use crate::components::{PageLoading, RequireUser};
 use crate::flash::{Toasts, use_toasts};
@@ -167,7 +167,7 @@ fn GroupDetailView(
         view! {
             <ActionForm action=actions.leave>
                 <input type="hidden" name="group_id" value=id/>
-                <SafeConfirmSubmit
+                <ConfirmSubmit
                     label=i18n.t("group.show.leaveGroup")
                     confirm=i18n.t("group.show.leaveGroupConfirm")
                     class="btn btn-outline-danger"
@@ -227,7 +227,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView
             {(status == GroupStatus::Open).then(|| view! {
                 <ActionForm action=actions.regenerate>
                     <input type="hidden" name="group_id" value=id/>
-                    <SafeConfirmSubmit
+                    <ConfirmSubmit
                         label=i18n.t("group.show.regenerateCode")
                         confirm=i18n.t("group.show.regenerateCodeConfirm")
                         class="btn btn-outline-secondary"
@@ -236,7 +236,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView
             })}
             <ActionForm action=actions.delete>
                 <input type="hidden" name="group_id" value=id/>
-                <SafeConfirmSubmit
+                <ConfirmSubmit
                     label=i18n.t("group.show.deleteGroup")
                     confirm=i18n.t("group.show.deleteGroupConfirm")
                     class="btn btn-outline-danger"
@@ -291,9 +291,6 @@ fn DetailsCard(detail: GroupDetail) -> impl IntoView {
 fn copy_to_clipboard(text: String, toasts: Toasts) {
     #[cfg(feature = "hydrate")]
     {
-        let Some(origin) = toasts.current_path() else {
-            return;
-        };
         let clipboard = window().navigator().clipboard();
         if clipboard.is_undefined() {
             return;
@@ -301,10 +298,7 @@ fn copy_to_clipboard(text: String, toasts: Toasts) {
         let written = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&text));
         leptos::task::spawn_local(async move {
             if written.await.is_ok() {
-                toasts.push_if_current(
-                    &origin,
-                    crate::flash::FlashMessage::success("group.show.copied"),
-                );
+                toasts.push(crate::flash::FlashMessage::success("group.show.copied"));
             }
         });
     }
@@ -374,16 +368,13 @@ fn MembersCard(
         .map(|member| {
             let manage = (is_admin && !member.is_me).then(|| {
                 let user_id = member.user_id;
-                let transfer_aria = t!(i18n, "group.show.makeAdminFor", name = member.name.clone());
-                let remove_aria = t!(i18n, "group.show.removeMemberFor", name = member.name.clone());
                 view! {
                     <div class="d-flex flex-wrap gap-2">
                         <ActionForm action=actions.transfer>
                             <input type="hidden" name="group_id" value=group_id/>
                             <input type="hidden" name="user_id" value=user_id/>
-                            <SafeConfirmSubmit
+                            <ConfirmSubmit
                                 label=i18n.t("group.show.makeAdmin")
-                                aria_label=transfer_aria
                                 confirm=i18n.t("group.show.makeAdminConfirm")
                                 class="btn btn-sm btn-outline-primary"
                             />
@@ -394,9 +385,8 @@ fn MembersCard(
                                     <ActionForm action=actions.remove>
                                         <input type="hidden" name="group_id" value=group_id/>
                                         <input type="hidden" name="user_id" value=user_id/>
-                                        <SafeConfirmSubmit
+                                        <ConfirmSubmit
                                             label=i18n.t("group.show.removeMember")
-                                            aria_label=remove_aria
                                             confirm=i18n.t("group.show.removeMemberConfirm")
                                             class="btn btn-sm btn-outline-danger"
                                         />

@@ -28,7 +28,7 @@ use crate::draw_api::{get_draw_admin_status, get_my_assignment, list_my_assignme
 use crate::format::LocalDate;
 use crate::groups_api::{GroupDetail, GroupError};
 use crate::i18n::{I18n, use_i18n};
-use crate::pages::groups::SafeConfirmSubmit;
+use crate::pages::groups::confirmed;
 use crate::paths::{group_path, wishlist_view_path};
 use crate::{t, t_plural};
 
@@ -195,6 +195,11 @@ fn ReadySection(group_id: i32, status: DrawAdminStatus, actions: DrawActions) ->
             date = LocalDate(until)
         ));
     }
+    let on_click = move |ev: leptos::ev::MouseEvent| {
+        if !confirmed(&confirm) {
+            ev.prevent_default();
+        }
+    };
     let blocker = status
         .blocker
         .map(|blocker| view! { <BlockerText blocker/> });
@@ -212,13 +217,15 @@ fn ReadySection(group_id: i32, status: DrawAdminStatus, actions: DrawActions) ->
             })}
         <ActionForm action=actions.perform>
             <input type="hidden" name="group_id" value=group_id/>
-            <SafeConfirmSubmit
-                label=i18n.t("group.show.performDraw")
-                confirm=confirm
+            <button
+                type="submit"
                 class="btn btn-primary"
-                testid="draw-perform"
+                data-testid="draw-perform"
                 disabled=blocked
-            />
+                on:click=on_click
+            >
+                {i18n.t("group.show.performDraw")}
+            </button>
         </ActionForm>
         {blocker}
     }
@@ -288,6 +295,12 @@ fn DrawnAdminSection(
     actions: DrawActions,
 ) -> impl IntoView {
     let i18n = use_i18n();
+    let reset_confirm = i18n.t("group.draw.resetConfirm");
+    let on_reset = move |ev: leptos::ev::MouseEvent| {
+        if !confirmed(&reset_confirm) {
+            ev.prevent_default();
+        }
+    };
     let total = i64::from(notes.total);
     let pending = i64::from(notes.pending);
     let summary = t_plural!(
@@ -327,12 +340,14 @@ fn DrawnAdminSection(
         </div>
         <ActionForm action=actions.reset>
             <input type="hidden" name="group_id" value=group_id/>
-            <SafeConfirmSubmit
-                label=i18n.t("group.draw.reset")
-                confirm=i18n.t("group.draw.resetConfirm")
+            <button
+                type="submit"
                 class="btn btn-outline-danger"
-                testid="draw-reset"
-            />
+                data-testid="draw-reset"
+                on:click=on_reset
+            >
+                {i18n.t("group.draw.reset")}
+            </button>
         </ActionForm>
     }
 }

@@ -41,8 +41,9 @@ pub async fn invalid_link(toasts: Option<Toasts>, message: FlashMessage, to: &st
     }
     #[cfg(not(feature = "ssr"))]
     {
+        let _ = to;
         if let Some(toasts) = toasts {
-            toasts.push_for(to, message);
+            toasts.push(message);
         }
     }
 }

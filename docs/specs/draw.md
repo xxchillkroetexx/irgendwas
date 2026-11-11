@@ -195,9 +195,9 @@ NotificationSummary { total, sent, pending, failed, failed_member_names: Vec<Str
 
 **`reset_draw(group_id)`**
 1. `require_admin`. `BEGIN`. Lock the group row as above and re-check the admin. If `!is_drawn` → `NotDrawn`.
-2. Read `(u.id, u.email, u.name, u.locale)` of all givers of the group (`JOIN users u ON u.id = ga.giver_id`; giver data only), plus the group name and the admin's name.
-3. `DELETE FROM gift_assignments WHERE group_id = ?`. `UPDATE \`groups\` SET is_drawn = FALSE, drawn_at = NULL WHERE id = ?`. `COMMIT`. Exclusion rules and wishlists are not touched.
-4. The transaction also records a reset notice for each giver except the caller; it contains no assignment or receiver information. After commit, wake the worker; periodic reconciliation also recovers notices if the wakeup is lost.
+2. Record a reset notice for each giver except the caller, containing the recipient ID, group name and admin name but no assignment or receiver information.
+3. `DELETE FROM gift_assignments WHERE group_id = ?`. Mark the group undrawn and increment its draw generation. `COMMIT`. Exclusion rules and wishlists are not touched.
+4. Wake the worker; periodic reconciliation also recovers notices if the wakeup is lost. Recipient addresses and locales are read when delivery is attempted.
 
 **`resend_draw_notifications(group_id)`**: `require_admin`. If `!is_drawn` → `NotDrawn`. `UPDATE gift_assignments SET notification_attempts = 0 WHERE group_id = ? AND notification_sent = FALSE AND notification_attempts >= 3`. If 0 rows → `NothingToResend`. Otherwise send `DrawResult { group_id }` to the worker and return the row count.
 

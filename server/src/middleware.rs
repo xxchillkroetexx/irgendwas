@@ -11,18 +11,7 @@ use axum::http::header::{ACCEPT_LANGUAGE, CACHE_CONTROL, CONTENT_TYPE, COOKIE, O
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use tower::{Layer, ServiceExt};
 use tower_sessions::Session;
-
-/// Build the session layer per request. The underlying pool is shared, while the
-/// store's baseline is private to this request, including its final save.
-pub async fn session(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    let layer = crate::session_layer(state.pool.clone(), &state.config);
-    match layer.layer(next).oneshot(req).await {
-        Ok(response) => response,
-        Err(never) => match never {},
-    }
-}
 
 /// All registered application routes may depend on the session or locale.
 pub async fn dynamic_no_store(req: Request, next: Next) -> Response {

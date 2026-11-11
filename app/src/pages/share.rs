@@ -73,7 +73,7 @@ pub fn SharedWishPage() -> impl IntoView {
             </Suspense>
             <h2 class="h4">{i18n.t("share.iphone.title")}</h2>
             <p>{i18n.t("share.iphone.help")}</p>
-            <a class="browser-install-link" href="/install">{i18n.t("app.install.title")}</a>
+            <a href="/install">{i18n.t("app.install.title")}</a>
         </RequireUser>
     }
 }

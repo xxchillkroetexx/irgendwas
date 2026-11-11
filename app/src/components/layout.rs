@@ -10,7 +10,6 @@ use crate::components::guard::{current_path_and_query, full_navigation};
 use crate::flash::{FlashMessage, Toasts, use_toasts};
 use crate::i18n::{Locale, use_i18n};
 use crate::locale_api::SET_LOCALE_PATH;
-use crate::paths::DASHBOARD_PATH;
 use crate::t;
 
 /// Wraps every page. Owns the session resource (current user + flash messages), which is
@@ -34,12 +33,7 @@ pub fn Layout(children: Children) -> impl IntoView {
         },
     );
     provide_context(SessionResource(session));
-    let toasts = Toasts::new(location.pathname);
-    provide_context(toasts);
-    Effect::new(move |_| {
-        let path = location.pathname.get();
-        toasts.keep_only(&path);
-    });
+    provide_context(Toasts(RwSignal::new(Vec::new())));
 
     view! {
         <header>
@@ -69,18 +63,7 @@ pub fn NavBar() -> impl IntoView {
     view! {
         <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
             <div class="container">
-                // Avoid visiting the anonymous landing page before its client-side redirect
-                // when an authenticated visitor uses the brand link.
-                <Transition fallback=|| ()>
-                    {move || Suspend::new(async move {
-                        let href = if session.await.ok().and_then(|info| info.user).is_some() {
-                            DASHBOARD_PATH
-                        } else {
-                            "/"
-                        };
-                        view! { <a class="navbar-brand" href=href>{i18n.t("app.name")}</a> }
-                    })}
-                </Transition>
+                <a class="navbar-brand" href="/">{i18n.t("app.name")}</a>
                 <LanguageSwitch/>
                 <button
                     class="navbar-toggler"
@@ -230,7 +213,7 @@ pub fn Footer() -> impl IntoView {
         <footer class="mt-auto py-3 bg-light">
             <div class="container text-center">
                 <p class="mb-0">"© " {i18n.t("footer.copyright")}</p>
-                <a class="browser-install-link" href="/install">{i18n.t("app.install.title")}</a>
+                <a href="/install">{i18n.t("app.install.title")}</a>
             </div>
         </footer>
     }

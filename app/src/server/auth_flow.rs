@@ -43,8 +43,7 @@ fn state() -> Result<AppState, AuthError> {
     crate::server::state().map_err(|_| AuthError::Internal)
 }
 
-// Scope token admission by database as well as token: isolated app instances and
-// test databases must not share a budget merely because a token happens to match.
+// Scope admissions by database so isolated app instances do not share a token budget.
 fn token_work_key(state: &AppState, token_hash: &str) -> String {
     let options = state.pool.connect_options();
     format!(
@@ -145,60 +144,23 @@ pub async fn login(email: String, password: String, next: Option<String>) -> Res
     limiter.release(&ip_key);
 
     if password::needs_rehash(&user.password) {
-        match password::hash_async(password.clone()).await {
+        match password::hash_async(password).await {
             Ok(hash) => {
-                // A password change/reset may have committed since verification.
-                // Never restore the old password over newer credentials.
-                let updated = sqlx::query(
-                    "UPDATE users SET password = ? WHERE id = ? AND BINARY password = BINARY ? AND session_epoch = ?",
-                )
+                sqlx::query("UPDATE users SET password = ? WHERE id = ?")
                     .bind(hash)
                     .bind(user.id)
-                    .bind(&user.password)
-                    .bind(user.session_epoch)
                     .execute(&state.pool)
                     .await
                     .map_err(db_error)?;
-                if updated.rows_affected() == 0 {
-                    // Another login may have upgraded the same hash first. Accept
-                    // that case only after verifying the latest credentials again.
-                    let latest = sqlx::query_as::<_, (String, u32)>(
-                        "SELECT password, session_epoch FROM users WHERE id = ?",
-                    )
-                    .bind(user.id)
-                    .fetch_optional(&state.pool)
-                    .await
-                    .map_err(db_error)?;
-                    let Some((hash, epoch)) = latest else {
-                        return Err(AuthError::InvalidCredentials);
-                    };
-                    if epoch != user.session_epoch {
-                        return Err(AuthError::InvalidCredentials);
-                    }
-                    if !password::verify_async(password, Some(hash))
-                        .await
-                        .map_err(password_error)?
-                    {
-                        return Err(AuthError::InvalidCredentials);
-                    }
-                }
             }
             Err(err) => tracing::warn!(user_id = user.id, error = %err, "password rehash failed"),
         }
     }
-    // A reset or change may have committed since the password was verified,
-    // even when the stored hash did not need rehashing.
-    let current = sqlx::query(
-        "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ? AND session_epoch = ?",
-    )
-    .bind(user.id)
-    .bind(user.session_epoch)
-    .execute(&state.pool)
-    .await
-    .map_err(db_error)?;
-    if current.rows_affected() == 0 {
-        return Err(AuthError::InvalidCredentials);
-    }
+    sqlx::query("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(user.id)
+        .execute(&state.pool)
+        .await
+        .map_err(db_error)?;
 
     let session = session().await?;
     auth::login_with_epoch(&session, user.id, user.session_epoch)
@@ -285,21 +247,25 @@ pub async fn register(email: String, next: Option<String>) -> Result<(), AuthErr
         None => {
             let token = token::generate().map_err(|_| AuthError::Internal)?;
             let next_path = next.as_deref().and_then(crate::paths::safe_next);
-            // Returning the stored recipient from the upsert makes this one atomic
-            // operation: a concurrent registration can no longer replace our token
-            // before a separate recipient lookup and turn a valid request into a 500.
-            let stored_email: String = sqlx::query_scalar(
+            sqlx::query(
                 "INSERT INTO pending_registrations (email, token_hash, next_path, created_at, expires_at) \
                  VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL 24 HOUR) \
                  ON DUPLICATE KEY UPDATE token_hash = VALUES(token_hash), next_path = VALUES(next_path), \
-                 created_at = VALUES(created_at), expires_at = VALUES(expires_at) RETURNING email",
+                 created_at = VALUES(created_at), expires_at = VALUES(expires_at)",
             )
             .bind(&email)
             .bind(token::hash(&token))
             .bind(next_path)
-            .fetch_one(&state.pool)
+            .execute(&state.pool)
             .await
             .map_err(db_error)?;
+            // The recipient is the address as stored with this token.
+            let stored_email: String =
+                sqlx::query_scalar("SELECT email FROM pending_registrations WHERE token_hash = ?")
+                    .bind(token::hash(&token))
+                    .fetch_one(&state.pool)
+                    .await
+                    .map_err(db_error)?;
             let i18n = I18n::new(request_locale(), state.config.app_timezone);
             let link =
                 auth_mail::app_link(&state.config, &format!("/auth/register/confirm/{token}"));
@@ -434,22 +400,19 @@ pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
             .try_acquire(&mail_email_key(&email), MAIL_PER_EMAIL)
     {
         let token = token::generate().map_err(|_| AuthError::Internal)?;
-        let updated = sqlx::query(
+        sqlx::query(
             "UPDATE users SET reset_token = ?, \
-             reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ? AND email = ?",
+             reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ?",
         )
         .bind(token::hash(&token))
         .bind(user_id)
-        .bind(&stored_email)
         .execute(&state.pool)
         .await
         .map_err(db_error)?;
-        if updated.rows_affected() != 0 {
-            let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
-            let link = auth_mail::app_link(&state.config, &format!("/auth/reset-password/{token}"));
-            let message = auth_mail::password_reset(&i18n, &stored_email, &name, &link);
-            auth_mail::queue(&state, "password_reset", Some(user_id), message);
-        }
+        let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
+        let link = auth_mail::app_link(&state.config, &format!("/auth/reset-password/{token}"));
+        let message = auth_mail::password_reset(&i18n, &stored_email, &name, &link);
+        auth_mail::queue(&state, "password_reset", Some(user_id), message);
     }
 
     flash::flash(FlashMessage::success("flash.success.reset_instructions"))
@@ -496,8 +459,7 @@ pub async fn reset_password(
     // The token condition again in the UPDATE: exactly one of concurrent submits wins.
     let updated = sqlx::query(
         "UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, \
-         session_epoch = session_epoch + 1, pending_email = NULL, \
-         email_verification_token = NULL, email_verification_expires = NULL \
+         session_epoch = session_epoch + 1 \
          WHERE reset_token = ? AND reset_token_expires > CURRENT_TIMESTAMP",
     )
     .bind(hash)

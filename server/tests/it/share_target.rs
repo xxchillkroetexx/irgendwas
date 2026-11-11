@@ -132,46 +132,6 @@ async fn a_consumed_draft_cannot_create_a_second_wish_from_a_stale_session(pool:
 }
 
 #[sqlx::test(migrations = "../migrations")]
-async fn sharing_after_session_revocation_uses_a_new_id_and_preserves_the_draft(pool: MySqlPool) {
-    let alice = create_alice(&pool, "alice@example.test").await;
-    let app = router(&pool, &[], Opts::default());
-    let mut client = Client::new(&app);
-    client
-        .login("alice@example.test", ALICE_PASSWORD)
-        .await
-        .ok();
-    let revoked = client.session_cookie().unwrap().to_string();
-    sqlx::query("UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?")
-        .bind(alice)
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    // The stale session is flushed and the new share is written in the same request.
-    let review = receive(&mut client, "Private draft", "https://shop.example/item").await;
-    let new_id = client.session_cookie().unwrap();
-    assert_ne!(new_id, revoked, "the revoked cookie must never be reissued");
-    let old_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?)")
-        .bind(&revoked)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert!(!old_exists, "the revoked session row must remain deleted");
-
-    let mut replay = Client::new(&app).with_cookie(server::SESSION_COOKIE, &revoked);
-    assert_eq!(replay.whoami().await, None);
-    client
-        .login("alice@example.test", ALICE_PASSWORD)
-        .await
-        .ok();
-    let id = review.split_once("id=").unwrap().1;
-    let reply = client.call("get_shared_draft", &[("id", id)]).await;
-    assert!(reply.status.is_success(), "{}", reply.body);
-    let draft: ShareDraft = serde_json::from_str(&reply.body).unwrap();
-    assert_eq!(draft.title, "Private draft");
-}
-
-#[sqlx::test(migrations = "../migrations")]
 async fn long_share_survives_login_and_only_confirmed_post_creates_a_wish(pool: MySqlPool) {
     let alice = create_alice(&pool, "alice@example.test").await;
     let group = create_group(&pool, alice, "Family").await;

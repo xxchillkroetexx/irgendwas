@@ -210,28 +210,6 @@ async fn ac15_a_logged_in_visitor_is_redirected_from_the_landing_page(pool: MySq
     assert_eq!(res.location().as_deref(), Some("/user/dashboard"));
 }
 
-#[sqlx::test(migrations = "../migrations")]
-async fn brand_link_targets_home_or_dashboard_for_the_current_session(pool: MySqlPool) {
-    fn assert_brand_href(html: &str, href: &str) {
-        let class = html.find("class=\"navbar-brand\"").expect("brand link");
-        let start = html[..class].rfind("<a ").expect("brand anchor");
-        let end = class + html[class..].find('>').expect("end of brand anchor");
-        let anchor = &html[start..end];
-        assert!(anchor.contains(&format!("href=\"{href}\"")), "{anchor}");
-    }
-
-    create_alice(&pool, ALICE).await;
-    let app = app(&pool);
-    let mut c = Client::new(&app);
-    let anonymous = c.get("/").await;
-    assert_brand_href(&anonymous.body, "/");
-
-    c.login(ALICE, ALICE_PASSWORD).await.ok();
-    let authenticated = c.get("/groups").await;
-    assert_eq!(authenticated.status, StatusCode::OK);
-    assert_brand_href(&authenticated.body, "/user/dashboard");
-}
-
 // --------------------------------------------------------------------- AC16
 
 /// (key, en, de) of the spec's tables.
