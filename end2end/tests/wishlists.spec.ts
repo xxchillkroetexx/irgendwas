@@ -347,11 +347,20 @@ test.describe("wishlists", () => {
       const page = await context.newPage();
       const errors = collectPageErrors(page);
       await page.goto(`/groups/${target}/wishlist`);
-      if (js) await waitForHydration(page);
+      if (js) {
+        await waitForHydration(page);
+        await page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill("Unsubmitted while choosing a source");
+        await page.locator("#add-title").evaluate((input) => { (input as HTMLElement).dataset.sourceMarker = "original"; });
+      }
       await page.getByLabel(t("wishlist.copy.source")).selectOption(gid);
       await page.getByRole("button", { name: t("wishlist.copy.load") }).click();
       await expect(page.getByRole("checkbox", { name: "Copy A", exact: true })).toBeVisible();
-      if (js) await waitForHydration(page);
+      if (js) {
+        await waitForHydration(page);
+        const title = page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true });
+        await expect(title).toHaveValue("Unsubmitted while choosing a source");
+        await expect(title).toHaveAttribute("data-source-marker", "original");
+      }
       await page.getByRole("checkbox", { name: "Copy A", exact: true }).check();
       await page.getByRole("checkbox", { name: "Copy B", exact: true }).check();
       await page.getByRole("button", { name: t("wishlist.copy.submit") }).click();

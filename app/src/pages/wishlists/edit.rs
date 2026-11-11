@@ -5,6 +5,7 @@
 //! form; an id that is not one of my items in this group is ignored.
 
 use leptos::prelude::*;
+use leptos_router::components::Form;
 use leptos_router::hooks::{use_navigate, use_query_map};
 
 use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
@@ -401,6 +402,7 @@ fn ItemRow(
                         })}
                     <a
                         href=format!("{}?edit={id}", wishlist_edit_path(group_id))
+                        data-noscroll=""
                         class="btn btn-sm btn-outline-secondary"
                         aria-label=row_label(&i18n, "wishlist.edit.edit", &title)
                     >
@@ -461,7 +463,13 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
         if let Some(Ok(())) = action.value().get() {
             list.refetch();
             // A new search string: the layout re-reads the session and shows the flash.
-            navigate(&wishlist_edit_path(group_id), Default::default());
+            navigate(
+                &wishlist_edit_path(group_id),
+                leptos_router::NavigateOptions {
+                    scroll: false,
+                    ..Default::default()
+                },
+            );
         }
     });
     let values = FormValues {
@@ -479,7 +487,7 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
                     <button type="submit" class="btn btn-sm btn-primary">
                         {i18n.t("wishlist.edit.save")}
                     </button>
-                    <a href=wishlist_edit_path(group_id) class="btn btn-sm btn-outline-secondary">
+                    <a href=wishlist_edit_path(group_id) data-noscroll="" class="btn btn-sm btn-outline-secondary">
                         {i18n.t("wishlist.edit.cancel")}
                     </a>
                 </div>
@@ -537,7 +545,7 @@ fn CopySection(
                     <section class="card my-4">
                         <div class="card-body">
                             <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
-                            <form method="get" action=wishlist_edit_path(group_id)>
+                            <Form method="get" action=wishlist_edit_path(group_id) noscroll=true>
                                 <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
                                 <select id="copy-source" name="source" class="form-select mb-2" required>
                                     <option value="">{i18n.t("wishlist.copy.choose")}</option>
@@ -546,7 +554,7 @@ fn CopySection(
                                     }).collect_view()}
                                 </select>
                                 <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
-                            </form>
+                            </Form>
                             <Suspense fallback=|| ()>
                                 {move || Suspend::new(async move {
                                     match source_list.await {
