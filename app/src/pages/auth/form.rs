@@ -68,7 +68,12 @@ pub fn AuthInput(
     let i18n = use_i18n();
     let field_error = move || error.get().and_then(|e| e.field_error(field));
     let help_id = format!("{id}-help");
-    let described_by = help.as_ref().map(|_| help_id.clone());
+    let error_id = format!("{id}-error");
+    let described_by = if help.is_some() {
+        format!("{help_id} {error_id}")
+    } else {
+        error_id.clone()
+    };
     view! {
         <div class="mb-3">
             <label for=id class="form-label">{label}</label>
@@ -78,15 +83,16 @@ pub fn AuthInput(
                 name=name
                 autocomplete=autocomplete
                 aria-describedby=described_by
+                aria-invalid=move || if field_error().is_some() { "true" } else { "false" }
                 class=move || {
                     if field_error().is_some() { "form-control is-invalid" } else { "form-control" }
                 }
                 node_ref=node_ref
                 required
             />
-            {move || {
-                field_error().map(|e| view! { <div class="invalid-feedback">{e.text(&i18n)}</div> })
-            }}
+            <div id=error_id class="invalid-feedback" role="alert">
+                {move || field_error().map(|e| e.text(&i18n))}
+            </div>
             {help.map(|help| view! { <div id=help_id.clone() class="form-text">{help}</div> })}
         </div>
     }

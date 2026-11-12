@@ -273,13 +273,16 @@ fn FormAlert(error: Signal<Option<WishlistError>>) -> impl IntoView {
 
 /// The `invalid-feedback` of `field`.
 #[component]
-fn FieldFeedback(field: WishlistField, error: Signal<Option<WishlistError>>) -> impl IntoView {
+fn FieldFeedback(
+    field: WishlistField,
+    error: Signal<Option<WishlistError>>,
+    id: String,
+) -> impl IntoView {
     let i18n = use_i18n();
-    move || {
-        error
-            .get()
-            .and_then(|e| e.field_error(field))
-            .map(|problem| view! { <div class="invalid-feedback">{problem.text(&i18n)}</div> })
+    view! {
+        <div id=id class="invalid-feedback" role="alert">
+            {move || error.get().and_then(|e| e.field_error(field)).map(|problem| problem.text(&i18n))}
+        </div>
     }
 }
 
@@ -306,10 +309,13 @@ fn ItemFields(
 ) -> impl IntoView {
     let i18n = use_i18n();
     let title_id = format!("{prefix}-title");
+    let title_error = format!("{prefix}-title-error");
     let description_id = format!("{prefix}-description");
     let description_help = format!("{prefix}-description-help");
+    let description_error = format!("{prefix}-description-error");
     let link_id = format!("{prefix}-link");
     let link_help = format!("{prefix}-link-help");
+    let link_error = format!("{prefix}-link-error");
     view! {
         <div class="mb-3">
             <label for=title_id.clone() class="form-label">{i18n.t("wishlist.edit.itemTitle")}</label>
@@ -318,12 +324,14 @@ fn ItemFields(
                 id=title_id
                 name="title"
                 class=control_class(error, WishlistField::Title)
+                aria-describedby=title_error.clone()
+                aria-invalid=move || if error.get().and_then(|e| e.field_error(WishlistField::Title)).is_some() { "true" } else { "false" }
                 maxlength=TITLE_MAX.to_string()
                 required
                 placeholder=i18n.t("wishlist.edit.itemTitlePlaceholder")
                 value=values.title
             />
-            <FieldFeedback field=WishlistField::Title error/>
+            <FieldFeedback field=WishlistField::Title error id=title_error/>
         </div>
         <div class="mb-3">
             <label for=description_id.clone() class="form-label">
@@ -336,10 +344,11 @@ fn ItemFields(
                 class=Signal::derive(control_class(error, WishlistField::Description))
                 maxlength=DESCRIPTION_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.descriptionPlaceholder")
-                aria_describedby=description_help.clone()
+                aria_describedby=format!("{description_help} {description_error}")
+                aria_invalid=Signal::derive(move || error.get().and_then(|e| e.field_error(WishlistField::Description)).is_some())
                 value=values.description
             />
-            <FieldFeedback field=WishlistField::Description error/>
+            <FieldFeedback field=WishlistField::Description error id=description_error/>
             <div id=description_help class="form-text">{i18n.t("wishlist.edit.descriptionHelp")}</div>
         </div>
         <div class="mb-3">
@@ -352,10 +361,11 @@ fn ItemFields(
                 class=control_class(error, WishlistField::Link)
                 maxlength=LINK_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.linkPlaceholder")
-                aria-describedby=link_help.clone()
+                aria-describedby=format!("{link_help} {link_error}")
+                aria-invalid=move || if error.get().and_then(|e| e.field_error(WishlistField::Link)).is_some() { "true" } else { "false" }
                 value=values.link
             />
-            <FieldFeedback field=WishlistField::Link error/>
+            <FieldFeedback field=WishlistField::Link error id=link_error/>
             <div id=link_help class="form-text">{i18n.t("wishlist.edit.linkHelp")}</div>
         </div>
     }

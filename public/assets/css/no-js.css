@@ -1,0 +1,26 @@
+/* Keep navigation and the account actions usable when JavaScript is disabled. */
+.navbar .navbar-toggler {
+    display: none;
+}
+
+.navbar .navbar-collapse.collapse {
+    display: block !important;
+    flex-basis: 100%;
+}
+
+.navbar .dropdown-menu {
+    display: block;
+    position: static;
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+.navbar .dropdown-menu .dropdown-item {
+    color: #fff;
+}
+
+.navbar .dropdown-menu .dropdown-item:hover,
+.navbar .dropdown-menu .dropdown-item:focus {
+    color: #212529;
+}

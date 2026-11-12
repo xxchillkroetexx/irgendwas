@@ -114,6 +114,15 @@ test.describe("auth", () => {
     await page.goto(link);
     await waitForHydration(page);
     await expect(page.getByText(email)).toBeVisible();
+    await page.getByLabel("Full Name").fill("   ");
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+    await page.getByLabel("Confirm Password").fill(PASSWORD);
+    await expectingFailedRequest(errors, async () => {
+      await page.locator("main form button[type=submit]").click();
+      await expect(page.getByText("Please enter your name.")).toBeVisible();
+      await expect(page.getByLabel("Full Name")).toHaveAttribute("aria-invalid", "true");
+      await expect(page.getByLabel("Full Name")).toHaveAccessibleDescription(/Please enter your name\./);
+    });
     await page.getByLabel("Full Name").fill("  Carol  ");
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Confirm Password").fill(PASSWORD);

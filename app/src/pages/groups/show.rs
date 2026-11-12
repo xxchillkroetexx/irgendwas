@@ -368,6 +368,8 @@ fn MembersCard(
         .map(|member| {
             let manage = (is_admin && !member.is_me).then(|| {
                 let user_id = member.user_id;
+                let transfer_aria = t!(i18n, "group.show.makeAdminFor", name = member.name.clone());
+                let remove_aria = t!(i18n, "group.show.removeMemberFor", name = member.name.clone());
                 view! {
                     <div class="d-flex flex-wrap gap-2">
                         <ActionForm action=actions.transfer>
@@ -375,6 +377,7 @@ fn MembersCard(
                             <input type="hidden" name="user_id" value=user_id/>
                             <SafeConfirmSubmit
                                 label=i18n.t("group.show.makeAdmin")
+                                aria_label=transfer_aria
                                 confirm=i18n.t("group.show.makeAdminConfirm")
                                 class="btn btn-sm btn-outline-primary"
                             />
@@ -387,6 +390,7 @@ fn MembersCard(
                                         <input type="hidden" name="user_id" value=user_id/>
                                         <SafeConfirmSubmit
                                             label=i18n.t("group.show.removeMember")
+                                            aria_label=remove_aria
                                             confirm=i18n.t("group.show.removeMemberConfirm")
                                             class="btn btn-sm btn-outline-danger"
                                         />

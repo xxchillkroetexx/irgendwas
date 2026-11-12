@@ -149,6 +149,8 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.title_required"))).toBeVisible();
+      await expect(title).toHaveAttribute("aria-invalid", "true");
+      await expect(title).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.title_required")));
     });
     // AC12: a script link is refused inline.
     await title.fill("Item A");
@@ -156,6 +158,8 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
+      await expect(link).toHaveAttribute("aria-invalid", "true");
+      await expect(link).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.link_invalid")));
     });
 
     // AC9 + AC13: scheme-less link is repaired, flash is shown, page stays on the edit URL.
@@ -216,6 +220,10 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await inline.getByRole("button", { name: t("wishlist.edit.save") }).click();
       await expect(inline.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
+      const editLink = inline.getByLabel(t("wishlist.edit.link"), { exact: true });
+      await expect(editLink).toHaveAttribute("aria-invalid", "true");
+      await expect(editLink).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.link_invalid")));
+      await expect(addForm.getByLabel(t("wishlist.edit.link"), { exact: true })).toHaveAttribute("aria-invalid", "false");
     });
     await expect(addForm.getByText(t("validation.wishlist.link_invalid"))).toHaveCount(0);
     await inline.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill("Item C2");

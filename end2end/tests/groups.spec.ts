@@ -166,12 +166,18 @@ test.describe("groups", () => {
     await expectingFailedRequest(errors, async () => {
       await page.getByRole("button", { name: t("group.form.createButton") }).click();
       await expect(page.getByText(t("validation.group.name_required"))).toBeVisible();
+      const name = page.getByLabel(t("group.form.name"), { exact: true });
+      await expect(name).toHaveAttribute("aria-invalid", "true");
+      await expect(name).toHaveAccessibleDescription(`${t("group.form.nameHelp")} ${t("validation.group.name_required")}`);
     });
     // AC6: a draw date before the deadline is refused inline.
     await fillGroupForm(page, { name: "Family 2026", deadline: "2099-12-12", draw: "2099-12-10" });
     await expectingFailedRequest(errors, async () => {
       await page.getByRole("button", { name: t("group.form.createButton") }).click();
       await expect(page.getByText(t("validation.group.draw_before_deadline"))).toBeVisible();
+      const draw = page.getByLabel(t("group.form.drawDate"), { exact: true });
+      await expect(draw).toHaveAttribute("aria-invalid", "true");
+      await expect(draw).toHaveAccessibleDescription(`${t("group.form.drawDateHelp")} ${t("group.form.dateInputHelp")} ${t("validation.group.draw_before_deadline")}`);
     });
 
     // AC1 + AC5: trimmed name, dates, flash, landing on the group. The deadline lies far in
@@ -291,7 +297,11 @@ test.describe("groups", () => {
     // the client redirect rather than only the initial server-rendered response.
     await page.goto("/join");
     await waitForHydration(page);
-    await page.locator("#join-code").fill(inviteCode);
+    const codeInput = page.locator("#join-code");
+    await page.getByRole("button", { name: t("group.join.submit") }).click();
+    await expect(codeInput).toHaveAttribute("aria-invalid", "true");
+    await expect(codeInput).toHaveAccessibleDescription(`${t("group.join.codeHelp")} ${t("flash.error.invitation_code_required")}`);
+    await codeInput.fill(inviteCode);
     await page.getByRole("button", { name: t("group.join.submit") }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
 
@@ -390,6 +400,7 @@ test.describe("groups", () => {
 
     acceptNextDialog(alice);
     const bobRow = alice.getByTestId("group-members").locator("li").filter({ hasText: "Bob Member" });
+    await expect(bobRow.getByRole("button", { name: t("group.show.makeAdminFor", { name: users.bob.name }), exact: true })).toBeVisible();
     await bobRow.getByRole("button", { name: t("group.show.makeAdmin") }).click();
     await expect(alice.getByText(t("flash.success.admin_transferred"))).toBeVisible();
     await expect(alice.getByRole("button", { name: t("group.show.deleteGroup") })).toHaveCount(0);
@@ -420,6 +431,7 @@ test.describe("groups", () => {
     await bob.goto(`/groups/${gid}`);
     await waitForHydration(bob);
     const row = bob.getByTestId("group-members").locator("li").filter({ hasText: "Carol Newcomer" });
+    await expect(row.getByRole("button", { name: t("group.show.removeMemberFor", { name: users.carol.name }), exact: true })).toBeVisible();
     acceptNextDialog(bob);
     await row.getByRole("button", { name: t("group.show.removeMember") }).click();
     await expect(bob.getByText(t("flash.success.member_removed"))).toBeVisible();
@@ -524,6 +536,12 @@ test.describe("groups", () => {
     const plainContext = await browser.newContext({ javaScriptEnabled: false, locale: "de-DE" });
     const p = await plainContext.newPage();
     await loginPlain(p, users.carol.email);
+    await p.setViewportSize({ width: 390, height: 844 });
+    await p.goto("/groups");
+    const nav = p.locator("nav");
+    await expect(nav.getByRole("link", { name: tDe("nav.groups") })).toBeVisible();
+    await nav.getByRole("link", { name: tDe("nav.profile") }).click();
+    await expect(p).toHaveURL(/\/user\/profile$/);
 
     // Create: a plain form post ends on the new group with the flash.
     await p.goto("/groups/new");
@@ -570,6 +588,8 @@ test.describe("groups", () => {
     // A wrong code without JavaScript shows the invalid-code message.
     await p.goto("/join/ZZZZZZZZ");
     await expect(p.getByText(tDe("flash.error.invalid_invitation_code"))).toBeVisible();
+    await p.locator("nav").getByRole("button", { name: tDe("auth.logout") }).click();
+    await expect(p).toHaveURL(/\/$/);
     await plainContext.close();
     void browserRef;
   });

@@ -36,6 +36,7 @@ pub fn TextArea(
     #[prop(optional, into)] maxlength: Option<String>,
     #[prop(optional, into)] placeholder: Option<String>,
     #[prop(optional, into)] aria_describedby: Option<String>,
+    #[prop(optional)] aria_invalid: Signal<bool>,
     /// The initial text (shown as text, never as markup).
     #[prop(into)]
     value: String,
@@ -50,6 +51,7 @@ pub fn TextArea(
             maxlength=maxlength
             placeholder=placeholder
             aria-describedby=aria_describedby
+            aria-invalid=move || if aria_invalid.get() { "true" } else { "false" }
         >
             {content}
         </textarea>

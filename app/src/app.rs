@@ -51,6 +51,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <script inner_html=STANDALONE_JS></script>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
+                <noscript><link rel="stylesheet" href="/assets/css/no-js.css"/></noscript>
                 <script defer src=BOOTSTRAP_JS></script>
                 <AutoReload options=options.clone()/>
                 <HydrationScripts options/>

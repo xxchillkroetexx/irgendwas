@@ -74,14 +74,15 @@ fn JoinCodeForm() -> impl IntoView {
                     name="code"
                     class=move || if error.get().is_some() { "form-control is-invalid" } else { "form-control" }
                     placeholder=i18n.t("group.join.codePlaceholder")
-                    aria-describedby="join-code-help"
+                    aria-describedby="join-code-help join-code-error"
+                    aria-invalid=move || if error.get().is_some() { "true" } else { "false" }
                     autocomplete="off"
                     autocapitalize="characters"
                     node_ref=input
                 />
-                {move || {
-                    error.get().map(|e| view! { <div class="invalid-feedback">{e.text(&i18n)}</div> })
-                }}
+                <div id="join-code-error" class="invalid-feedback" role="alert">
+                    {move || error.get().map(|e| e.text(&i18n))}
+                </div>
                 <div id="join-code-help" class="form-text">{i18n.t("group.join.codeHelp")}</div>
             </div>
             <div class="d-flex gap-2">
