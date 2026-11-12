@@ -130,7 +130,8 @@ test.describe("auth", () => {
 
     // Logged in on the dashboard, name in the navbar.
     await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
-    await expect(page.locator("nav").getByText("Carol")).toBeVisible();
+    await expect(page.locator("nav #userDropdown").filter({ hasText: "Carol" })).toBeVisible();
+    await expect(page.locator("nav #userDropdown")).toBeVisible();
 
     // #60: registration/login cookies persist when the browser/app is closed and reopened.
     const stored = await page.context().storageState();
@@ -141,7 +142,7 @@ test.describe("auth", () => {
     const reopenedPage = await reopened.newPage();
     await reopenedPage.goto(DASHBOARD);
     await expect(reopenedPage).toHaveURL(new RegExp(`${DASHBOARD}$`));
-    await expect(reopenedPage.locator("nav").getByText("Carol")).toBeVisible();
+    await expect(reopenedPage.locator("nav #userDropdown").filter({ hasText: "Carol" })).toBeVisible();
     await reopened.close();
 
     // Logout is a POST: back on the start page with the flash.
@@ -341,7 +342,7 @@ test.describe("auth", () => {
     await p.getByLabel("Confirm Password").fill(PASSWORD);
     await p.locator("main form button[type=submit]").click();
     await expect(p).toHaveURL(new RegExp(`${DASHBOARD}$`));
-    await expect(p.locator("nav").getByText("No JS")).toBeVisible();
+    await expect(p.locator("nav .no-js-account-name").filter({ hasText: "No JS" })).toBeVisible();
 
     // Password reset as a plain form post: success, back on the login page.
     // Clear the inbox first: the registration mail is still there, and the reset mail is

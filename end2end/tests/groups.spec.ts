@@ -539,8 +539,14 @@ test.describe("groups", () => {
     await p.setViewportSize({ width: 390, height: 844 });
     await p.goto("/groups");
     const nav = p.locator("nav");
-    await expect(nav.getByRole("link", { name: tDe("nav.groups") })).toBeVisible();
-    await nav.getByRole("link", { name: tDe("nav.profile") }).click();
+    const groupsLink = nav.getByRole("link", { name: tDe("nav.groups") });
+    const profileLink = nav.getByRole("link", { name: tDe("nav.profile") });
+    await expect(groupsLink).toBeVisible();
+    await expect(nav.locator("#userDropdown")).toBeHidden();
+    await groupsLink.focus();
+    await p.keyboard.press("Tab");
+    await expect(profileLink).toBeFocused();
+    await p.keyboard.press("Enter");
     await expect(p).toHaveURL(/\/user\/profile$/);
 
     // Create: a plain form post ends on the new group with the flash.

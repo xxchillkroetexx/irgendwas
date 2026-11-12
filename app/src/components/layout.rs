@@ -113,6 +113,7 @@ fn NavLinks(user: Option<CurrentUser>) -> impl IntoView {
     let account_links = match user {
         Some(user) => view! {
             <li class="nav-item dropdown">
+                <span class="nav-link no-js-account-name">{user.name.clone()}</span>
                 <a
                     class="nav-link dropdown-toggle"
                     href="#"

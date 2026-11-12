@@ -8,6 +8,15 @@
     flex-basis: 100%;
 }
 
+/* The account links are always visible, so the script-only toggle cannot act. */
+.navbar #userDropdown {
+    display: none;
+}
+
+.navbar .no-js-account-name {
+    display: block;
+}
+
 .navbar .dropdown-menu {
     display: block;
     position: static;

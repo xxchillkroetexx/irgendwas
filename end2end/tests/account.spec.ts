@@ -137,7 +137,7 @@ test.describe("account", () => {
     await page.getByLabel(t("user.profile.name")).fill("  Alice B  ");
     await page.getByRole("button", { name: t("user.profile.updateProfile") }).click();
     await expect(page.getByText(t("flash.success.profile_updated"))).toBeVisible();
-    await expect(page.locator("nav").getByText("Alice B", { exact: true })).toBeVisible();
+    await expect(page.locator("nav #userDropdown").filter({ hasText: "Alice B" })).toBeVisible();
     expect(await page.evaluate(() => (window as unknown as { __marker?: number }).__marker)).toBe(1);
 
     // AC23 / AC21: wrong password and invalid address are refused inline.
@@ -388,7 +388,7 @@ test.describe("account", () => {
     await p.getByRole("button", { name: t("user.profile.updateProfile") }).click();
     await expect(p).toHaveURL(profileUrl);
     await expect(flash("flash.success.profile_updated")).toBeVisible();
-    await expect(p.locator("nav").getByText("Nojs Renamed", { exact: true })).toBeVisible();
+    await expect(p.locator("nav .no-js-account-name").filter({ hasText: "Nojs Renamed" })).toBeVisible();
 
     // Email form: wrong password (error), then success, then cancel.
     const emailCard = card(p, "user.profile.changeEmail.title");
