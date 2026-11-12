@@ -154,7 +154,7 @@ No new URLs.
 | `/groups/:id` | `<DrawPanel group_id is_admin is_drawn member_count>` (hook defined by the groups spec) | member (others: groups' 404) |
 | `/user/dashboard` | Group cards; no assignment card (#47) | logged in |
 
-Both pages send `Cache-Control: no-store` (S4). The wishlist buttons on both link to the wishlists slice's view page `/groups/:id/wishlist/:user_id` with `:user_id` = the caller's own receiver.
+Both pages send `Cache-Control: no-store` (S4). The group page's disclosed wishlist button links to the wishlists slice's view page `/groups/:id/wishlist/:user_id` with `:user_id` = the caller's own receiver; the dashboard has no recipient-specific wishlist button (#47).
 
 ### Server functions
 
@@ -253,7 +253,7 @@ DROP TABLE email_templates;
 
 **Dashboard (#47):** displays group cards and does not fetch or show assignment data. The assignment is disclosed only on the group page; `list_my_assignments` remains an authorized API for compatibility. See `dashboard.md`.
 
-Implementation note: the wishlists slice comes before this one in the tracker, so `/groups/:id/wishlist/:user_id` normally exists. Only if it is not implemented yet when this slice is built, leave both wishlist buttons out and add them when the wishlists slice lands.
+Implementation note: the wishlists slice comes before this one in the tracker, so `/groups/:id/wishlist/:user_id` normally exists. Only if it is not implemented yet when this slice is built, leave the group-page wishlist button out and add it when the wishlists slice lands.
 
 **Error → key mapping**: `NotFound` → 404 page; `Forbidden` → `flash.error.forbidden_admin_only` (groups); `AlreadyDrawn` → `flash.error.already_drawn`; `NotDrawn` → `flash.error.not_drawn`; `NothingToResend` → `flash.error.nothing_to_resend`; `TooFewMembers` → `group.draw.blocked.tooFewMembers`; `TooManyMembers` → `group.draw.blocked.tooManyMembers`; `DrawImpossible` → `exclusion.warning.drawImpossible` + `group.draw.impossible.hint`.
 
