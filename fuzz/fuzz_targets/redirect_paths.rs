@@ -11,6 +11,17 @@ mod paths;
 
 fuzz_target!(|data: &[u8]| {
     let input = String::from_utf8_lossy(data);
+    // Check the documented raw-path exclusion independently of safe_return_path.
+    // A generated suffix explores many `/auth/` descendants, including boundaries.
+    assert!(
+        paths::safe_next("/auth").is_none(),
+        "bare auth path accepted"
+    );
+    let auth_child = format!("/auth/{input}");
+    assert!(
+        paths::safe_next(&auth_child).is_none(),
+        "auth child accepted"
+    );
     // Bare mutations often do not begin with `/`; also exercise them as path tails.
     let prefixed = format!("/{input}");
     for candidate in [input.as_ref(), prefixed.as_str()] {

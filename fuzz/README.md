@@ -9,7 +9,8 @@ never place credentials, real customer data, or production logs in the corpus.
 The target mutates arbitrary bytes (decoded lossily as UTF-8) and tests each input
 both as-is and as a slash-prefixed path. It checks that accepted redirect paths are
 returned unchanged and resolve to the same origin via the WHATWG `url` parser;
-`safe_next` remains a subset of `safe_return_path`, invalid values fall back to the
+`safe_next` remains a subset of `safe_return_path` and independently rejects the raw
+`/auth` path and generated `/auth/` descendants; invalid values fall back to the
 dashboard, and encoding a query value round-trips without creating extra parameters.
 It also exercises the 512-byte limit and boundary characters through the seed corpus.
 URL parser checks are a useful independent oracle, but cannot replace a test of the
@@ -41,11 +42,12 @@ Crashes are kept under the ignored `fuzz/artifacts/redirect_paths/` directory (o
 cargo +nightly-2026-11-01 fuzz run redirect_paths path/to/crash -- -runs=1
 ```
 
-To check the failure-and-replay workflow, use a disposable checkout with its own
-`fuzz/target`: temporarily add `assert_ne!(candidate, "/")` inside the target's loop,
-run the smoke script, and replay the generated crash with the command above. Both runs
-should fail on the deliberately introduced assertion; discard the checkout afterwards.
-Never share a target directory between this experiment and a normal checkout.
+To verify the `/auth` property and failure-and-replay workflow, use a disposable
+checkout with its own `fuzz/target`: temporarily replace the body of `safe_next` in
+its copied `app/src/paths.rs` with `safe_return_path(raw)`, run the smoke script, and
+replay the generated crash with the command above. Both runs must fail with `bare auth
+path accepted`. Discard the checkout afterwards. Never change the production checkout
+or share a target directory between this experiment and a normal checkout.
 
 Minimize with `cargo +nightly-2026-11-01 fuzz tmin redirect_paths path/to/crash`.
 Investigate the cause, add a focused deterministic test to the existing suite, and
