@@ -56,18 +56,13 @@ async fn default_login_survives_restart_and_renews_on_reads(pool: MySqlPool) {
     let remaining = (expiry(&pool, &id).await - Utc::now()).num_seconds();
     assert!((NINETY_DAYS - 10..=NINETY_DAYS).contains(&remaining));
 
-    // /health only reads the session locale in middleware, without touching flash or
-    // modifying session data. This must renew too (with_always_save is intentional).
+    // Health probes are independent of browser sessions and never renew them.
     set_expiry(&pool, &id, 60).await;
+    let before = expiry(&pool, &id).await;
     let read = restored.get("/health").await;
     assert_eq!(read.status, 200);
-    assert!(
-        read.set_cookie(server::SESSION_COOKIE)
-            .unwrap()
-            .contains("Max-Age=7776000")
-    );
-    let remaining = (expiry(&pool, &id).await - Utc::now()).num_seconds();
-    assert!((NINETY_DAYS - 10..=NINETY_DAYS).contains(&remaining));
+    assert!(read.set_cookie(server::SESSION_COOKIE).is_none());
+    assert_eq!(expiry(&pool, &id).await, before);
     assert_eq!(restored.whoami().await.as_deref(), Some(ALICE));
 
     // Expiry is still enforced rather than resurrected by a subsequent request.

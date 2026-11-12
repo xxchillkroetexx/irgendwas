@@ -1,6 +1,7 @@
 //! Process wiring: configuration, DB, migrations, sessions, middleware, router.
 //!
-//! Layer order (outermost first): Origin/CSRF check → session → locale → routes.
+//! Layer order (outermost first): Origin/CSRF check → session → locale → app routes.
+//! The health route bypasses session and locale while retaining the common outer layers.
 
 pub mod health;
 pub mod healthcheck;
@@ -61,8 +62,9 @@ fn route_list() -> Vec<AxumRouteListing> {
     ROUTES.get_or_init(|| generate_route_list(App)).clone()
 }
 
-/// The complete application router (pages, server fns, static files, `/health`), behind
-/// the Origin check ([`middleware::origin_check`]) and the session and locale layers.
+/// The complete application router (pages, server fns, static files, `/health`). The
+/// Origin check ([`middleware::origin_check`]) covers every route; session and locale
+/// layers apply only to the application routes and static-file fallback.
 pub fn router(state: AppState) -> Router {
     router_with(state, Router::new())
 }
@@ -109,8 +111,7 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
         .precompressed_br()
         .fallback(not_found);
 
-    Router::new()
-        .route("/health", get(health::health))
+    let app = Router::new()
         .route("/share-target", get(share::receive))
         .route("/groups/join", get(legacy_join))
         .merge(extra)
@@ -122,7 +123,15 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
             state.clone(),
             middleware::locale,
         ))
-        .layer(session_layer)
+        .layer(session_layer);
+
+    // The health probe only needs the database pool. A browser's session cookie must
+    // not cause a session lookup or extend its inactivity timeout on this route.
+    let health = Router::new()
+        .route("/health", get(health::health))
+        .route_layer(axum::middleware::from_fn(middleware::dynamic_no_store));
+
+    app.merge(health)
         // Outermost: cross-origin writes are rejected before they touch the session.
         .layer(axum::middleware::from_fn_with_state(
             app_origin,
