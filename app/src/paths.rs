@@ -43,6 +43,30 @@ pub fn wishlist_edit_path(group_id: i32) -> String {
     format!("/groups/{group_id}/wishlist")
 }
 
+/// The element id of an item's row on the edit page, also the fragment of its Edit and
+/// Cancel links (wishlists, #69).
+pub fn wishlist_item_anchor(item_id: i32) -> String {
+    format!("item-{item_id}")
+}
+
+/// The edit page with an item's inline form open (`?edit=`), at the item's row.
+pub fn wishlist_item_edit_path(group_id: i32, item_id: i32) -> String {
+    format!(
+        "{}?edit={item_id}#{}",
+        wishlist_edit_path(group_id),
+        wishlist_item_anchor(item_id)
+    )
+}
+
+/// The edit page at an item's row (Cancel of the inline form).
+pub fn wishlist_item_path(group_id: i32, item_id: i32) -> String {
+    format!(
+        "{}#{}",
+        wishlist_edit_path(group_id),
+        wishlist_item_anchor(item_id)
+    )
+}
+
 /// The read-only view of a member's wishlist in a group (wishlists slice; the draw slice
 /// links here from the assignment cards).
 pub fn wishlist_view_path(group_id: i32, user_id: i32) -> String {

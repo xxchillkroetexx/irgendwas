@@ -441,6 +441,46 @@ test.describe("wishlists", () => {
     await expect(page).toHaveURL(new RegExp(`${editUrl}$`));
     await expect(row).toContainText("Phone 5 renamed");
     await expect(row).toBeInViewport();
+
+    // While an add is in flight the add form is disabled, so emptying it afterwards cannot
+    // take anything typed for the next wish meanwhile; the focus returns to the title.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = () => resolve()));
+    await page.route("**/api/add_item", async (route) => {
+      await held;
+      await route.continue();
+    });
+    await title.fill("Phone 7");
+    await add.click();
+    await expect(title).toBeDisabled();
+    release();
+    await expect(page.locator(".list-group-item .fw-semibold").getByText("Phone 7", { exact: true })).toBeVisible();
+    await expect(title).toBeEnabled();
+    await expect(title).toHaveValue("");
+    await expect(title).toBeFocused();
+    await page.unroute("**/api/add_item");
+
+    // A re-read of the list after another change does not pull the focus into the open
+    // inline form, also when the clicked button disappears with its row.
+    const idOf = async (name: string) => {
+      const href = (await control(page, "link", "wishlist.edit.edit", name).getAttribute("href")) ?? "";
+      return /\?edit=(\d+)#/.exec(href)?.[1] ?? "";
+    };
+    const second = await idOf("Phone 2");
+    const third = await idOf("Phone 3");
+    await control(page, "link", "wishlist.edit.edit", "Phone 3").click();
+    const thirdTitle = page.locator(`#edit-${third}-title`);
+    await expect(thirdTitle).toBeFocused();
+    await control(page, "button", "wishlist.edit.moveDown", "Phone 2").click();
+    const swapped = () =>
+      page.evaluate(([a, b]) => {
+        const first = document.getElementById(`item-${a}`);
+        const then = document.getElementById(`item-${b}`);
+        return !!first && !!then && (first.compareDocumentPosition(then) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      }, [third, second]);
+    await expect.poll(swapped).toBe(true);
+    await expect(thirdTitle).toBeVisible();
+    await expect(thirdTitle).not.toBeFocused();
     expect(errors).toEqual([]);
     await context.close();
   });

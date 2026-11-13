@@ -4,6 +4,7 @@
 use crate::common::auth::*;
 use crate::common::groups::*;
 use crate::common::wishlists::*;
+use app::paths::{wishlist_item_anchor, wishlist_item_edit_path, wishlist_item_path};
 use app::test_support as ts;
 use app::wishlists_api::{
     WishlistError, WishlistField as Fld, WishlistFieldError as Err_, WishlistView,
@@ -747,19 +748,21 @@ async fn issue69_rows_carry_an_anchor_that_edit_and_cancel_link_to(pool: MySqlPo
     let path = edit_path(f.w.g);
 
     // Plain page: every row is `#item-{id}`, and its Edit link jumps there.
+    assert_eq!(wishlist_item_anchor(7), "item-7");
+    assert_eq!(
+        wishlist_item_edit_path(f.w.g, 7),
+        format!("{path}?edit=7#item-7")
+    );
+    assert_eq!(wishlist_item_path(f.w.g, 7), format!("{path}#item-7"));
     let plain = bob.get(&path).await;
     assert_eq!(plain.status, 200);
     for id in [f.a, f.b, f.c] {
         assert!(
-            tag_with_id(&plain.body, &format!("item-{id}")).starts_with("<li"),
+            tag_with_id(&plain.body, &wishlist_item_anchor(id)).starts_with("<li"),
             "row {id}"
         );
-        assert!(
-            plain
-                .body
-                .contains(&format!("href=\"{path}?edit={id}#item-{id}\"")),
-            "edit link of {id}"
-        );
+        let edit = format!("href=\"{}\"", wishlist_item_edit_path(f.w.g, id));
+        assert!(plain.body.contains(&edit), "edit link of {id}");
     }
 
     // `?edit=`: the inline form's row keeps the anchor (a page load without JavaScript lands
@@ -767,15 +770,13 @@ async fn issue69_rows_carry_an_anchor_that_edit_and_cancel_link_to(pool: MySqlPo
     let page = bob.get(&format!("{path}?edit={}", f.b)).await;
     assert_eq!(page.status, 200);
     assert!(html_contains(&page.body, &en("wishlist.edit.save")));
-    assert!(tag_with_id(&page.body, &format!("item-{}", f.b)).starts_with("<li"));
+    assert!(tag_with_id(&page.body, &wishlist_item_anchor(f.b)).starts_with("<li"));
     let title = tag_with_id(&page.body, &format!("edit-{}-title", f.b));
     assert!(title.contains("value=\"Item B\""), "{title}");
-    assert!(
-        page.body.contains(&format!("href=\"{path}#item-{}\"", f.b)),
-        "cancel link"
-    );
+    let cancel = format!("href=\"{}\"", wishlist_item_path(f.w.g, f.b));
+    assert!(page.body.contains(&cancel), "cancel link");
     // The other rows are plain rows with their anchors.
-    assert!(tag_with_id(&page.body, &format!("item-{}", f.a)).starts_with("<li"));
+    assert!(tag_with_id(&page.body, &wishlist_item_anchor(f.a)).starts_with("<li"));
 }
 
 #[sqlx::test(migrations = "../migrations")]
