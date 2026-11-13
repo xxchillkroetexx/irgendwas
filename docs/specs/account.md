@@ -11,6 +11,7 @@ Fresh start: no production data is migrated and users register again. The Rust a
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Both mails use the account language (`users.locale` via `mail_i18n`) instead of the request locale; the pending-change expiry is formatted with `app::format`. AC27 was revised; AC38 and AC39 were added.
 Revised 2026-11-01 (review): current-password attempts are rate limited (AC40); no-JS confirm works and token pages use `Referrer-Policy: same-origin` (AC41); `no-store` on profile/verify (AC42); per-recipient mail limit (AC43); no-JS profile forms show their result as a flash (AC44).
+Amended 2026-11-09 (#71, credential races): a password change (and auth's password reset) also clears a pending email change, so a change started with the old credentials can no longer be confirmed; `request_email_change` re-checks the verified hash and `session_epoch` under its row lock and answers `Unauthorized` if they changed.
 
 ## Current PHP behaviour
 
@@ -95,7 +96,7 @@ Nothing calls it: `public/assets/js/app.js` only initializes Bootstrap tooltips/
 - D5: Verification is **GET page + POST confirm**. The GET renders a confirmation page and changes nothing. The button calls `confirm_email_change(token)`. This also protects against mail-scanner link prefetching. Confirming needs no login, because the token proves control of the new mailbox.
 - D6: Tokens use the auth slice's token helper: 32 bytes from a CSPRNG, sent as 43 base64url characters without padding. Only `hex(sha256(token))` is stored in `users.email_verification_token`. Valid 24 h. Single use. One pending change per user: a new request replaces the old one.
 - D7: **Throttle**: a new email-change request is rejected if the current pending request was issued less than 60 s ago. Issue time = `email_verification_expires - 24h`, so no new column is needed.
-- D8: **Changing the password invalidates every other session** of the user, keeps the current one (with a new session id), and clears any outstanding password-reset token. **Changing the email does not invalidate sessions**: credentials don't change, and requesting the change already required the password. Completing an email change clears any outstanding password-reset token and sends a notice to the **old** address.
+- D8: **Changing the password invalidates every other session** of the user, keeps the current one (with a new session id), and clears any outstanding password-reset token and any pending email change (amended 2026-11-09, #71). **Changing the email does not invalidate sessions**: credentials don't change, and requesting the change already required the password. Completing an email change clears any outstanding password-reset token and sends a notice to the **old** address.
 - D9: Session invalidation uses a per-user counter `users.session_epoch`. It is stored in the session at login, and `require_user()` rejects sessions whose stored value differs from the DB. The column and the check are owned by the `auth` slice; this slice only increments it on password change.
 - D10: Dashboard ownership: this slice builds the page shell (welcome, subtitle, tips). The groups card belongs to the **groups** slice (3). The assignments card belongs to the **draw** slice (6). See UI notes for the contract.
 - D11: Never log tokens or verification links. Mail bodies HTML-escape every interpolated value and include a plain-text alternative.
@@ -120,7 +121,7 @@ All are POST (Leptos default) and go through the foundation's Origin check. "Aut
 |---|---|---|---|
 | `get_profile() -> ProfileView` | yes | `{ name, email, pending_email: Option<String>, pending_expires_at: Option<DateTime<Utc>> }`. Pending fields are `None` if no pending change exists **or it has expired** | Unauthorized |
 | `update_name(name: String) -> ()` | yes | Stores `trim(name)` | Unauthorized, NameRequired (empty after trim), NameInvalid (control characters), NameTooLong (> 100 chars) |
-| `change_password(current_password, new_password, new_password_confirm) -> ()` | yes | See below | Unauthorized, PasswordTooShort, PasswordTooLong, PasswordsDontMatch, CurrentPasswordIncorrect |
+| `change_password(current_password, new_password, new_password_confirm) -> PasswordChanged` | yes | See below. `PasswordChanged { pending_email_cancelled: bool }` (amended 2026-11-09, #71) | Unauthorized, PasswordTooShort, PasswordTooLong, PasswordsDontMatch, CurrentPasswordIncorrect |
 | `request_email_change(new_email, current_password) -> ()` | yes | See below | Unauthorized, InvalidEmail, EmailUnchanged, CurrentPasswordIncorrect, EmailChangeTooSoon, MailSendFailed |
 | `cancel_email_change() -> ()` | yes | Sets `pending_email`, `email_verification_token` and `email_verification_expires` to NULL. Idempotent (Ok if nothing is pending) | Unauthorized |
 | `confirm_email_change(token: String) -> ConfirmResult` | **no** | `{ logged_in: bool }`, so the page can offer "Go to profile" or "Log in" | InvalidOrExpiredToken, EmailTaken |
@@ -132,13 +133,13 @@ All are POST (Leptos default) and go through the foundation's Origin check. "Aut
 
 **`change_password`**
 1. Validate length (too short, then too long), then the confirm match, then verify `current_password` against the stored argon2id hash.
-2. In one statement: `password = argon2id(new)`, `session_epoch = session_epoch + 1`, `reset_token = NULL`, `reset_token_expires = NULL`.
+2. In one statement: `password = argon2id(new)`, `session_epoch = session_epoch + 1`, `reset_token = NULL`, `reset_token_expires = NULL`, and the three pending email columns `= NULL` (amended 2026-11-09, #71). `pending_email_cancelled` is whether a live (unexpired) pending change existed under the row lock just before.
 3. Write the new `session_epoch` into the current session and cycle the session id. Every other session of the user fails `require_user()` on its next request.
 
 **`request_email_change`**
 1. Normalise and validate `new_email`. If it equals the current `email` → EmailUnchanged.
 2. Verify `current_password` → CurrentPasswordIncorrect.
-3. If a pending change exists, is not expired, and `email_verification_expires - 24h > now - 60s` → EmailChangeTooSoon. The existing pending change is not modified.
+3. Under `SELECT ... FOR UPDATE` on the user row: if `password` or `session_epoch` differ from the values the password was verified against (a reset/change committed meanwhile) → Unauthorized, nothing written (amended 2026-11-09, #71). If a pending change exists, is not expired, and `email_verification_expires - 24h > now - 60s` → EmailChangeTooSoon. The existing pending change is not modified.
 4. **No** check whether another account uses the address or has it pending (D4).
 5. Generate the token. In one statement: `pending_email = new`, `email_verification_token = hex(sha256(token))`, `email_verification_expires = now + 24h` (UTC). Any earlier token is overwritten.
 6. Send the verification mail to `new_email` in Alice's account language (`mail_i18n(users.locale, config)`; read `locale` together with the password hash in step 2). If sending fails, restore the three columns to their values before step 5 and return MailSendFailed.
@@ -178,7 +179,7 @@ No migration in this slice:
 **Profile (`/user/profile`)**: three cards. Forms use `ActionForm`, so they also work before hydration. Each card shows its own success/error message (i18n) next to the form. Messages are not auto-dismissed.
 1. *Name*: `user.profile.name`, prefilled. Submit `user.profile.updateProfile`. Success `flash.success.profile_updated`.
 2. *Email*: shows the current address (`user.profile.email`). If a pending change exists, it shows a persistent info box `user.profile.emailPendingVerification {email}` + `user.profile.emailPendingExpires {date}` (`date = LocalDateTime(pending_expires_at)`, so `app::format` renders it in `APP_TIMEZONE` and the page locale: en `1 Dec 2026, 11:00`, de `01.12.2026 11:00`) and a button `user.profile.changeEmail.cancel`. Form: `user.profile.changeEmail.new`, `user.profile.changeEmail.currentPassword`, submit `user.profile.changeEmail.submit`, hint `user.profile.emailChangeNotice`. Success `flash.success.email_verification_sent`, after which the pending box appears. Cancel success: `flash.success.email_change_cancelled`.
-3. *Password*: `user.profile.changePassword.{title,current,new,confirm,submit}` and the hint `user.profile.changePassword.otherSessionsNotice`. Success `flash.success.password_changed`. Fields are cleared after both success and error.
+3. *Password*: `user.profile.changePassword.{title,current,new,confirm,submit}` and the hint `user.profile.changePassword.otherSessionsNotice`. Success `flash.success.password_changed`, or `flash.success.password_changed_email_change_cancelled` if the change cancelled a live pending email change (then the email card's pending box disappears; amended 2026-11-09, #71). Fields are cleared after both success and error.
 - Back link `user.profile.backToDashboard`.
 
 **Verify email (`/user/verify-email/:token`)**: title `user.verifyEmail.title`, text `user.verifyEmail.description`, button `user.verifyEmail.submit`. On success: `flash.success.email_verified` plus a link to `user.verifyEmail.goToProfile` (logged in) or `user.verifyEmail.goToLogin` (logged out). On error: the message for the error and a link to the profile/login page.
