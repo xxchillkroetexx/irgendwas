@@ -10,6 +10,7 @@ use crate::components::guard::{current_path_and_query, full_navigation};
 use crate::flash::{FlashMessage, Toasts, use_toasts};
 use crate::i18n::{Locale, use_i18n};
 use crate::locale_api::SET_LOCALE_PATH;
+use crate::paths::DASHBOARD_PATH;
 use crate::t;
 
 /// Wraps every page. Owns the session resource (current user + flash messages), which is
@@ -70,7 +71,14 @@ pub fn NavBar() -> impl IntoView {
     view! {
         <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
             <div class="container">
-                <a class="navbar-brand" href="/">{i18n.t("app.name")}</a>
+                // Logged in, the brand leads to the dashboard (#72). Inside a Transition so
+                // SSR and hydration both render the href of the resolved session.
+                <Transition fallback=|| view! { <Brand href="/"/> }>
+                    {move || Suspend::new(async move {
+                        let logged_in = session.await.is_ok_and(|info| info.user.is_some());
+                        view! { <Brand href=if logged_in { DASHBOARD_PATH } else { "/" }/> }
+                    })}
+                </Transition>
                 <LanguageSwitch/>
                 <button
                     class="navbar-toggler"
@@ -95,6 +103,13 @@ pub fn NavBar() -> impl IntoView {
     }
 }
 
+/// The app name in the top left, linking to `href`.
+#[component]
+fn Brand(href: &'static str) -> impl IntoView {
+    let i18n = use_i18n();
+    view! { <a class="navbar-brand" href=href>{i18n.t("app.name")}</a> }
+}
+
 #[component]
 fn NavLinks(user: Option<CurrentUser>) -> impl IntoView {
     let i18n = use_i18n();
@@ -102,7 +117,7 @@ fn NavLinks(user: Option<CurrentUser>) -> impl IntoView {
     let main_links = user.is_some().then(|| {
         view! {
             <li class="nav-item">
-                <a class="nav-link" href="/user/dashboard">{i18n.t("nav.dashboard")}</a>
+                <a class="nav-link" href=DASHBOARD_PATH>{i18n.t("nav.dashboard")}</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" href="/groups">{i18n.t("nav.groups")}</a>

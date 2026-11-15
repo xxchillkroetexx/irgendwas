@@ -150,13 +150,16 @@ pub fn LoginRedirect() -> impl IntoView {
     view! { <ClientRedirect path=to/> }
 }
 
-/// For pages that make no sense when logged in (login, register): a logged-in visitor is
-/// sent to `to`. Renders nothing.
+/// For pages that make no sense when logged in (landing, login, register): shows
+/// `children` only once the check found no logged-in user; a logged-in visitor is sent to
+/// `to` without ever seeing them (on the client, a navigation to such a page shows
+/// `PageLoading` while the check runs instead of flashing the logged-out content, #72).
 ///
-/// Checked once, when the page mounts: a query-only change stays on the same page, and
-/// leaving it needs no check (a pathname key would send one whose result nobody uses).
+/// Checked once, when the page mounts: a query-only change stays on the same page (and
+/// keeps its typed input), and leaving it needs no check (a pathname key would send one
+/// whose result nobody uses).
 #[component]
-pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>) -> impl IntoView {
+pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>, children: ChildrenFn) -> impl IntoView {
     let target = Resource::new_blocking(
         || (),
         move |()| async move {
@@ -171,10 +174,14 @@ pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>) -> impl IntoView {
             redirect
         },
     );
+    let children = StoredValue::new(children);
     view! {
-        <Suspense fallback=|| ()>
+        <Suspense fallback=|| view! { <PageLoading/> }>
             {move || Suspend::new(async move {
-                target.await.map(|to| view! { <ClientRedirect path=to/> })
+                match target.await {
+                    Some(to) => view! { <ClientRedirect path=to/> }.into_any(),
+                    None => children.read_value()().into_any(),
+                }
             })}
         </Suspense>
     }
