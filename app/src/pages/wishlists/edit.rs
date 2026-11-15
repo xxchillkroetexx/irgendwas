@@ -3,9 +3,16 @@
 //! server answers with `302` back here and a flash). With JavaScript the page stays, reads
 //! the flash and re-reads the list. `?edit={item_id}` renders that item's row as an inline
 //! form; an id that is not one of my items in this group is ignored.
+//!
+//! Every row (plain or inline form) is `<li id="item-{id}">`; Edit links to
+//! `?edit={id}#item-{id}` and Cancel to `#item-{id}`, so a page load (no JavaScript, a new
+//! tab) lands on the row instead of the top of the page (#69). With JavaScript a plain click
+//! opens and closes the form in place and keeps the scroll position (#81).
 
-use leptos::ev::SubmitEvent;
-use leptos::html::Select;
+use std::time::Duration;
+
+use leptos::ev::{MouseEvent, SubmitEvent};
+use leptos::html::{Form, Input, Select};
 use leptos::prelude::*;
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_navigate, use_query_map};
@@ -16,7 +23,10 @@ use crate::components::{RequireUser, TextArea};
 use crate::flash::use_toasts;
 use crate::i18n::use_i18n;
 use crate::pages::groups::{ConfirmSubmit, parse_group_id};
-use crate::paths::{group_path, wishlist_edit_path, wishlist_view_path};
+use crate::paths::{
+    group_path, wishlist_edit_path, wishlist_item_anchor, wishlist_item_edit_path,
+    wishlist_item_path, wishlist_view_path,
+};
 use crate::t;
 use crate::wishlists_api::{
     AddItem, ClearWishlist, CopyWishlistItems, DESCRIPTION_MAX, DeleteItem, Direction, ItemView,
@@ -34,6 +44,41 @@ struct Actions {
     delete: ServerAction<DeleteItem>,
     move_item: ServerAction<MoveItem>,
     clear: ServerAction<ClearWishlist>,
+}
+
+/// The add form and its title input, for emptying it after a successful add (JS path).
+#[derive(Clone, Copy)]
+struct AddForm {
+    form: NodeRef<Form>,
+    title: NodeRef<Input>,
+}
+
+/// The open inline form whose title no longer takes the focus when it mounts. A row mounts
+/// more often than the user opens a form: every re-read of the list re-runs the rows. Once
+/// something was submitted on the page since the form opened (add, move, remove, copy), a
+/// mount is such a re-read and the user is busy elsewhere (#69). Cleared whenever `?edit=`
+/// changes.
+type Settled = StoredValue<Option<i32>>;
+
+/// With JavaScript, a plain click on an Edit or Cancel link goes to `to` (its href without
+/// the `#item-{id}` fragment) and keeps the scroll position: the router scrolls a fragment's
+/// element to the top even with `noscroll`, and the row is already in view (#81). A click
+/// that opens a new tab or window keeps the fragment.
+fn in_place(to: String) -> impl Fn(MouseEvent) + 'static {
+    let navigate = use_navigate();
+    move |ev: MouseEvent| {
+        let modified = ev.ctrl_key() || ev.meta_key() || ev.shift_key() || ev.alt_key();
+        if ev.button() == 0 && !modified {
+            ev.prevent_default();
+            navigate(
+                &to,
+                NavigateOptions {
+                    scroll: false,
+                    ..Default::default()
+                },
+            );
+        }
+    }
 }
 
 /// The error of the last submission, if it failed.
@@ -98,6 +143,28 @@ pub fn WishlistEditPage() -> impl IntoView {
         move_item: ServerAction::new(),
         clear: ServerAction::new(),
     };
+    let add_form = AddForm {
+        form: NodeRef::new(),
+        title: NodeRef::new(),
+    };
+    let settled: Settled = StoredValue::new(None);
+    Effect::new(move |_| {
+        editing.track();
+        settled.set_value(None);
+    });
+    let busy = [
+        actions.add.pending(),
+        actions.delete.pending(),
+        actions.move_item.pending(),
+        actions.clear.pending(),
+        copy.pending(),
+    ];
+    Effect::new(move |_| {
+        // Read every flag (no short-circuit), so the effect tracks all of them.
+        if busy.map(|pending| pending.get()).contains(&true) {
+            settled.set_value(editing.get_untracked());
+        }
+    });
 
     // The server stored the flash of a success: read it and the new list. Field errors of
     // the add form show in the form; other failures as a notice.
@@ -108,16 +175,34 @@ pub fn WishlistEditPage() -> impl IntoView {
             Ok(()) => session.refetch(),
             Err(err) => toasts.push(err.flash()),
         }
-        // The re-read list renders an empty add form: an earlier add error no longer
-        // belongs to anything on the page.
+        // An earlier add error no longer belongs to anything on the page.
         actions.add.value().set(None);
         list.refetch();
     };
+    // After a successful add, empty the form for the next wish. The re-read list diffs the
+    // form in place (its `value` attributes stay ""), which would keep the browser's live
+    // values. A failed add keeps them for correction. The add form is disabled while the add
+    // runs, so the reset never takes text typed for the next wish meanwhile; disabling it
+    // also took the focus, which goes back to the title once the form is enabled again.
     Effect::new(move |_| {
-        if let Some(Ok(_)) = actions.add.value().get() {
+        let Some(result) = actions.add.value().get() else {
+            return;
+        };
+        if result.is_ok() {
+            if let Some(form) = add_form.form.get_untracked() {
+                form.reset();
+            }
             session.refetch();
             list.refetch();
         }
+        set_timeout(
+            move || {
+                if let Some(title) = add_form.title.get_untracked() {
+                    let _ = title.focus();
+                }
+            },
+            Duration::ZERO,
+        );
     });
     Effect::new(move |_| {
         if let Some(result) = actions.delete.value().get() {
@@ -150,7 +235,7 @@ pub fn WishlistEditPage() -> impl IntoView {
                 {move || Suspend::new(async move {
                     match list.await {
                         Ok(wishlist) => {
-                            view! { <EditView wishlist editing list actions/> }.into_any()
+                            view! { <EditView wishlist editing list actions add_form settled/> }.into_any()
                         }
                         Err(error) => view! { <WishlistErrorView error/> }.into_any(),
                     }
@@ -167,6 +252,8 @@ fn EditView(
     editing: Memo<Option<i32>>,
     list: ListResource,
     actions: Actions,
+    add_form: AddForm,
+    settled: Settled,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let group_id = wishlist.group.id;
@@ -176,6 +263,7 @@ fn EditView(
     let has_items = !items.is_empty();
     let last = count.saturating_sub(1);
     let add_error = last_error(actions.add);
+    let adding = actions.add.pending();
 
     let rows = move || {
         items
@@ -183,7 +271,7 @@ fn EditView(
             .enumerate()
             .map(|(index, item)| {
                 if editing.get() == Some(item.id) {
-                    view! { <InlineEdit item=item.clone() group_id list/> }.into_any()
+                    view! { <InlineEdit item=item.clone() group_id list settled/> }.into_any()
                 } else {
                     let (first, last) = (index == 0, index == last);
                     view! { <ItemRow item=item.clone() first last group_id actions/> }.into_any()
@@ -219,11 +307,16 @@ fn EditView(
                             </div>
                         }
                     })}
-                <ActionForm action=actions.add>
+                <ActionForm action=actions.add node_ref=add_form.form>
                     <input type="hidden" name="group_id" value=group_id/>
-                    <fieldset disabled=full>
+                    <fieldset disabled=move || full || adding.get()>
                         <FormAlert error=add_error/>
-                        <ItemFields prefix="add" values=FormValues::default() error=add_error/>
+                        <ItemFields
+                            prefix="add"
+                            values=FormValues::default()
+                            error=add_error
+                            title_ref=add_form.title
+                        />
                         <button type="submit" class="btn btn-primary">
                             {i18n.t("wishlist.edit.addItem")}
                         </button>
@@ -300,12 +393,13 @@ fn control_class(
 }
 
 /// Title, description and link of an item. `prefix` keeps the element ids of the add form
-/// and of an inline form apart.
+/// and of an inline form apart. `title_ref` gives the caller the title input.
 #[component]
 fn ItemFields(
     #[prop(into)] prefix: String,
     values: FormValues,
     error: Signal<Option<WishlistError>>,
+    title_ref: NodeRef<Input>,
 ) -> impl IntoView {
     let i18n = use_i18n();
     let title_id = format!("{prefix}-title");
@@ -320,6 +414,7 @@ fn ItemFields(
                 type="text"
                 id=title_id
                 name="title"
+                node_ref=title_ref
                 class=control_class(error, WishlistField::Title)
                 maxlength=TITLE_MAX.to_string()
                 required
@@ -377,8 +472,9 @@ fn ItemRow(
     let id = item.id;
     let title = item.title.clone();
     let host = item.link_host.clone();
+    let on_edit = in_place(format!("{}?edit={id}", wishlist_edit_path(group_id)));
     view! {
-        <li class="list-group-item">
+        <li class="list-group-item" id=wishlist_item_anchor(id)>
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
                 <div class="flex-grow-1 text-break">
                     <div class="fw-semibold">{item.title}</div>
@@ -403,8 +499,8 @@ fn ItemRow(
                             }
                         })}
                     <a
-                        href=format!("{}?edit={id}", wishlist_edit_path(group_id))
-                        data-noscroll=""
+                        href=wishlist_item_edit_path(group_id, id)
+                        on:click=on_edit
                         class="btn btn-sm btn-outline-secondary"
                         aria-label=row_label(&i18n, "wishlist.edit.edit", &title)
                     >
@@ -454,17 +550,36 @@ fn MoveButton(
 }
 
 /// The inline form of `?edit={id}`. It has its own action, so its errors show under its own
-/// fields (never in the add form). Saved: back to the page without `?edit`.
+/// fields (never in the add form). Its title gets the focus when the form opens. Saved: back
+/// to the page without `?edit`, at the same scroll position.
 #[component]
-fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoView {
+fn InlineEdit(
+    item: ItemView,
+    group_id: i32,
+    list: ListResource,
+    settled: Settled,
+) -> impl IntoView {
     let i18n = use_i18n();
     let action = ServerAction::<UpdateItem>::new();
     let error = last_error(action);
     let navigate = use_navigate();
+    let id = item.id;
+    let title_ref = NodeRef::<Input>::new();
+    // Focus the title when this item's form opens, but not when a re-read of the list
+    // remounts it after something else was submitted on the page.
+    Effect::new(move |_| {
+        if let Some(title) = title_ref.get()
+            && settled.get_value() != Some(id)
+        {
+            let _ = title.focus();
+        }
+    });
+    let on_cancel = in_place(wishlist_edit_path(group_id));
     Effect::new(move |_| {
         if let Some(Ok(())) = action.value().get() {
             list.refetch();
-            // A new search string: the layout re-reads the session and shows the flash.
+            // A new search string: the layout re-reads the session and shows the flash. The
+            // URL matches the no-JS redirect (no fragment); the row stays where it is.
             navigate(
                 &wishlist_edit_path(group_id),
                 NavigateOptions {
@@ -480,16 +595,21 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
         link: item.link.unwrap_or_default(),
     };
     view! {
-        <li class="list-group-item">
+        <li class="list-group-item" id=wishlist_item_anchor(id)>
             <ActionForm action>
                 <input type="hidden" name="item_id" value=item.id/>
                 <FormAlert error/>
-                <ItemFields prefix=format!("edit-{}", item.id) values error/>
+                <ItemFields prefix=format!("edit-{id}") values error title_ref/>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-primary">
                         {i18n.t("wishlist.edit.save")}
                     </button>
-                    <a href=wishlist_edit_path(group_id) data-noscroll="" class="btn btn-sm btn-outline-secondary">
+                    // The fragment brings a page load (no JS, a new tab) to the row.
+                    <a
+                        href=wishlist_item_path(group_id, id)
+                        class="btn btn-sm btn-outline-secondary"
+                        on:click=on_cancel
+                    >
                         {i18n.t("wishlist.edit.cancel")}
                     </a>
                 </div>

@@ -162,19 +162,24 @@ test("wishlist edit, cancel and save keep the page, unsaved input and scroll pos
     await scrollPageTo(page, 200);
     await markAndFocus(page, "#add-title");
 
-    // Click the actual editor links without moving focus as a pointer click would.
+    // Click the actual editor links without Playwright scrolling them into view first.
+    // Opening the form focuses its title (#69), which may scroll it into view; nothing
+    // else may move the page.
     await edit.evaluate((link: HTMLAnchorElement) => link.click());
     await expect(page).toHaveURL(/\?edit=\d+$/);
     await expect(draft).toHaveValue("Unsubmitted next wish");
     await expect(draft).toHaveAttribute("data-guard-marker", "original");
-    await expect(draft).toBeFocused();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+    const inlineTitle = page.locator('input[id^="edit-"][id$="-title"]');
+    await expect(inlineTitle).toBeFocused();
+    await expect(inlineTitle).toBeInViewport();
+    const opened = await page.evaluate(() => window.scrollY);
+    expect(opened).toBeGreaterThan(0);
     await page.getByRole("link", { name: en["wishlist.edit.cancel"] }).evaluate((link: HTMLAnchorElement) => link.click());
     await expect(page).toHaveURL(new RegExp(`/groups/${group}/wishlist$`));
     await expect(draft).toHaveValue("Unsubmitted next wish");
     await expect(draft).toHaveAttribute("data-guard-marker", "original");
-    await expect(draft).toBeFocused();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+    await expect(inlineTitle).toHaveCount(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(opened);
 
     // Saving keeps the scroll position too; its confirmation must still be in view.
     await edit.evaluate((link: HTMLAnchorElement) => link.click());
