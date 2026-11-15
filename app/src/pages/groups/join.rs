@@ -8,7 +8,7 @@ use leptos::server_fn::ServerFn;
 use leptos_router::hooks::{use_navigate, use_params_map};
 
 use super::{group_path, when_logged_in};
-use crate::components::{ClientRedirect, RequireUser};
+use crate::components::{ClientRedirect, LoginRedirect, RequireUser};
 use crate::flash::{FlashMessage, use_toasts};
 use crate::groups_api::{
     ClosedReason, GroupError, GroupOp, InvitationPreview, JoinGroup, OpenInvitation, join_path,
@@ -173,7 +173,7 @@ fn JoinPreview(code: Memo<String>, preview: PreviewResource) -> impl IntoView {
                                 }
                                     .into_any()
                             }
-                            Err(GroupError::Unauthorized) => ().into_any(),
+                            Err(GroupError::Unauthorized) => view! { <LoginRedirect/> }.into_any(),
                             Err(err) => {
                                 view! {
                                     <div class="alert alert-danger" role="alert">

@@ -97,12 +97,18 @@ fn apply_redirect(redirect: Option<&str>) {
 #[component]
 pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     let here = current_path_and_query();
+    let location = use_location();
     let access = Resource::new_blocking(
-        move || here.get(),
-        |here| async move {
+        // Query-only navigation stays on the same protected page.
+        move || location.pathname.get(),
+        move |_| async move {
             let access = match get_current_user().await {
                 Ok(Some(_)) => Access::Allowed,
-                Ok(None) | Err(AppError::Unauthorized) => Access::Redirect(login_url(&here)),
+                Ok(None) | Err(AppError::Unauthorized) => match here.try_get_untracked() {
+                    Some(here) => Access::Redirect(login_url(&here)),
+                    // The route can be disposed while the request is in flight.
+                    None => Access::Failed,
+                },
                 Err(_) => Access::Failed,
             };
             if let Access::Redirect(to) = &access {
@@ -133,14 +139,34 @@ pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     }
 }
 
+/// Where a protected page's data came back `Unauthorized` although its [`RequireUser`]
+/// let the visitor in: the session ended since (logout in another tab, expiry), and the
+/// guard does not check again on a query-only navigation (#81). Sends the visitor to the
+/// login page and back here. Renders nothing.
+#[component]
+pub fn LoginRedirect() -> impl IntoView {
+    let to = login_url(&current_path_and_query().get_untracked());
+    apply_redirect(Some(&to));
+    view! { <ClientRedirect path=to/> }
+}
+
 /// For pages that make no sense when logged in (login, register): a logged-in visitor is
 /// sent to `to`. Renders nothing.
+///
+/// Checked once, when the page mounts: a query-only change stays on the same page, and
+/// leaving it needs no check (a pathname key would send one whose result nobody uses).
 #[component]
 pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>) -> impl IntoView {
     let target = Resource::new_blocking(
-        move || to.get(),
-        |to| async move {
-            let redirect = matches!(get_current_user().await, Ok(Some(_))).then_some(to);
+        || (),
+        move |()| async move {
+            let logged_in = matches!(get_current_user().await, Ok(Some(_)));
+            // Use the latest query and tolerate route disposal during the request.
+            let redirect = if logged_in {
+                to.try_get_untracked()
+            } else {
+                None
+            };
             apply_redirect(redirect.as_deref());
             redirect
         },

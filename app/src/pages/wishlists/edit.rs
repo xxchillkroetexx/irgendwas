@@ -4,7 +4,10 @@
 //! the flash and re-reads the list. `?edit={item_id}` renders that item's row as an inline
 //! form; an id that is not one of my items in this group is ignored.
 
+use leptos::ev::SubmitEvent;
+use leptos::html::Select;
 use leptos::prelude::*;
+use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_navigate, use_query_map};
 
 use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
@@ -401,6 +404,7 @@ fn ItemRow(
                         })}
                     <a
                         href=format!("{}?edit={id}", wishlist_edit_path(group_id))
+                        data-noscroll=""
                         class="btn btn-sm btn-outline-secondary"
                         aria-label=row_label(&i18n, "wishlist.edit.edit", &title)
                     >
@@ -461,7 +465,13 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
         if let Some(Ok(())) = action.value().get() {
             list.refetch();
             // A new search string: the layout re-reads the session and shows the flash.
-            navigate(&wishlist_edit_path(group_id), Default::default());
+            navigate(
+                &wishlist_edit_path(group_id),
+                NavigateOptions {
+                    scroll: false,
+                    ..Default::default()
+                },
+            );
         }
     });
     let values = FormValues {
@@ -479,7 +489,7 @@ fn InlineEdit(item: ItemView, group_id: i32, list: ListResource) -> impl IntoVie
                     <button type="submit" class="btn btn-sm btn-primary">
                         {i18n.t("wishlist.edit.save")}
                     </button>
-                    <a href=wishlist_edit_path(group_id) class="btn btn-sm btn-outline-secondary">
+                    <a href=wishlist_edit_path(group_id) data-noscroll="" class="btn btn-sm btn-outline-secondary">
                         {i18n.t("wishlist.edit.cancel")}
                     </a>
                 </div>
@@ -518,6 +528,46 @@ fn ClearSection(group_id: i32, action: ServerAction<ClearWishlist>) -> impl Into
     }
 }
 
+/// Chooses the copy source: a plain GET form (`?source=<group>`, a page load without
+/// JavaScript). With JavaScript the submit becomes a router navigation that keeps the page
+/// and its scroll position (#81); the router's `<Form>` would append the nameless submit
+/// button as `&=`.
+#[component]
+fn CopySourceForm(
+    group_id: i32,
+    sources: Vec<NamedRef>,
+    source_group: Memo<Option<i32>>,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    let select = NodeRef::<Select>::new();
+    let navigate = use_navigate();
+    let on_submit = move |ev: SubmitEvent| {
+        let Some(source) = select.get_untracked().map(|el| el.value()) else {
+            return;
+        };
+        ev.prevent_default();
+        navigate(
+            &format!("{}?source={source}", wishlist_edit_path(group_id)),
+            NavigateOptions {
+                scroll: false,
+                ..Default::default()
+            },
+        );
+    };
+    view! {
+        <form method="get" action=wishlist_edit_path(group_id) on:submit=on_submit>
+            <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
+            <select id="copy-source" name="source" class="form-select mb-2" required node_ref=select>
+                <option value="">{i18n.t("wishlist.copy.choose")}</option>
+                {sources.into_iter().map(|source| view! {
+                    <option value=source.id selected=move || source_group.get() == Some(source.id)>{source.name}</option>
+                }).collect_view()}
+            </select>
+            <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
+        </form>
+    }
+}
+
 #[component]
 fn CopySection(
     group: Memo<Option<i32>>,
@@ -537,16 +587,7 @@ fn CopySection(
                     <section class="card my-4">
                         <div class="card-body">
                             <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
-                            <form method="get" action=wishlist_edit_path(group_id)>
-                                <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
-                                <select id="copy-source" name="source" class="form-select mb-2" required>
-                                    <option value="">{i18n.t("wishlist.copy.choose")}</option>
-                                    {sources.into_iter().map(|source| view! {
-                                        <option value=source.id selected=move || source_group.get() == Some(source.id)>{source.name}</option>
-                                    }).collect_view()}
-                                </select>
-                                <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
-                            </form>
+                            <CopySourceForm group_id sources source_group/>
                             <Suspense fallback=|| ()>
                                 {move || Suspend::new(async move {
                                     match source_list.await {

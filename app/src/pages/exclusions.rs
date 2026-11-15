@@ -12,7 +12,7 @@ use leptos::prelude::*;
 
 use crate::AppError;
 use crate::auth::{get_current_user, use_session_resource};
-use crate::components::RequireUser;
+use crate::components::{LoginRedirect, RequireUser};
 use crate::exclusions_api::{
     AddExclusion, ExclusionError, ExclusionsPage, FeasibilityNotice, MemberRef, RemoveExclusion,
     get_exclusions,
@@ -96,7 +96,7 @@ pub fn ExclusionsManagePage() -> impl IntoView {
                     match data.await {
                         Ok(page) => view! { <ExclusionsView page actions/> }.into_any(),
                         Err(ExclusionError::NotFound) => view! { <NotFound/> }.into_any(),
-                        Err(ExclusionError::Unauthorized) => ().into_any(),
+                        Err(ExclusionError::Unauthorized) => view! { <LoginRedirect/> }.into_any(),
                         Err(_) => view! { <ServerError/> }.into_any(),
                     }
                 })}

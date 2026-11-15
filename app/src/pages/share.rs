@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
 
 use crate::auth::get_current_user;
-use crate::components::{RequireUser, TextArea};
+use crate::components::{LoginRedirect, RequireUser, TextArea};
 use crate::groups_api::{GroupError, list_my_groups};
 use crate::i18n::use_i18n;
 use crate::share_api::{ShareDraft, get_shared_draft};
@@ -42,6 +42,7 @@ pub fn SharedWishPage() -> impl IntoView {
             <Suspense fallback=|| ()>
                 {move || Suspend::new(async move {
                     match data.await {
+                        Err(crate::AppError::Unauthorized) => view! { <LoginRedirect/> }.into_any(),
                         Err(error) => view! {
                             <div class="alert alert-danger" role="alert">{i18n.t(error.message_key())}</div>
                             <a href="/wishes/shared">{i18n.t("share.start_again")}</a>

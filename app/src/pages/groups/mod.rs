@@ -18,6 +18,7 @@ use leptos_router::hooks::use_params_map;
 
 use crate::AppError;
 use crate::auth::get_current_user;
+use crate::components::LoginRedirect;
 use crate::groups_api::GroupError;
 use crate::pages::{Forbidden, NotFound, ServerError};
 use crate::paths::group_path;
@@ -54,14 +55,14 @@ async fn when_logged_in<T>(
 }
 
 /// What a group page shows instead of its content: the 404 page (missing group or not a
-/// member, indistinguishable), the 403 page, nothing while the guard redirects, else the
-/// 500 page.
+/// member, indistinguishable), the 403 page, the login redirect when the session ended
+/// after the guard let the visitor in, else the 500 page.
 #[component]
 fn GroupErrorView(error: GroupError) -> impl IntoView {
     match error {
         GroupError::NotFound => view! { <NotFound/> }.into_any(),
         GroupError::Forbidden => view! { <Forbidden/> }.into_any(),
-        GroupError::Unauthorized => ().into_any(),
+        GroupError::Unauthorized => view! { <LoginRedirect/> }.into_any(),
         _ => view! { <ServerError/> }.into_any(),
     }
 }

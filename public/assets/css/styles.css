@@ -138,6 +138,26 @@ main {
   padding: 1rem;
 }
 
+/* Flash messages stay in view when an action keeps the scroll position (saving an item
+   far down the wishlist, #81). Only once hydrated: without JavaScript an alert cannot be
+   closed, and a sticky one would cover the page for good. Above the page content but
+   below dropdowns (Bootstrap: 1000), so the navbar's user menu opens over an alert. */
+html[data-hydrated] .flash-messages {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 990;
+}
+
+/* While an alert is shown, an element scrolled into view (focus, anchor, scrollIntoView)
+   ends up below it, not hidden under it. */
+html[data-hydrated]:has(.flash-messages .alert) {
+  scroll-padding-top: 6rem;
+}
+
+html[data-hydrated] .flash-messages .alert {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
 /* Footer Styles */
 footer {
   padding: 2rem 0;
