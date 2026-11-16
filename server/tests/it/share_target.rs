@@ -1,7 +1,7 @@
 //! Issue #58: receiving is read-only for wishlists and drafts survive login safely.
 use crate::common;
 
-use crate::common::auth::{Client, Opts, router, urlencode};
+use crate::common::auth::{Client, Opts, has_flash_key, router, urlencode};
 use app::share_api::{ShareDraft, ShareInput, prepare_share};
 use app::test_support::{ALICE_PASSWORD, create_alice, create_group};
 use sqlx::MySqlPool;
@@ -460,4 +460,100 @@ async fn shared_description_cannot_escape_the_review_textarea(pool: MySqlPool) {
             .contains("&lt;/textarea&gt;&lt;script id=share-injected&gt;")
     );
     assert!(!page.body.contains("<script id=share-injected>"));
+}
+
+/// Review of #84: without JavaScript a double submit of the review form (the draft is
+/// already consumed) gets the not-found flash and the review page, not a bare 404; with the
+/// draft already gone from the session and with a stale session (the claim decides).
+#[sqlx::test(migrations = "../migrations")]
+async fn a_plain_double_submit_redirects_with_a_flash_instead_of_a_404(pool: MySqlPool) {
+    let alice = create_alice(&pool, "alice@example.test").await;
+    let group = create_group(&pool, alice, "Family").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let review = receive(&mut client, "Shared", "https://shop.example/item").await;
+    let id = review.split_once("id=").unwrap().1.to_string();
+    let stale: Vec<u8> = sqlx::query_scalar("SELECT data FROM sessions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let group_id = group.to_string();
+    let fields = [
+        ("id", id.as_str()),
+        ("group_id", group_id.as_str()),
+        ("title", "Shared"),
+        ("description", ""),
+        ("link", "https://shop.example/item"),
+    ];
+    client.headers.push(("accept".into(), "text/html".into()));
+    let first = client.call("add_shared_wish", &fields).await;
+    assert_eq!(first.status.as_u16(), 302);
+    assert_eq!(count(&pool).await, 1);
+
+    // The draft is gone from the session.
+    let again = client.call("add_shared_wish", &fields).await;
+    assert_eq!(again.status.as_u16(), 302, "{}", again.body);
+    assert_eq!(again.location().as_deref(), Some(review.as_str()));
+    client.headers.clear();
+    assert!(has_flash_key(
+        &client.session_info().await,
+        "error.notFound.message"
+    ));
+
+    // A request that loaded the session before the first save: the claim refuses it.
+    sqlx::query("UPDATE sessions SET data = ?")
+        .bind(stale)
+        .execute(&pool)
+        .await
+        .unwrap();
+    client.headers.push(("accept".into(), "text/html".into()));
+    let stale_submit = client.call("add_shared_wish", &fields).await;
+    assert_eq!(stale_submit.status.as_u16(), 302, "{}", stale_submit.body);
+    assert_eq!(stale_submit.location().as_deref(), Some(review.as_str()));
+    client.headers.clear();
+    assert!(has_flash_key(
+        &client.session_info().await,
+        "error.notFound.message"
+    ));
+    assert_eq!(count(&pool).await, 1);
+}
+
+/// Review of #84: a wish typed on the empty review page (no staged draft) claims nothing,
+/// so `consumed_share_drafts` holds only real drafts.
+#[sqlx::test(migrations = "../migrations")]
+async fn a_submit_without_a_staged_draft_stores_no_claim(pool: MySqlPool) {
+    let alice = create_alice(&pool, "alice@example.test").await;
+    let group = create_group(&pool, alice, "Family").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let group_id = group.to_string();
+    for title in ["Typed one", "Typed two"] {
+        let reply = client
+            .call(
+                "add_shared_wish",
+                &[
+                    ("id", ""),
+                    ("group_id", group_id.as_str()),
+                    ("title", title),
+                    ("description", ""),
+                    ("link", ""),
+                ],
+            )
+            .await;
+        assert!(reply.status.is_success(), "{}", reply.body);
+    }
+    assert_eq!(count(&pool).await, 2);
+    let claims: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM consumed_share_drafts")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(claims, 0);
 }

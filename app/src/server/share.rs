@@ -75,6 +75,20 @@ fn mutation_error(error: AppError) -> WishlistError {
     }
 }
 
+/// A failed submit: a plain form gets the error as a flash and goes back to the review
+/// page of `id`; the server fn client gets the error.
+async fn failed(session: &Session, id: &str, error: WishlistError) -> Result<(), WishlistError> {
+    if respond::is_plain_form_post() {
+        super::flash::push(session, error.flash())
+            .await
+            .map_err(mutation_error)?;
+        respond::redirect_document(&review_path(id));
+        Ok(())
+    } else {
+        Err(error)
+    }
+}
+
 pub async fn add_wish(
     id: String,
     group_id: i32,
@@ -92,7 +106,8 @@ pub async fn add_wish(
             .iter()
             .any(|p| p.id == id)
     {
-        return Err(WishlistError::NotFound);
+        // Consumed (a double submit after the first one finished) or never staged here.
+        return failed(&session, &id, WishlistError::NotFound).await;
     }
     if title.len() + description.len() + link.len() > MAX_SHARE_BYTES {
         return Err(WishlistError::Validation(vec![(
@@ -100,10 +115,14 @@ pub async fn add_wish(
             WishlistFieldError::DescriptionTooLong,
         )]));
     }
-    let id = if id.is_empty() || user.is_none() {
-        super::token::generate().map_err(mutation_error)?
-    } else {
+    // A staged draft (checked above) is claimed with its item. Without one (a wish typed
+    // on the review page, or an anonymous post) the id only names the draft kept for a
+    // correction or the login, and there is nothing to claim.
+    let staged = user.is_some() && !id.is_empty();
+    let id = if staged {
         id
+    } else {
+        super::token::generate().map_err(mutation_error)?
     };
     let draft = ShareDraft {
         title: title.clone(),
@@ -122,11 +141,20 @@ pub async fn add_wish(
             Err(WishlistError::Unauthorized)
         };
     }
-    let result =
-        super::wishlists_flow::add_shared_item(group_id, title, description, link, &id).await;
+    let result = if staged {
+        match super::wishlists_flow::add_shared_item(group_id, title, description, link, &id).await
+        {
+            Ok(Some(item_id)) => Ok(item_id),
+            // Another request consumed this draft first (a double submit): handled like
+            // every other failure, so a plain form gets a flash and a redirect, not a 404.
+            Ok(None) => Err(WishlistError::NotFound),
+            Err(error) => Err(error),
+        }
+    } else {
+        super::wishlists_flow::add_item(group_id, title, description, link).await
+    };
     match result {
-        Ok(None) => Err(WishlistError::NotFound),
-        Ok(Some(_)) => {
+        Ok(_) => {
             let mut pending = drafts(&session).await.map_err(mutation_error)?;
             pending.retain(|p| p.id != id);
             session
@@ -165,15 +193,7 @@ pub async fn add_wish(
                     .await
                     .map_err(mutation_error)?;
             }
-            if respond::is_plain_form_post() {
-                super::flash::push(&session, error.flash())
-                    .await
-                    .map_err(mutation_error)?;
-                respond::redirect_document(&review_path(&id));
-                Ok(())
-            } else {
-                Err(error)
-            }
+            failed(&session, &id, error).await
         }
     }
 }
