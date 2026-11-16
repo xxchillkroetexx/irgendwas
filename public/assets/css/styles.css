@@ -253,3 +253,13 @@ html[data-standalone] .install-link {
     margin-bottom: 1.5rem;
   }
 }
+/* Copy section of the wishlist edit page (copy-wishes): a wish's description shows at most
+   two lines. */
+.copy-description {
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}

@@ -339,53 +339,6 @@ test.describe("wishlists", () => {
     void browserRef;
   });
 
-  test("#57 copies selected own wishes with and without JavaScript", async ({ browser }) => {
-    const alice = users.alice.page;
-    await alice.goto(editUrl);
-    await waitForHydration(alice);
-    for (const title of ["Copy A", "Copy B"]) {
-      await alice.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill(title);
-      await alice.getByRole("button", { name: t("wishlist.edit.addItem") }).click();
-      await expect(alice.locator(".list-group-item .fw-semibold").getByText(title, { exact: true })).toBeVisible();
-    }
-    await alice.goto("/groups/new");
-    await waitForHydration(alice);
-    await alice.getByLabel(t("group.form.name"), { exact: true }).fill("Copy destination");
-    await alice.getByRole("button", { name: t("group.form.createButton") }).click();
-    await expect(alice).toHaveURL(/\/groups\/\d+$/);
-    const target = /\/groups\/(\d+)$/.exec(alice.url())![1];
-    for (const js of [true, false]) {
-      const context = await browser.newContext({ javaScriptEnabled: js, storageState: await users.alice.context.storageState() });
-      const page = await context.newPage();
-      const errors = collectPageErrors(page);
-      await page.goto(`/groups/${target}/wishlist`);
-      if (js) {
-        await waitForHydration(page);
-        await page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill("Unsubmitted while choosing a source");
-        await page.locator("#add-title").evaluate((input) => { (input as HTMLElement).dataset.sourceMarker = "original"; });
-      }
-      await page.getByLabel(t("wishlist.copy.source")).selectOption(gid);
-      await page.getByRole("button", { name: t("wishlist.copy.load") }).click();
-      await expect(page).toHaveURL(new RegExp(`/groups/${target}/wishlist\\?source=${gid}$`));
-      await expect(page.getByRole("checkbox", { name: "Copy A", exact: true })).toBeVisible();
-      if (js) {
-        await waitForHydration(page);
-        const title = page.getByLabel(t("wishlist.edit.itemTitle"), { exact: true });
-        await expect(title).toHaveValue("Unsubmitted while choosing a source");
-        await expect(title).toHaveAttribute("data-source-marker", "original");
-      }
-      await page.getByRole("checkbox", { name: "Copy A", exact: true }).check();
-      await page.getByRole("checkbox", { name: "Copy B", exact: true }).check();
-      await page.getByRole("button", { name: t("wishlist.copy.submit") }).click();
-      await expect(page.getByText(t("flash.success.wishlist_copied"))).toBeVisible();
-      await expect(page.locator(".list-group-item .fw-semibold")).toHaveText(js ? ["Copy A", "Copy B"] : ["Copy A", "Copy B", "Copy A", "Copy B"]);
-      await page.goto(editUrl);
-      await expect(page.locator(".list-group-item .fw-semibold")).toHaveText(["Copy A", "Copy B"]);
-      expect(errors).toEqual([]);
-      await context.close();
-    }
-  });
-
   test("#69 on a phone, Edit shows the inline form in view with the title focused; Cancel and Save return to the row", async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: 390, height: 844 },

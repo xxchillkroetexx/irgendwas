@@ -28,15 +28,6 @@ async function register(page: Page, email: string, name: string): Promise<void> 
   await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
 }
 
-async function login(page: Page, email: string): Promise<void> {
-  await page.goto("/auth/login");
-  await waitForHydration(page);
-  await page.locator("input[type=email]").fill(email);
-  await page.locator("input[type=password]").fill(PASSWORD);
-  await page.locator("main form button[type=submit]").click();
-  await expect(page).toHaveURL(new RegExp(`${DASHBOARD}$`));
-}
-
 /** Creates a group and returns its id. */
 async function createGroup(page: Page, name: string): Promise<string> {
   await page.goto("/groups/new");
@@ -211,29 +202,10 @@ test("a query-only change after the session ended goes to the login page (#81)",
   const email = uniqueEmail("nav81-expired");
   try {
     await register(page, email, "Expired User");
-    const source = await createGroup(page, "Source group");
-    await page.goto(`/groups/${source}/wishlist`);
-    await waitForHydration(page);
-    await page.locator("#add-title").fill("Source wish");
-    await page.getByRole("button", { name: en["wishlist.edit.addItem"] }).click();
-    await expect(page.locator(".list-group-item .fw-semibold").getByText("Source wish", { exact: true })).toBeVisible();
-    const target = await createGroup(page, "Target group");
-
-    // Choosing a copy source changes only the query: the guard does not check again,
-    // so the page itself must send the visitor to the login page (and back here).
-    await page.goto(`/groups/${target}/wishlist`);
-    await waitForHydration(page);
-    await logoutElsewhere(context);
-    await withoutSession(errors, async () => {
-      await page.getByLabel(en["wishlist.copy.source"]).selectOption(source);
-      await page.getByRole("button", { name: en["wishlist.copy.load"] }).click();
-      await expect(page).toHaveURL(
-        endsWith(`/auth/login?next=${encodeURIComponent(`/groups/${target}/wishlist?source=${source}`)}`),
-      );
-    });
-
-    // The shared-wish page reloads its data when only `?id=` changes.
-    await login(page, email);
+    // Copying wishes no longer navigates (copy-wishes, #76): its ended-session case is
+    // covered in copy_wishes.spec.ts. A query-only change on the shared-wish page is the
+    // remaining case: the guard does not check again, so the page itself must send the
+    // visitor to the login page (and back here).
     await page.goto("/wishes/shared");
     await waitForHydration(page);
     await logoutElsewhere(context);

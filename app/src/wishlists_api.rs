@@ -49,6 +49,10 @@ pub enum WishlistFieldError {
     TooManyItems,
     ConfirmRequired,
     SelectionRequired,
+    /// Copying: a selected wish has the title key of an item already on the target list.
+    AlreadyOnList,
+    /// Copying: a selected wish fails today's rules (W8/W9), e.g. migrated data.
+    ItemNotCopyable,
 }
 
 impl WishlistFieldError {
@@ -63,6 +67,8 @@ impl WishlistFieldError {
             WishlistFieldError::TooManyItems => "validation.wishlist.too_many_items",
             WishlistFieldError::ConfirmRequired => "validation.wishlist.confirm_required",
             WishlistFieldError::SelectionRequired => "validation.wishlist.selection_required",
+            WishlistFieldError::AlreadyOnList => "validation.wishlist.already_on_list",
+            WishlistFieldError::ItemNotCopyable => "validation.wishlist.item_not_copyable",
         }
     }
 
@@ -379,29 +385,57 @@ pub async fn clear_wishlist(
     )
 }
 
-/// Nonempty own lists in other groups where the caller remains a member.
-#[server(prefix = "/api", endpoint = "get_wishlist_sources")]
-pub async fn get_wishlist_sources(group_id: i32) -> Result<Vec<NamedRef>, WishlistError> {
+/// One of my wishes in another list, as the copy section shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CopyItem {
+    pub id: i32,
+    pub title: String,
+    pub description: Option<String>,
+    /// The host of the item's link (shown as text, never as a link).
+    pub link_host: Option<String>,
+    /// My list in the target group has an item with the same title key (trimmed,
+    /// lowercased): greyed out.
+    pub on_target: bool,
+    /// The item passes today's rules (W8/W9); `false` (migrated data): greyed out.
+    pub copyable: bool,
+}
+
+/// One of my non-empty lists in another group I am a member of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CopySource {
+    pub group: NamedRef,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// In the list's order (`position, id`).
+    pub items: Vec<CopyItem>,
+}
+
+/// What the edit page's copy section shows (spec: copy-wishes). Only the caller's own
+/// lists; no emails, no other user's items, no assignment data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CopySources {
+    /// [`MAX_ITEMS`] minus the items on my list in the target group.
+    pub free: u32,
+    /// Most recently changed first (`updated_at DESC, group id DESC`).
+    pub sources: Vec<CopySource>,
+}
+
+/// My other lists to copy wishes from into my list in `group_id`. Read-only.
+#[server(prefix = "/api", endpoint = "get_copy_sources")]
+pub async fn get_copy_sources(group_id: i32) -> Result<CopySources, WishlistError> {
     crate::server::respond::with_error_status(
-        crate::server::wishlists_flow::get_sources(group_id).await,
+        crate::server::wishlists_flow::get_copy_sources(group_id).await,
     )
 }
 
-/// Copies selected own wishes in source order, leaving the source unchanged.
+/// Copies selected own wishes in source order, leaving the source unchanged. Returns the
+/// number of wishes copied.
 #[server(prefix = "/api", endpoint = "copy_wishlist_items")]
 pub async fn copy_wishlist_items(
     group_id: i32,
     source_group_id: i32,
     item_ids: Option<Vec<i32>>,
-) -> Result<(), WishlistError> {
+) -> Result<u32, WishlistError> {
     use crate::server::wishlists_flow as flow;
     let result = flow::copy_items(group_id, source_group_id, item_ids.unwrap_or_default()).await;
-    crate::server::respond::with_error_status(
-        flow::outcome(
-            Some(group_id),
-            result,
-            Some("flash.success.wishlist_copied"),
-        )
-        .await,
-    )
+    crate::server::respond::with_error_status(flow::copy_outcome(group_id, result).await)
 }

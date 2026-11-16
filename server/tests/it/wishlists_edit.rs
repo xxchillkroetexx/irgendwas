@@ -554,7 +554,24 @@ async fn ac19_edit_with_someone_elses_item_id_renders_no_form_and_no_foreign_ite
             "{foreign}"
         );
         assert!(!page.body.contains(ALICE_ITEM));
-        assert!(!page.body.contains(ITEM_X));
+        // The copy section (copy-wishes, #76) lists Bob's own H list, ITEM_X included, and
+        // its data is serialized for hydration: look at the rest of the markup.
+        let copy = page
+            .body
+            .find("<details id=\"copy\"")
+            .unwrap_or(page.body.len());
+        let items = copy
+            + page.body[copy..]
+                .find(&en("wishlist.edit.itemsHeading"))
+                .unwrap_or(0);
+        let mut outside_copy = format!("{}{}", &page.body[..copy], &page.body[items..]);
+        while let Some(script) = outside_copy.find("<script") {
+            let end = outside_copy[script..]
+                .find("</script>")
+                .map_or(outside_copy.len(), |end| script + end + "</script>".len());
+            outside_copy.replace_range(script..end, "");
+        }
+        assert!(!outside_copy.contains(ITEM_X));
         assert!(page.body.contains(ITEM_A), "own list still shown");
     }
     for junk in ["abc", "-1", "0", "1.5", ""] {

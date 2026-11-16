@@ -8,11 +8,16 @@
 //! `?edit={id}#item-{id}` and Cancel to `#item-{id}`, so a page load (no JavaScript, a new
 //! tab) lands on the row instead of the top of the page (#69). With JavaScript a plain click
 //! opens and closes the form in place and keeps the scroll position (#81).
+//!
+//! Between the add form and the items sits the copy section (spec: copy-wishes, #76): my
+//! other non-empty lists, each with its own copy form. It renders from its own resource,
+//! outside the list's `Transition`s, so adding, editing or moving items never re-renders it
+//! (its open state and ticks stay). `?copy` (any value) renders it open.
 
 use std::time::Duration;
 
-use leptos::ev::{MouseEvent, SubmitEvent};
-use leptos::html::{Form, Input, Select};
+use leptos::ev::MouseEvent;
+use leptos::html::{Details, Div, Form, Input};
 use leptos::prelude::*;
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_navigate, use_query_map};
@@ -21,20 +26,23 @@ use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
 use crate::auth::use_session_resource;
 use crate::components::{RequireUser, TextArea};
 use crate::flash::use_toasts;
-use crate::i18n::use_i18n;
+use crate::format::LocalDate;
+use crate::i18n::{I18n, use_i18n};
 use crate::pages::groups::{ConfirmSubmit, parse_group_id};
 use crate::paths::{
-    group_path, wishlist_edit_path, wishlist_item_anchor, wishlist_item_edit_path,
-    wishlist_item_path, wishlist_view_path,
+    group_path, login_url, wishlist_copy_open_path, wishlist_edit_path, wishlist_item_anchor,
+    wishlist_item_edit_path, wishlist_item_path, wishlist_view_path,
 };
-use crate::t;
 use crate::wishlists_api::{
-    AddItem, ClearWishlist, CopyWishlistItems, DESCRIPTION_MAX, DeleteItem, Direction, ItemView,
-    LINK_MAX, MAX_ITEMS, MoveItem, NamedRef, TITLE_MAX, UpdateItem, WishlistError, WishlistField,
-    WishlistFieldError, WishlistView, get_my_wishlist, get_wishlist_sources,
+    AddItem, ClearWishlist, CopyItem, CopySource, CopySources, CopyWishlistItems, DESCRIPTION_MAX,
+    DeleteItem, Direction, ItemView, LINK_MAX, MAX_ITEMS, MoveItem, TITLE_MAX, UpdateItem,
+    WishlistError, WishlistField, WishlistFieldError, WishlistView, get_copy_sources,
+    get_my_wishlist,
 };
+use crate::{t, t_plural};
 
 type ListResource = Resource<Result<WishlistView, WishlistError>>;
+type SourcesResource = Resource<Result<CopySources, WishlistError>>;
 
 /// The page's server actions. Created at page level, so a re-read of the list (which
 /// re-renders it) keeps them and their results.
@@ -112,27 +120,12 @@ pub fn WishlistEditPage() -> impl IntoView {
             }
         },
     );
-    let source_group = Memo::new(move |_| {
-        query
-            .read()
-            .get("source")
-            .and_then(|raw| parse_group_id(&raw))
-    });
-    let sources = Resource::new(
+    let sources: SourcesResource = Resource::new(
         move || id.get(),
         |group| async move {
             match group {
-                Some(group) => when_logged_in(get_wishlist_sources(group)).await,
+                Some(group) => when_logged_in(get_copy_sources(group)).await,
                 None => Err(WishlistError::NotFound),
-            }
-        },
-    );
-    let source_list = Resource::new(
-        move || source_group.get(),
-        |group| async move {
-            match group {
-                Some(group) => when_logged_in(get_my_wishlist(group)).await.map(Some),
-                None => Ok(None),
             }
         },
     );
@@ -220,65 +213,41 @@ pub fn WishlistEditPage() -> impl IntoView {
         }
     });
 
-    Effect::new(move |_| {
-        if let Some(result) = copy.value().get() {
-            match result {
-                Ok(()) => session.refetch(),
-                Err(error) => toasts.push(error.flash()),
-            }
-            list.refetch();
-        }
-    });
     view! {
         <RequireUser>
             <Transition fallback=|| ()>
                 {move || Suspend::new(async move {
                     match list.await {
-                        Ok(wishlist) => {
-                            view! { <EditView wishlist editing list actions add_form settled/> }.into_any()
-                        }
+                        Ok(wishlist) => view! { <EditHead wishlist actions add_form/> }.into_any(),
                         Err(error) => view! { <WishlistErrorView error/> }.into_any(),
                     }
                 })}
             </Transition>
-            <CopySection group=id source_group sources source_list action=copy/>
+            <CopySection group=id sources list action=copy/>
+            <Transition fallback=|| ()>
+                {move || Suspend::new(async move {
+                    match list.await {
+                        Ok(wishlist) => {
+                            view! { <ItemsView wishlist editing list actions settled/> }.into_any()
+                        }
+                        // The first Transition shows the error.
+                        Err(_) => ().into_any(),
+                    }
+                })}
+            </Transition>
         </RequireUser>
     }
 }
 
+/// Everything above the copy section: title, links and the add form.
 #[component]
-fn EditView(
-    wishlist: WishlistView,
-    editing: Memo<Option<i32>>,
-    list: ListResource,
-    actions: Actions,
-    add_form: AddForm,
-    settled: Settled,
-) -> impl IntoView {
+fn EditHead(wishlist: WishlistView, actions: Actions, add_form: AddForm) -> impl IntoView {
     let i18n = use_i18n();
     let group_id = wishlist.group.id;
     let count = wishlist.items.len();
     let full = count >= MAX_ITEMS;
-    let items = wishlist.items;
-    let has_items = !items.is_empty();
-    let last = count.saturating_sub(1);
     let add_error = last_error(actions.add);
     let adding = actions.add.pending();
-
-    let rows = move || {
-        items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                if editing.get() == Some(item.id) {
-                    view! { <InlineEdit item=item.clone() group_id list settled/> }.into_any()
-                } else {
-                    let (first, last) = (index == 0, index == last);
-                    view! { <ItemRow item=item.clone() first last group_id actions/> }.into_any()
-                }
-            })
-            .collect_view()
-    };
 
     view! {
         <h1 class="h2">{i18n.t("wishlist.edit.title")}</h1>
@@ -324,7 +293,40 @@ fn EditView(
                 </ActionForm>
             </div>
         </div>
+    }
+}
 
+/// Everything below the copy section: the items and "Remove all items".
+#[component]
+fn ItemsView(
+    wishlist: WishlistView,
+    editing: Memo<Option<i32>>,
+    list: ListResource,
+    actions: Actions,
+    settled: Settled,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    let group_id = wishlist.group.id;
+    let items = wishlist.items;
+    let has_items = !items.is_empty();
+    let last = items.len().saturating_sub(1);
+
+    let rows = move || {
+        items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                if editing.get() == Some(item.id) {
+                    view! { <InlineEdit item=item.clone() group_id list settled/> }.into_any()
+                } else {
+                    let (first, last) = (index == 0, index == last);
+                    view! { <ItemRow item=item.clone() first last group_id actions/> }.into_any()
+                }
+            })
+            .collect_view()
+    };
+
+    view! {
         <h2 class="h4">{i18n.t("wishlist.edit.itemsHeading")}</h2>
         {if has_items {
             view! { <ul class="list-group mb-4">{rows}</ul> }.into_any()
@@ -648,92 +650,419 @@ fn ClearSection(group_id: i32, action: ServerAction<ClearWishlist>) -> impl Into
     }
 }
 
-/// Chooses the copy source: a plain GET form (`?source=<group>`, a page load without
-/// JavaScript). With JavaScript the submit becomes a router navigation that keeps the page
-/// and its scroll position (#81); the router's `<Form>` would append the nameless submit
-/// button as `&=`.
-#[component]
-fn CopySourceForm(
-    group_id: i32,
-    sources: Vec<NamedRef>,
-    source_group: Memo<Option<i32>>,
-) -> impl IntoView {
-    let i18n = use_i18n();
-    let select = NodeRef::<Select>::new();
-    let navigate = use_navigate();
-    let on_submit = move |ev: SubmitEvent| {
-        let Some(source) = select.get_untracked().map(|el| el.value()) else {
+// ------------------------------------------------------------ copy section (#76)
+
+/// Which source form sent the last copy and why it failed (JavaScript path). Lives at
+/// section level, so a re-read of the section data keeps the alert.
+#[derive(Clone, Copy)]
+struct CopyState {
+    action: ServerAction<CopyWishlistItems>,
+    /// The source group of the copy in flight or last sent.
+    submitted: StoredValue<Option<i32>>,
+    /// The failed source and its error; cleared by the next submission or a success.
+    failed: RwSignal<Option<(i32, WishlistError)>>,
+}
+
+/// The text of a failed copy: a vanished wish or membership (`NotFound`) means the shown
+/// data is stale.
+fn copy_error_text(error: &WishlistError, i18n: &I18n) -> String {
+    match error {
+        WishlistError::NotFound => i18n.t("wishlist.copy.changed"),
+        other => other.text(i18n),
+    }
+}
+
+/// The failures that mean the section showed stale data: its data is read again.
+fn is_stale(error: &WishlistError) -> bool {
+    matches!(error, WishlistError::NotFound)
+        || matches!(
+            error.field_error(WishlistField::Items),
+            Some(WishlistFieldError::AlreadyOnList | WishlistFieldError::ItemNotCopyable)
+        )
+}
+
+/// Unticks every box of the copy section (client only). After a re-read the rows are
+/// diffed by position, so a tick could otherwise land on another wish.
+fn reset_copy_forms(section: NodeRef<Details>) {
+    #[cfg(feature = "hydrate")]
+    if let Some(details) = section.get_untracked() {
+        use leptos::wasm_bindgen::JsCast;
+        if let Ok(forms) = details.query_selector_all("form") {
+            for index in 0..forms.length() {
+                if let Some(form) = forms
+                    .item(index)
+                    .and_then(|node| node.dyn_into::<web_sys::HtmlFormElement>().ok())
+                {
+                    form.reset();
+                }
+            }
+        }
+    }
+    #[cfg(not(feature = "hydrate"))]
+    let _ = section;
+}
+
+/// "Select all": ticks (or unticks) every enabled wish checkbox of its own form; disabled
+/// boxes and other sources stay as they are.
+fn select_all(ev: leptos::ev::Event) {
+    #[cfg(feature = "hydrate")]
+    {
+        use leptos::wasm_bindgen::JsCast;
+        let Some(all) = ev
+            .target()
+            .and_then(|target| target.dyn_into::<web_sys::HtmlInputElement>().ok())
+        else {
             return;
         };
-        ev.prevent_default();
-        navigate(
-            &format!("{}?source={source}", wishlist_edit_path(group_id)),
-            NavigateOptions {
-                scroll: false,
-                ..Default::default()
-            },
-        );
+        let Some(form) = all.form() else {
+            return;
+        };
+        let Ok(boxes) = form.query_selector_all("input[name^=\"item_ids\"]:not(:disabled)") else {
+            return;
+        };
+        for index in 0..boxes.length() {
+            if let Some(item) = boxes
+                .item(index)
+                .and_then(|node| node.dyn_into::<web_sys::HtmlInputElement>().ok())
+            {
+                item.set_checked(all.checked());
+            }
+        }
+    }
+    #[cfg(not(feature = "hydrate"))]
+    let _ = ev;
+}
+
+/// The copy section: a native `<details id="copy">` with one nested `<details>` per other
+/// list of mine (newest first, the first one open) and its own copy form. Shown only when
+/// there is something to copy from. Open when the URL has `copy` or my list here was empty
+/// when the page rendered; decided once, so later query changes and re-reads do not open
+/// or close it (a re-read keeps the `open` attribute's value, so the DOM keeps the user's
+/// toggles).
+///
+/// With JavaScript, a copy re-reads the list and the section data; a success closes the
+/// section, shows the flash and drops `?copy`; a failure shows an alert in the failing
+/// source's form and, when the data was stale, re-reads it.
+#[component]
+fn CopySection(
+    group: Memo<Option<i32>>,
+    sources: SourcesResource,
+    list: ListResource,
+    action: ServerAction<CopyWishlistItems>,
+) -> impl IntoView {
+    let query = use_query_map();
+    let copy_param = query.with_untracked(|q| q.get("copy").is_some());
+    let initially_open = StoredValue::new(None::<bool>);
+    let section = NodeRef::<Details>::new();
+    let state = CopyState {
+        action,
+        submitted: StoredValue::new(None),
+        failed: RwSignal::new(None),
     };
+    let session = use_session_resource().0;
+    let navigate = use_navigate();
+
+    Effect::new(move |_| {
+        if let Some(input) = action.input().get() {
+            state.submitted.set_value(Some(input.source_group_id));
+            state.failed.set(None);
+        }
+    });
+    Effect::new(move |_| {
+        let Some(result) = action.value().get() else {
+            return;
+        };
+        let Some(group_id) = group.get_untracked() else {
+            return;
+        };
+        match result {
+            Ok(_) => {
+                state.failed.set(None);
+                if let Some(details) = section.get_untracked() {
+                    let _ = details.remove_attribute("open");
+                }
+                reset_copy_forms(section);
+                list.refetch();
+                sources.refetch();
+                // The flash: a new search string makes the layout read the session (one
+                // read; a second one would come back without the flash). That URL is the
+                // end state of the no-JS redirect, kept at the same scroll position.
+                if !query.with_untracked(|q| q.get("copy").is_some()) {
+                    session.refetch();
+                } else {
+                    navigate(
+                        &wishlist_edit_path(group_id),
+                        NavigateOptions {
+                            replace: true,
+                            scroll: false,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            Err(WishlistError::Unauthorized) => {
+                navigate(
+                    &login_url(&wishlist_copy_open_path(group_id)),
+                    NavigateOptions::default(),
+                );
+            }
+            Err(error) => {
+                // Set before the re-read: if the failing source (or every source) is gone
+                // afterwards, the section still shows the message.
+                let stale = is_stale(&error);
+                if let Some(source) = state.submitted.get_value() {
+                    state.failed.set(Some((source, error)));
+                }
+                if stale {
+                    reset_copy_forms(section);
+                    sources.refetch();
+                }
+            }
+        }
+    });
+
     view! {
-        <form method="get" action=wishlist_edit_path(group_id) on:submit=on_submit>
-            <label for="copy-source" class="form-label">{i18n.t("wishlist.copy.source")}</label>
-            <select id="copy-source" name="source" class="form-select mb-2" required node_ref=select>
-                <option value="">{i18n.t("wishlist.copy.choose")}</option>
-                {sources.into_iter().map(|source| view! {
-                    <option value=source.id selected=move || source_group.get() == Some(source.id)>{source.name}</option>
-                }).collect_view()}
-            </select>
-            <button type="submit" class="btn btn-outline-secondary">{i18n.t("wishlist.copy.load")}</button>
-        </form>
+        <Transition fallback=|| ()>
+            {move || Suspend::new(async move {
+                let Ok(data) = sources.await else {
+                    return ().into_any();
+                };
+                // No sources left: nothing to show, unless a copy failed because its source
+                // vanished (then the section stays for its message).
+                if data.sources.is_empty() && state.failed.with_untracked(Option::is_none) {
+                    return ().into_any();
+                }
+                let Some(group_id) = group.get_untracked() else {
+                    return ().into_any();
+                };
+                let open = initially_open
+                    .get_value()
+                    .unwrap_or_else(|| {
+                        let open = copy_param || data.free as usize >= MAX_ITEMS;
+                        initially_open.set_value(Some(open));
+                        open
+                    });
+                view! { <CopyDetails data group_id open section state/> }.into_any()
+            })}
+        </Transition>
     }
 }
 
 #[component]
-fn CopySection(
-    group: Memo<Option<i32>>,
-    source_group: Memo<Option<i32>>,
-    sources: Resource<Result<Vec<NamedRef>, WishlistError>>,
-    source_list: Resource<Result<Option<WishlistView>, WishlistError>>,
-    action: ServerAction<CopyWishlistItems>,
+fn CopyDetails(
+    data: CopySources,
+    group_id: i32,
+    open: bool,
+    section: NodeRef<Details>,
+    state: CopyState,
 ) -> impl IntoView {
     let i18n = use_i18n();
-    view! {
-        <Suspense fallback=|| ()>
-            {move || Suspend::new(async move {
-                let Ok(sources) = sources.await else { return ().into_any(); };
-                if sources.is_empty() { return ().into_any(); }
-                let group_id = group.get_untracked().unwrap_or_default();
+    // A failed copy whose source is no longer listed (emptied or left meanwhile): its
+    // message shows above the lists, as the form that held it is gone.
+    let listed: Vec<i32> = data.sources.iter().map(|source| source.group.id).collect();
+    let failed = state.failed;
+    let orphaned = move || {
+        failed
+            .get()
+            .filter(|(source, _)| !listed.contains(source))
+            .map(|(_, error)| {
                 view! {
-                    <section class="card my-4">
-                        <div class="card-body">
-                            <h2 class="h4">{i18n.t("wishlist.copy.title")}</h2>
-                            <CopySourceForm group_id sources source_group/>
-                            <Suspense fallback=|| ()>
-                                {move || Suspend::new(async move {
-                                    match source_list.await {
-                                        Ok(Some(source)) if source.group.id != group_id => view! {
-                                            <ActionForm action>
-                                                <input type="hidden" name="group_id" value=group_id/>
-                                                <input type="hidden" name="source_group_id" value=source.group.id/>
-                                                <p class="mt-3">{i18n.t("wishlist.copy.instructions")}</p>
-                                                {source.items.into_iter().enumerate().map(|(index,item)| view! {
-                                                    <div class="form-check">
-                                                        <input type="checkbox" class="form-check-input" id=format!("copy-item-{}",item.id) name=format!("item_ids[{index}]") value=item.id/>
-                                                        <label class="form-check-label" for=format!("copy-item-{}",item.id)>{item.title}</label>
-                                                    </div>
-                                                }).collect_view()}
-                                                <button type="submit" class="btn btn-primary mt-3" disabled=move || action.pending().get()>{i18n.t("wishlist.copy.submit")}</button>
-                                            </ActionForm>
-                                        }.into_any(),
-                                        Ok(_) => ().into_any(),
-                                        Err(error) => view! { <WishlistErrorView error/> }.into_any(),
-                                    }
-                                })}
-                            </Suspense>
-                        </div>
-                    </section>
-                }.into_any()
-            })}
-        </Suspense>
+                    <div class="alert alert-danger" role="alert">
+                        {copy_error_text(&error, &i18n)}
+                    </div>
+                }
+            })
+    };
+    let body = if data.sources.is_empty() {
+        ().into_any()
+    } else if data.free == 0 {
+        view! { <p class="mb-0">{WishlistFieldError::TooManyItems.text(&i18n)}</p> }.into_any()
+    } else {
+        let sources = data
+            .sources
+            .into_iter()
+            .enumerate()
+            .map(|(index, source)| {
+                view! { <CopySourceList source group_id open=index == 0 state/> }
+            })
+            .collect_view();
+        view! {
+            <p class="text-muted">{i18n.t("wishlist.copy.instructions")}</p>
+            {sources}
+        }
+        .into_any()
+    };
+    view! {
+        <details id="copy" class="border rounded bg-white mb-4" open=open node_ref=section>
+            <summary class="h5 mb-0 p-3">{i18n.t("wishlist.copy.title")}</summary>
+            <div class="px-3 pb-3">{orphaned}{body}</div>
+        </details>
+    }
+}
+
+/// One source list: its summary (name, item count, last change) and its copy form.
+#[component]
+fn CopySourceList(
+    source: CopySource,
+    group_id: i32,
+    open: bool,
+    state: CopyState,
+) -> impl IntoView {
+    let i18n = use_i18n();
+    let source_id = source.group.id;
+    let name = source.group.name;
+    let n = i64::try_from(source.items.len()).unwrap_or(i64::MAX);
+    let count = t_plural!(i18n, "wishlist.panel.itemCount", n, count = n);
+    let updated = source
+        .updated_at
+        .map(|at| t!(i18n, "wishlist.view.lastUpdated", date = LocalDate(at)));
+    let selectable = source
+        .items
+        .iter()
+        .any(|item| !item.on_target && item.copyable);
+    let rows = source
+        .items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| view! { <CopyRow item index source_id/> })
+        .collect_view();
+    let failed = state.failed;
+    let alert = move || {
+        failed
+            .get()
+            .filter(|(source, _)| *source == source_id)
+            .map(|(_, error)| {
+                view! {
+                    <div class="alert alert-danger mt-2 mb-0" role="alert">
+                        {copy_error_text(&error, &i18n)}
+                    </div>
+                }
+            })
+    };
+    let pending = state.action.pending();
+    let controls = selectable.then(|| {
+        let label = row_label(&i18n, "wishlist.copy.submit", &name);
+        view! {
+            <div class="d-grid d-sm-block mt-2">
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    aria-label=label
+                    disabled=move || pending.get()
+                >
+                    {i18n.t("wishlist.copy.submit")}
+                </button>
+            </div>
+        }
+    });
+    view! {
+        <details class="border rounded mb-2" open=open>
+            <summary class="px-3 py-2">
+                <span class="fw-semibold text-break">{name}</span>
+                <span class="small text-muted ms-2">{count}</span>
+                {updated.map(|text| view! { <span class="small text-muted ms-2">{text}</span> })}
+            </summary>
+            <div class="px-3 pb-3">
+                <ActionForm action=state.action>
+                    <input type="hidden" name="group_id" value=group_id/>
+                    <input type="hidden" name="source_group_id" value=source_id/>
+                    {selectable.then(|| view! { <SelectAll source_id/> })}
+                    {rows}
+                    {alert}
+                    {controls}
+                </ActionForm>
+            </div>
+        </details>
+    }
+}
+
+/// The "Select all" checkbox of a source. It has no `name` (never submitted) and is
+/// rendered `hidden`; a script reveals it, so a visitor without JavaScript never sees a
+/// control that does nothing.
+#[component]
+fn SelectAll(source_id: i32) -> impl IntoView {
+    let i18n = use_i18n();
+    let id = format!("copy-all-{source_id}");
+    let row = NodeRef::<Div>::new();
+    let input = NodeRef::<Input>::new();
+    Effect::new(move |_| {
+        if let Some(row) = row.get() {
+            let _ = row.remove_attribute("hidden");
+        }
+        if let Some(input) = input.get() {
+            let _ = input.remove_attribute("hidden");
+        }
+    });
+    view! {
+        <div class="form-check mb-2" hidden node_ref=row>
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id=id.clone()
+                hidden
+                node_ref=input
+                on:change=select_all
+            />
+            <label class="form-check-label" for=id>{i18n.t("wishlist.copy.selectAll")}</label>
+        </div>
+    }
+}
+
+/// One wish of a source: a checkbox labelled with its title, then its description (two
+/// lines at most) and its link host as text (a tap must not leave the page). A wish already
+/// on my list, or one that fails today's rules, is greyed out and cannot be ticked; the
+/// latter links to its row in its own list.
+#[component]
+fn CopyRow(item: CopyItem, index: usize, source_id: i32) -> impl IntoView {
+    let i18n = use_i18n();
+    let id = format!("copy-{source_id}-{}", item.id);
+    let greyed = item.on_target || !item.copyable;
+    let class = if greyed {
+        "form-check mb-2 text-muted"
+    } else {
+        "form-check mb-2"
+    };
+    let hint = if item.on_target {
+        Some(view! { <span class="ms-2 small fst-italic">{i18n.t("wishlist.copy.alreadyOnList")}</span> }.into_any())
+    } else if !item.copyable {
+        Some(
+            view! {
+                <div class="small">
+                    {i18n.t("wishlist.copy.notCopyable")} " "
+                    <a href=wishlist_item_edit_path(source_id, item.id)>
+                        {i18n.t("wishlist.copy.fixInSource")}
+                    </a>
+                </div>
+            }
+            .into_any(),
+        )
+    } else {
+        None
+    };
+    let (in_label, below) = if item.on_target {
+        (hint, None)
+    } else {
+        (None, hint)
+    };
+    view! {
+        <div class=class>
+            <input
+                type="checkbox"
+                class="form-check-input"
+                id=id.clone()
+                name=format!("item_ids[{index}]")
+                value=item.id
+                disabled=greyed
+            />
+            <label class="form-check-label d-block" for=id>
+                <span class="fw-semibold text-break">{item.title}</span>
+                {in_label}
+            </label>
+            {item
+                .description
+                .map(|text| view! { <div class="small text-muted text-break copy-description">{text}</div> })}
+            {item.link_host.map(|host| view! { <div class="small text-muted text-break">{host}</div> })}
+            {below}
+        </div>
     }
 }

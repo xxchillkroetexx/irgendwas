@@ -38,13 +38,14 @@ use sqlx::{FromRow, MySql, Transaction};
 
 use crate::error::AppError;
 use crate::flash::FlashMessage;
-use crate::paths::{login_url, wishlist_edit_path as edit_path};
+use crate::paths::{login_url, wishlist_copy_open_path, wishlist_edit_path as edit_path};
 use crate::server::db::{self, IsolationLevel};
 use crate::server::{AppState, auth, authz, flash, respond};
 use crate::validation::normalize_newlines;
 use crate::wishlists_api::{
-    DESCRIPTION_MAX, Direction, ItemView, LINK_MAX, MAX_ITEMS, NamedRef, PanelMember, TITLE_MAX,
-    WishlistError, WishlistField, WishlistFieldError, WishlistPanel, WishlistView,
+    CopyItem, CopySource, CopySources, DESCRIPTION_MAX, Direction, ItemView, LINK_MAX, MAX_ITEMS,
+    NamedRef, PanelMember, TITLE_MAX, WishlistError, WishlistField, WishlistFieldError,
+    WishlistPanel, WishlistView,
 };
 
 /// Where a failed plain post goes when it has no list to return to.
@@ -185,6 +186,52 @@ pub async fn outcome<T>(
             } else {
                 push_flash(err.flash()).await;
                 respond::redirect_document(&back);
+            }
+        }
+        Err(_) => {}
+    }
+    result
+}
+
+/// The flash of a copy that failed because a selected wish (or the caller's membership)
+/// is gone: the page showed stale data (spec: copy-wishes).
+const COPY_CHANGED: &str = "wishlist.copy.changed";
+
+/// The end of a copy (spec: copy-wishes). Success: the flash counts the copied wishes and a
+/// plain form post goes to the edit page (section closed). A failed plain post goes back to
+/// the open copy section (`?copy=1`, no fragment: without JavaScript the flash is not
+/// sticky), also for `NotFound`, whose flash says the selection changed; without a session
+/// to the login page and back there.
+pub async fn copy_outcome(
+    group_id: i32,
+    result: Result<u32, WishlistError>,
+) -> Result<u32, WishlistError> {
+    let plain = respond::is_plain_form_post();
+    match &result {
+        Ok(copied) => {
+            let n = i64::from(*copied);
+            push_flash(
+                FlashMessage::success("flash.success.wishes_copied")
+                    .with_plural(n)
+                    .with_number("count", n),
+            )
+            .await;
+            if plain {
+                respond::redirect_document(&edit_path(group_id));
+            }
+        }
+        Err(err) if plain => {
+            let back = wishlist_copy_open_path(group_id);
+            match err {
+                WishlistError::Unauthorized => respond::redirect_document(&login_url(&back)),
+                WishlistError::NotFound => {
+                    push_flash(FlashMessage::error(COPY_CHANGED)).await;
+                    respond::redirect_document(&back);
+                }
+                other => {
+                    push_flash(other.flash()).await;
+                    respond::redirect_document(&back);
+                }
             }
         }
         Err(_) => {}
@@ -872,38 +919,125 @@ pub async fn clear_wishlist(group_id: i32, confirm: bool) -> Result<(), Wishlist
 
 // ------------------------------------------------------------ copying own wishes
 
-pub async fn get_sources(group_id: i32) -> Result<Vec<NamedRef>, WishlistError> {
+/// Two wishes are "the same" for copying when their title keys are equal: the title
+/// trimmed (Unicode whitespace) and lowercased; accents, inner whitespace and punctuation
+/// count (spec: copy-wishes, decision 4).
+fn title_key(title: &str) -> String {
+    title.trim().to_lowercase()
+}
+
+/// Whether a stored item passes the rules a copy applies (W8/W9).
+fn copyable(title: &str, description: Option<&str>, link: Option<&str>) -> bool {
+    validate(
+        title,
+        description.unwrap_or_default(),
+        link.unwrap_or_default(),
+    )
+    .is_ok()
+}
+
+#[derive(FromRow)]
+struct SourceRow {
+    list_id: i32,
+    group_id: i32,
+    name: String,
+    updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(FromRow)]
+struct SourceItemRow {
+    id: i32,
+    wishlist_id: i32,
+    title: String,
+    description: Option<String>,
+    link: Option<String>,
+}
+
+/// The caller's own non-empty lists in the other groups they are a member of, newest
+/// first, with the items greyed out that are already on their list in `group_id` or fail
+/// today's rules. Read-only: creates no row (W5).
+pub async fn get_copy_sources(group_id: i32) -> Result<CopySources, WishlistError> {
     let user_id = user_id().await?;
     let state = state()?;
     authz::require_member(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
-    let rows = sqlx::query_as::<_, NameRow>(
-        "SELECT g.id, g.name FROM wishlists w JOIN `groups` g ON g.id = w.group_id \
-         JOIN group_members m ON m.group_id = g.id AND m.user_id = w.user_id \
-         WHERE w.user_id = ? AND g.id <> ? \
+    let target = sqlx::query_scalar::<_, String>(
+        "SELECT i.title FROM wishlist_items i JOIN wishlists w ON w.id = i.wishlist_id \
+         WHERE w.user_id = ? AND w.group_id = ?",
+    )
+    .bind(user_id)
+    .bind(group_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| db_error("copy: target titles", e))?;
+    let free = u32::try_from(MAX_ITEMS.saturating_sub(target.len())).unwrap_or(0);
+    let on_target: std::collections::HashSet<String> =
+        target.iter().map(|title| title_key(title)).collect();
+
+    let lists = sqlx::query_as::<_, SourceRow>(
+        "SELECT w.id AS list_id, g.id AS group_id, g.name, w.updated_at \
+         FROM wishlists w JOIN `groups` g ON g.id = w.group_id \
+         JOIN group_members m ON m.group_id = w.group_id AND m.user_id = w.user_id \
+         WHERE w.user_id = ? AND w.group_id <> ? \
          AND EXISTS (SELECT 1 FROM wishlist_items i WHERE i.wishlist_id = w.id) \
-         ORDER BY g.name, g.id",
+         ORDER BY w.updated_at DESC, g.id DESC",
     )
     .bind(user_id)
     .bind(group_id)
     .fetch_all(&state.pool)
     .await
     .map_err(|e| db_error("copy: sources", e))?;
-    Ok(rows
+    let rows = sqlx::query_as::<_, SourceItemRow>(
+        "SELECT i.id, i.wishlist_id, i.title, i.description, i.link \
+         FROM wishlist_items i JOIN wishlists w ON w.id = i.wishlist_id \
+         JOIN group_members m ON m.group_id = w.group_id AND m.user_id = w.user_id \
+         WHERE w.user_id = ? AND w.group_id <> ? \
+         ORDER BY i.position, i.id",
+    )
+    .bind(user_id)
+    .bind(group_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| db_error("copy: source items", e))?;
+
+    let mut items: HashMap<i32, Vec<CopyItem>> = HashMap::new();
+    for row in rows {
+        let item = CopyItem {
+            on_target: on_target.contains(&title_key(&row.title)),
+            copyable: copyable(&row.title, row.description.as_deref(), row.link.as_deref()),
+            link_host: row.link.as_deref().and_then(link_host),
+            id: row.id,
+            title: row.title,
+            description: row.description,
+        };
+        items.entry(row.wishlist_id).or_default().push(item);
+    }
+    // A list emptied between the two reads is no source.
+    let sources = lists
         .into_iter()
-        .map(|r| NamedRef {
-            id: r.id,
-            name: r.name,
+        .filter_map(|list| {
+            let items = items
+                .remove(&list.list_id)
+                .filter(|items| !items.is_empty())?;
+            Some(CopySource {
+                group: NamedRef {
+                    id: list.group_id,
+                    name: list.name,
+                },
+                updated_at: list.updated_at,
+                items,
+            })
         })
-        .collect())
+        .collect();
+    Ok(CopySources { free, sources })
 }
 
 pub async fn copy_items(
     group_id: i32,
     source_group_id: i32,
     item_ids: Vec<i32>,
-) -> Result<(), WishlistError> {
+) -> Result<u32, WishlistError> {
     let user_id = user_id().await?;
     let state = state()?;
     let _turn = writer_turn(user_id).await;
@@ -919,21 +1053,45 @@ pub async fn copy_items(
         || ids.len() > MAX_ITEMS
         || ids.iter().any(|id| *id <= 0)
     {
-        return Err(WishlistError::Validation(vec![(
-            WishlistField::Items,
-            WishlistFieldError::SelectionRequired,
-        )]));
+        return Err(items_error(WishlistFieldError::SelectionRequired));
     }
-    retrying(|| copy_items_tx(&state, user_id, group_id, source_group_id, &ids)).await
+    let copied =
+        retrying(|| copy_items_tx(&state, user_id, group_id, source_group_id, &ids)).await?;
+    tracing::info!(
+        user_id,
+        group_id,
+        source_group_id,
+        copied,
+        "wishlist items copied"
+    );
+    Ok(copied)
 }
 
+/// A validation error of the whole list (the copy selection).
+fn items_error(problem: WishlistFieldError) -> WishlistError {
+    WishlistError::Validation(vec![(WishlistField::Items, problem)])
+}
+
+/// A target item as the copy locks it.
+#[derive(FromRow)]
+struct TargetRow {
+    id: i32,
+    position: i32,
+    title: String,
+}
+
+/// The copy under the locks. The checks run in this order and the first failing one is
+/// returned before anything is written: every selected id on the source list (`NotFound`),
+/// no selected title key already on the target list (`AlreadyOnList`; compared with the
+/// target before the copy, so two selected wishes with the same key are both copied),
+/// every selected wish valid by today's rules (`ItemNotCopyable`), the item cap.
 async fn copy_items_tx(
     state: &AppState,
     user_id: i32,
     group_id: i32,
     source_group_id: i32,
     ids: &std::collections::BTreeSet<i32>,
-) -> Result<(), Fail> {
+) -> Result<u32, Fail> {
     let mut conn = connection(state).await?;
     let mut tx = begin(&mut conn).await?;
     let ordered = if group_id < source_group_id {
@@ -968,13 +1126,43 @@ async fn copy_items_tx(
     if selected.len() != ids.len() {
         return Err(WishlistError::NotFound.into());
     }
-    let existing = lock_items(&mut tx, destination).await?;
-    if existing.len() + selected.len() > MAX_ITEMS {
-        return Err(WishlistError::Validation(vec![(
-            WishlistField::Items,
-            WishlistFieldError::TooManyItems,
-        )])
-        .into());
+    // The target's items, locked, with their titles for the duplicate check.
+    let target = sqlx::query_as::<_, TargetRow>(
+        "SELECT id, position, title FROM wishlist_items WHERE wishlist_id = ? \
+         ORDER BY position, id FOR UPDATE",
+    )
+    .bind(destination)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(tx_error("copy: target items"))?;
+    let on_target: std::collections::HashSet<String> =
+        target.iter().map(|row| title_key(&row.title)).collect();
+    let existing: Vec<PositionRow> = target
+        .into_iter()
+        .map(|row| PositionRow {
+            id: row.id,
+            position: row.position,
+        })
+        .collect();
+    if selected
+        .iter()
+        .any(|row| on_target.contains(&title_key(&row.title)))
+    {
+        return Err(items_error(WishlistFieldError::AlreadyOnList).into());
+    }
+    let values = selected
+        .iter()
+        .map(|row| {
+            validate(
+                &row.title,
+                row.description.as_deref().unwrap_or_default(),
+                row.link.as_deref().unwrap_or_default(),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| items_error(WishlistFieldError::ItemNotCopyable))?;
+    if existing.len() + values.len() > MAX_ITEMS {
+        return Err(items_error(WishlistFieldError::TooManyItems).into());
     }
     let mut position = existing.iter().map(|r| r.position).max().unwrap_or(0);
     if position > i32::MAX - MAX_ITEMS as i32
@@ -983,17 +1171,14 @@ async fn copy_items_tx(
         renumber(&mut tx, &existing).await?;
         position = existing.len() as i32;
     }
-    for row in selected {
-        let values = validate(
-            &row.title,
-            row.description.as_deref().unwrap_or_default(),
-            row.link.as_deref().unwrap_or_default(),
-        )?;
+    let copied = u32::try_from(values.len()).unwrap_or(u32::MAX);
+    for values in values {
         position += 1;
         sqlx::query("INSERT INTO wishlist_items (wishlist_id, title, description, link, position) VALUES (?, ?, ?, ?, ?)")
             .bind(destination).bind(values.title).bind(values.description).bind(values.link).bind(position)
             .execute(&mut *tx).await.map_err(tx_error("copy: insert item"))?;
     }
     touch_list(&mut tx, destination).await?;
-    commit(tx).await
+    commit(tx).await?;
+    Ok(copied)
 }

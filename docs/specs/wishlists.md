@@ -263,6 +263,8 @@ None.
 
 ## Issue #57: copying own wishes (approved 2026-11-03)
 
+Amended 2026-11-16 (#76, copy wishes): the source selection described here (source `<select>`, "Show wishes", `?source=`) is replaced by the copy section of `docs/specs/copy-wishes.md`, which also adds `get_copy_sources`, the `already_on_list` / `item_not_copyable` checks, the counted flash and the `?copy=1` redirects of failed plain posts. The server rules below still apply.
+
 The user requested implementation of #57, extending the original exclusion of copying. The editor at `/groups/:id/wishlist` provides own source-list selection and checkbox selection of one or more items. Copy preserves source order, title, description and normalized link, generates new IDs and timestamps, and appends to the destination. Source rows and timestamps remain unchanged. Historical/drawn groups remain available while the user is still a member; departed/deleted lists are unavailable under W12.
 
 Both groups require current membership, and the source must belong to the caller. The server rejects missing/foreign item IDs together, duplicate IDs are deduplicated, same-list copying is rejected, and the 50-item cap applies atomically to the complete selection. All group locks are taken in ascending ID order, then both wishlist locks in that order; destination creation happens in that order too. Copy validates item contents under W8/W9 before insert. No GET creates data.

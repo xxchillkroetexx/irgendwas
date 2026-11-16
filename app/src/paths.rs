@@ -49,6 +49,12 @@ pub fn wishlist_item_anchor(item_id: i32) -> String {
     format!("item-{item_id}")
 }
 
+/// The edit page with the copy section open (`?copy=1`, copy-wishes). No `#copy` fragment:
+/// without JavaScript the flash is not sticky and would scroll out of view.
+pub fn wishlist_copy_open_path(group_id: i32) -> String {
+    format!("{}?copy=1", wishlist_edit_path(group_id))
+}
+
 /// The edit page with an item's inline form open (`?edit=`), at the item's row.
 pub fn wishlist_item_edit_path(group_id: i32, item_id: i32) -> String {
     format!(
