@@ -133,12 +133,7 @@ fn precheck_normalised(norm: &Normalised) -> Result<(), DrawError> {
             min: MIN_DRAW_MEMBERS,
         });
     }
-    if n > MAX_DRAW_MEMBERS {
-        return Err(DrawError::TooManyMembers {
-            count: n,
-            max: MAX_DRAW_MEMBERS,
-        });
-    }
+    // `Normalised::new` already refused more than MAX_DRAW_MEMBERS.
     match check_feasibility(&norm.members, &norm.exclusions) {
         Feasibility::Feasible => Ok(()),
         Feasibility::Infeasible(reason) => Err(DrawError::Infeasible(reason)),

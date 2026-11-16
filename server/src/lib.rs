@@ -78,7 +78,10 @@ async fn legacy_join(Query(query): Query<HashMap<String, String>>) -> Response {
         .filter(|code| code.len() <= 128)
         .map(|code| app::groups_api::normalize_invitation_code(code))
         .filter(|code| code.len() == 8 && code.bytes().all(|byte| byte.is_ascii_alphanumeric()));
-    let target = code.map_or_else(|| "/join".to_string(), |code| format!("/join/{code}"));
+    let target = code
+        .as_deref()
+        .and_then(app::groups_api::join_path)
+        .unwrap_or_else(|| "/join".to_string());
     let mut response = Redirect::temporary(&target).into_response();
     response
         .headers_mut()
