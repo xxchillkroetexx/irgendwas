@@ -18,13 +18,15 @@ dd if=/dev/zero of="$test_dir/cache/target-check/existing" bs=1048576 count=2 2>
 export CI_CACHE_TEST_DIR="$test_dir" TARGET_CACHE_MAX_MB=1
 cache="$test_dir/cache/target-check"
 
-# Hold the first job in its build phase, above the configured threshold.
+# The first job finds the cache above the threshold: it starts over under the lock, then
+# grows the cache again during its phase and holds it.
 sh "$test_dir/a/scripts/ci-target-dir.sh" "$cache" sh -ec '
     test -L target
-    test -f target/existing
+    test ! -e target/existing
+    dd if=/dev/zero of=target/built bs=1048576 count=2 2>/dev/null
     : > "$CI_CACHE_TEST_DIR/first-started"
     while [ ! -e "$CI_CACHE_TEST_DIR/release" ]; do sleep 0.05; done
-    test -f target/existing
+    test -f target/built
 ' >"$test_dir/first.log" 2>&1 &
 first_pid=$!
 attempt=0
@@ -37,10 +39,14 @@ while [ ! -e "$test_dir/first-started" ]; do
     fi
     sleep 0.05
 done
+grep -q 'starting over' "$test_dir/first.log"
+test -e "$test_dir/cache/target-check.lock"
 
+# The second job must neither run nor wipe while the first one builds, although the
+# cache is above the threshold again.
 sh "$test_dir/b/scripts/ci-target-dir.sh" "$cache" sh -ec '
     test -L target
-    test -f target/existing
+    test ! -e target/built
     : > "$CI_CACHE_TEST_DIR/second-started"
 ' >"$test_dir/second.log" 2>&1 &
 second_pid=$!
@@ -50,22 +56,35 @@ if [ -e "$test_dir/second-started" ] || ! kill -0 "$second_pid" 2>/dev/null; the
     echo "second job did not wait for the shared cache" >&2
     exit 1
 fi
-test -f "$cache/existing"
+test -f "$cache/built"
 : > "$test_dir/release"
-wait "$first_pid"
+if ! wait "$first_pid"; then
+    first_pid=""
+    cat "$test_dir/first.log" >&2
+    echo "the first job's cache was touched during its phase" >&2
+    exit 1
+fi
 first_pid=""
-wait "$second_pid"
+if ! wait "$second_pid"; then
+    second_pid=""
+    cat "$test_dir/second.log" >&2
+    echo "the second job did not start over after the first one" >&2
+    exit 1
+fi
 second_pid=""
 test -e "$test_dir/second-started"
-test -f "$cache/existing"
-grep -q 'clean the cache manually' "$test_dir/first.log"
+grep -q 'starting over' "$test_dir/second.log"
+
+# Below the threshold the cache is kept.
+sh "$test_dir/a/scripts/ci-target-dir.sh" "$cache" sh -c ': > target/kept'
+sh "$test_dir/b/scripts/ci-target-dir.sh" "$cache" sh -c 'test -f target/kept'
 
 # A failed phase must release the lock for the next job.
 if sh "$test_dir/a/scripts/ci-target-dir.sh" "$cache" sh -c 'exit 42'; then
     echo "failed build unexpectedly succeeded" >&2
     exit 1
 fi
-sh "$test_dir/b/scripts/ci-target-dir.sh" "$cache" sh -c 'test -f target/existing'
+sh "$test_dir/b/scripts/ci-target-dir.sh" "$cache" sh -c 'test -f target/kept'
 
 # Without the mounted parent directory, run the command with an ordinary target.
 sh "$test_dir/a/scripts/ci-target-dir.sh" "$test_dir/unmounted/target" sh -c '

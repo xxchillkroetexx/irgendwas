@@ -2,6 +2,9 @@
 # Run an entire CI build/test phase under a lock outside its shared target dir.
 # Usage: sh scripts/ci-target-dir.sh /ci-cache/target-check command [args...]
 # If the volume is absent, execute the command against the checkout's own target.
+#   TARGET_CACHE_MAX_MB  wipe the directory above this size (default 20000), under the
+#                        lock and before the phase starts; it grows with every dependency
+#                        or toolchain update
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -24,10 +27,12 @@ mkdir -p "$dir"
 size="$(du -sm "$dir" | cut -f1)"
 echo "persistent target dir $dir: ${size} MB"
 if [ "$size" -gt "$max" ]; then
-    # Old workflow runs do not hold our lock. Even under flock, deleting this
-    # directory could destroy one of those builds. An operator may clean it only
-    # after all old and new jobs have stopped.
-    echo "above ${max} MB: clean the cache manually after all CI jobs stop" >&2
+    # Under the exclusive lock: every job that uses this directory (the -v2 paths) holds
+    # it for its whole phase, so no build can be running in it now. The lock file lives
+    # next to the directory and survives the wipe.
+    echo "above ${max} MB: starting over"
+    rm -rf "$dir"
+    mkdir -p "$dir"
 fi
 rm -rf target
 ln -s "$dir" target

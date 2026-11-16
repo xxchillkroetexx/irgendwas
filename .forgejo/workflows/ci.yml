@@ -15,10 +15,10 @@
 # dind engine, so it survives only if dind's /var/lib/docker is a volume itself. Each job
 # uses its own subdirectory (~5-10 GB) and an external lock for the entire build/test
 # phase. The v2 cache paths isolate them from older jobs that do not hold the lock.
-# Above $TARGET_CACHE_MAX_MB the job warns; clean the cache manually only after
-# ALL jobs have stopped (older runs do not use the lock). Never remove a lock file while
-# any job might use it. `docker exec <dind container> docker volume rm irgendwas-ci-cache`
-# starts over after the runner is idle.
+# Above $TARGET_CACHE_MAX_MB the job wipes its directory under that lock before the phase
+# starts (every job using a v2 path holds it). Never remove a lock file while any job
+# might use it. `docker exec <dind container> docker volume rm irgendwas-ci-cache` starts
+# over after the runner is idle.
 name: ci
 
 # Documentation-only changes skip the pipeline.
