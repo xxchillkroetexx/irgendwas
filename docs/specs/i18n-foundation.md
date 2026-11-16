@@ -108,7 +108,7 @@ Free functions hold the logic:
 
 **Plurals.** Catalog entries `<base>.one` and `<base>.other`; there is no plain `<base>` key next to them. `I18n::t_plural(base, n: i64, params)` and `t_plural!(i18n, "base", n, name = value, …)` look up `<base>.one` if `n == 1`, else `<base>.other`, each with the usual fallback (English form, then the key `<base>.one` / `<base>.other` itself). `n` only selects the form; placeholders come from the named arguments as in `t!` (so pass `count = n` when the text shows the number). en and de share this rule; there are no other plural categories. Rule for every slice: a message that puts a count next to a counted noun uses `t_plural!` (review rule; the scanner cannot detect it).
 
-**Flash messages.** `FlashMessage.params: Vec<(String, FlashArg)>` with `enum FlashArg { Text(String), Number(i64), Date(DateTime<Utc>), DateTime(DateTime<Utc>) }`, plus `plural: Option<i64>`. Builders: `with_param(name, text)` (unchanged meaning), `with_number(name, n)`, `with_date(name, dt)`, `with_datetime(name, dt)`, `with_plural(n)`. New `FlashMessage::text(&self, i18n: &I18n) -> String` renders the args with that `I18n` (number/date/datetime formatted by it) and uses `t_plural` when `plural` is set. `FlashAlert` uses `text`. So a flash renders in the locale of the page that shows it, not the one that queued it. Old session payloads need no compatibility (fresh start).
+**Flash messages.** `FlashMessage.params: Vec<(String, FlashArg)>` with `enum FlashArg { Text(String), Number(i64), Date(DateTime<Utc>), DateTime(DateTime<Utc>) }`, plus `plural: Option<i64>`. Builders: `with_param(name, text)` (unchanged meaning), `with_number(name, n)`, `with_date(name, dt)`, `with_datetime(name, dt)`, `with_plural(n)`. New `FlashMessage::text(&self, i18n: &I18n) -> String` renders the args with that `I18n` (number/date/datetime formatted by it) and uses `t_plural` when `plural` is set. `FlashAlert` uses `text`. So a flash renders in the locale of the page that shows it, not the one that queued it. Old session payloads need no compatibility (fresh start). (Amended 2026-11-15, #71: production has run on migrated PHP data since 2026-11-04; PHP sessions were not migrated, so this held for the switch, but later payload changes meet live sessions.)
 
 **Escaping.** Translated strings are rendered as text nodes or attribute values only, never through `inner_html`.
 
@@ -169,7 +169,7 @@ New migration `rust/migrations/NNNN_user_locale.sql` (placeholder number, the ne
 ALTER TABLE users ADD COLUMN locale VARCHAR(8) NULL DEFAULT NULL;
 ```
 - NULL = no stored choice: `APP_LOCALE` for mails, nothing adopted at login. Code writes only canonical codes (`en`, `de`). No CHECK constraint, so adding a language later is a code-only change; readers treat unknown values like NULL.
-- Existing rows (dev databases, fixtures) get NULL. No data migration (fresh start).
+- Existing rows (dev databases, fixtures) get NULL. No data migration (fresh start). (Amended 2026-11-15, #71: the PHP users were imported after all, also with `locale` NULL, since PHP stored no account language.)
 - Writing `locale` bumps `users.updated_at` (`ON UPDATE CURRENT_TIMESTAMP`); acceptable.
 - Queries that need it name the column. `CurrentUser` does not carry it.
 - Test fixture (`app::test_support`): `set_user_locale(pool, user_id, Option<&str>)`.

@@ -8,9 +8,11 @@ Scope: one wishlist per member and group. The owner adds, edits, removes and reo
 
 Not in scope: assignments and the draw (draw slice), exclusions, a global "one list for all my groups", reserving or marking items as bought.
 
-Fresh start: no production data is migrated. The Rust app owns its schema, and `0001_baseline.sql` (the PHP schema) is the starting point.
+Fresh start: no production data is migrated. The Rust app owns its schema, and `0001_baseline.sql` (the PHP schema) is the starting point. (Superseded 2026-11-15, see the amendment below.)
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). `wishlist.view.lastUpdated` uses `LocalDate` (`app::format`); the panel item counts are plural keys. AC33 was added.
+
+Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The import trimmed titles, turned empty descriptions and links into NULL, normalised line breaks and numbered `position` by item id; links were otherwise copied as PHP stored them (PHP did not restrict them to http/https). Wishlists that members who left in PHP still had were copied too (groups amendment of the same date). The old PHP URLs are still not kept: a bookmark to `/wishlist/...` gets the 404 page.
 
 ## Current PHP behaviour
 
@@ -119,7 +121,7 @@ Every existing handler calls `requireAuth()`: anonymous users are sent to `/auth
 
 - `/groups/:id/wishlist/:me` is the read-only view of my own list ("how others see it"), with an Edit button.
 - The draw slice's assignment card on the group page and its dashboard assignments card link to `/groups/{group_id}/wishlist/{receiver_id}`.
-- Old PHP URLs (`/wishlist/...`) are not kept (fresh start).
+- Old PHP URLs (`/wishlist/...`) are not kept (fresh start; 2026-11-15: still true with the migrated data, see the amendment at the top).
 - Non-numeric or non-positive `:id` / `:user_id` gives the 404 page. Logged-out visitors are redirected to login with `?next=` (auth slice) and land back on the same URL.
 - Edit page query `?edit={item_id}`: renders that item's row as an inline edit form. This is a plain GET navigation, so it also works without JS. If the id is not one of my items in this group, the parameter is ignored.
 

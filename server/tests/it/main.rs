@@ -55,6 +55,7 @@ mod paths;
 mod pwa_install_link;
 mod session;
 mod share_target;
+mod shell_integrity;
 mod tz;
 mod wishlists_concurrency;
 mod wishlists_edit;

@@ -7,10 +7,11 @@ status: approved
 Scope: create, edit and delete groups, list my groups, show a group, join via invitation code, leave, regenerate the invitation code. Added in the redesign: admin removes a member, admin transfers admin rights.
 Not in scope (hooks only): wishlists, exclusions and the draw (`GroupRepository::performDraw` / `drawSecretSanta`, draw notifications). These are later slices.
 
-Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
+Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names. (Superseded 2026-11-15, see the amendment below.)
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Dates are displayed with `app::format` and read/written through the `tz` date-input helpers; `group.memberCount` and `flash.error.too_many_code_attempts` are plural keys. AC5 was revised; AC46 and AC47 were added.
 Revised 2026-11-01 (implementation): a migration (next free number, 0005) changes `groups.invitation_code` to `utf8mb4_bin` (CLAUDE.md identity-column rule from the auth review; the baseline column is `utf8mb4_unicode_ci`). This replaces "no migration" for this slice.
+Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The import converted `registration_deadline` and `draw_date` from the Berlin wall-clock values PHP wrote to UTC. It copied `wishlists` without a membership check, so wishlists that a PHP "leave" left behind can exist in production (Resolved 1); exclusion rules were kept only between members.
 
 ## Current PHP behaviour
 
@@ -288,7 +289,7 @@ Fixtures: users Alice, Bob, Carol, Dave. G = group with admin Alice and members 
 None.
 
 ## Resolved (2026-10-31, user)
-1. **Orphan cleanup migration** (delete wishlists/exclusions that PHP "leave" left behind): moot. Fresh start, so there is no legacy data and no cleanup migration. Going forward, D5 deletes a departing member's data in the same transaction.
+1. **Orphan cleanup migration** (delete wishlists/exclusions that PHP "leave" left behind): moot. Fresh start, so there is no legacy data and no cleanup migration. (2026-11-15: the migrated data can contain such wishlists, see the amendment at the top; a cleanup would now be a new migration that applies to the populated database.) Going forward, D5 deletes a departing member's data in the same transaction.
 2. **Dropout after the draw**: yes, the draw slice provides an admin "reset draw".
 3. **Automatic draw on `draw_date`**: no. `draw_date` is informational only. No background job.
 4. **Invite by email**: no. Sharing the link is enough.

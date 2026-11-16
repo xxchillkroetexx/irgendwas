@@ -8,11 +8,13 @@ Register, login, logout, forgot/reset password. Covers the session contract (`us
 
 PHP reference: `src/Controllers/AuthController.php`, `src/Controllers/BaseController.php` (`requireAuth`), `src/Core/Auth.php`, `src/Core/Session.php`, `src/Repositories/UserRepository.php`, `src/Models/User.php`, `src/Services/EmailService.php` (`sendPasswordReset`, `sendWelcomeEmail`, `sendExistingAccountNotification`, `sendEmail`), `src/Views/auth/*`, `src/Views/layouts/main.php`, `src/Core/Application.php` (routes).
 
-Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
+Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names. (Superseded 2026-11-15, see the amendment below.)
 
 Revised 2026-10-31: aligned with i18n-foundation (built before this slice). `safe_next` builds on `safe_return_path`; login adopts the account language (`users.locale`); registration completion stores it; mails to existing accounts use it; dates and plurals go through `app::format` / `t_plural!`; `generic_error_message` → `error.generic.message`. AC2, AC33, AC43 and AC45 were revised; AC47–AC51 were added.
 
 Amended 2026-11-09 (#71, credential races): login refuses credentials that changed between verification and session creation, and its rehash only replaces the hash it verified (step 5); a reset request writes its token only while the account still has the address it mails (step 3); a registration whose token a concurrent request replaced answers the same success without a mail (step 4); `reset_password` also clears a pending email change (step 2).
+
+Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. Migrated users do not register again: their accounts keep the PHP bcrypt hash (`$2y$`), which never verifies (argon2id only), so they set a new password through "forgot password"; `password::verify` spends the same argon2id work on such hashes, so login timing does not single them out (decision log 2026-11-03, auth). The import lowercased and trimmed every email (none changed) and dropped the plaintext reset and verification tokens, so the outcome of Resolved 5 still holds for the migrated rows.
 
 ## Current PHP behaviour
 
@@ -372,5 +374,5 @@ None.
 2. **"Remember me"**: separate control dropped. Revised by #60 (2026-11-03): every login now has a persistent, rolling 90-day default lifetime for everyday and PWA use; no short-lived mode.
 3. **Link lifetimes**: reset link 1 hour, registration link 24 hours.
 4. **Rate limiter**: in-memory, with the proposed limits (10 failed logins per email / 50 per IP per 15 min; 3 mails per address and 20 register/forgot calls per IP per hour).
-5. **Production `users` table shape** (collation, `failed_login_attempts`, case-duplicate emails): moot, there is no production DB to migrate. Emails are normalised to lowercase on write and compared lowercased.
+5. **Production `users` table shape** (collation, `failed_login_attempts`, case-duplicate emails): moot, there is no production DB to migrate. Emails are normalised to lowercase on write and compared lowercased. (2026-11-15: production does hold the migrated PHP users now; the import normalised their emails the same way, see the amendment at the top.)
 6. **Proxy topology for client IP**: Caddy is the edge proxy in front of the app and may itself sit behind Traefik or nginx. The app reads the client IP by walking `X-Forwarded-For` from the right and skipping hops in `TRUSTED_PROXIES_CIDR` (AC16). The PHP env-name mismatch (`TRUSTED_PROXY_CIDR` in the Caddyfile vs. `TRUSTED_PROXIES_CIDR` in `.env.template`) is fixed in the deploy config (PLAN.md risks).

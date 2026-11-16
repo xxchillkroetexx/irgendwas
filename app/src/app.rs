@@ -19,10 +19,18 @@ use crate::pages::wishlists::{WishlistEditPage, WishlistViewPage};
 use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound, ProfilePage, VerifyEmailPage};
 use crate::tz::use_timezone;
 
+// Subresource Integrity (#71): the browser refuses the CDN file unless its SHA-384 matches,
+// so a compromised CDN cannot run script on our pages (token-bearing auth pages included).
+// Changing a URL means recomputing its hash:
+//   curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A
 const BOOTSTRAP_CSS: &str =
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css";
+const BOOTSTRAP_CSS_SRI: &str =
+    "sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM";
 const BOOTSTRAP_JS: &str =
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js";
+const BOOTSTRAP_JS_SRI: &str =
+    "sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz";
 
 /// Older iOS Safari does not match `(display-mode: standalone)` in a Home Screen web
 /// app but sets `navigator.standalone`. Marks `<html data-standalone>` so the stylesheet
@@ -49,9 +57,9 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 // Before the stylesheets: an inline script after a pending stylesheet
                 // blocks the parser until that stylesheet has loaded.
                 <script inner_html=STANDALONE_JS></script>
-                <link rel="stylesheet" href=BOOTSTRAP_CSS/>
+                <link rel="stylesheet" href=BOOTSTRAP_CSS integrity=BOOTSTRAP_CSS_SRI crossorigin="anonymous"/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
-                <script defer src=BOOTSTRAP_JS></script>
+                <script defer src=BOOTSTRAP_JS integrity=BOOTSTRAP_JS_SRI crossorigin="anonymous"></script>
                 <AutoReload options=options.clone()/>
                 <HydrationScripts options/>
                 <MetaTags/>
