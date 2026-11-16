@@ -150,10 +150,12 @@ async fn durable_draw_outbox_upgrade_preserves_populated_groups_and_assignments(
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query("ALTER TABLE `groups` DROP COLUMN draw_generation, DROP COLUMN draw_mail_claim, DROP COLUMN draw_mail_claim_until")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "ALTER TABLE `groups` DROP COLUMN draw_mail_claim, DROP COLUMN draw_mail_claim_until",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     sqlx::query("ALTER TABLE gift_assignments DROP COLUMN notification_claim, DROP COLUMN notification_claim_until, DROP COLUMN notification_next_attempt_at")
         .execute(&pool).await.unwrap();
 
@@ -179,19 +181,14 @@ async fn durable_draw_outbox_upgrade_preserves_populated_groups_and_assignments(
         .fetch_all(&pool).await.unwrap();
     assert_eq!(after, before);
     assert_eq!(ts::groups_snapshot(&pool).await, before_groups);
-    type GroupMigrationState = (
-        u64,
-        Option<DateTime<Utc>>,
-        Option<String>,
-        Option<DateTime<Utc>>,
-    );
-    let (generation, after_drawn_at, group_claim, group_claim_until): GroupMigrationState =
-        sqlx::query_as("SELECT draw_generation, drawn_at, draw_mail_claim, draw_mail_claim_until FROM `groups` WHERE id = ?")
-            .bind(group)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(generation, 0);
+    type GroupMigrationState = (Option<DateTime<Utc>>, Option<String>, Option<DateTime<Utc>>);
+    let (after_drawn_at, group_claim, group_claim_until): GroupMigrationState = sqlx::query_as(
+        "SELECT drawn_at, draw_mail_claim, draw_mail_claim_until FROM `groups` WHERE id = ?",
+    )
+    .bind(group)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(after_drawn_at, drawn_at);
     assert!(group_claim.is_none());
     assert!(group_claim_until.is_none());

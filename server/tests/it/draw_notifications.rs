@@ -28,7 +28,7 @@ async fn delivery_claims_do_not_change_group_updated_at_or_overwrite_a_concurren
         if reset {
             sqlx::query("UPDATE `groups` SET is_drawn = FALSE, updated_at = '2020-01-01 00:00:00' WHERE id = ?")
                 .bind(d.g).execute(&pool).await.unwrap();
-            sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, generation, group_name, admin_name) VALUES (?, ?, 0, ?, ?)")
+            sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
                 .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
         }
         let attempts = d.transport.attempts_total();
@@ -299,7 +299,7 @@ async fn recovery_waits_for_a_live_claim_and_reclaims_an_expired_one(pool: MySql
 async fn reset_notifications_are_committed_and_rediscovered_after_a_missed_wakeup(pool: MySqlPool) {
     let d = draw_world(&pool).await;
     // A committed outbox row after a reset, as after a process died before enqueueing.
-    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, generation, group_name, admin_name) VALUES (?, ?, 0, ?, ?)")
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
         .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
     let worker = DrawWorker::with_reconcile_interval(
         pool.clone(),
@@ -332,7 +332,7 @@ async fn reset_notifications_are_committed_and_rediscovered_after_a_missed_wakeu
 #[sqlx::test(migrations = "../migrations")]
 async fn reset_notice_for_a_former_member_is_not_sent_and_is_removed(pool: MySqlPool) {
     let d = draw_world(&pool).await;
-    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, generation, group_name, admin_name) VALUES (?, ?, 0, ?, ?)")
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
         .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
     sqlx::query("DELETE FROM group_members WHERE group_id = ? AND user_id = ?")
         .bind(d.g)
@@ -354,8 +354,12 @@ async fn reset_notice_for_a_former_member_is_not_sent_and_is_removed(pool: MySql
     assert_eq!(d.transport.attempts_to(&d.emails[1]), 0);
 }
 
+/// D7 (amended 2026-11-16, review of #84): a quick redraw keeps the unsent reset notices;
+/// every former giver still learns of the re-roll, and before the new result.
 #[sqlx::test(migrations = "../migrations")]
-async fn redraw_discards_old_reset_notices_except_an_already_inflight_one(pool: MySqlPool) {
+async fn a_quick_redraw_keeps_the_reset_notices_and_sends_them_before_the_new_result(
+    pool: MySqlPool,
+) {
     let d = draw_world(&pool).await;
     d.draw_and_deliver(d.g).await;
     let old_attempts = d.transport.attempts_total();
@@ -369,19 +373,31 @@ async fn redraw_discards_old_reset_notices_except_an_already_inflight_one(pool: 
     })
     .await
     .expect("reset notice did not start");
+    perform(&mut alice, d.g).await.dr_ok();
     let pending: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?")
             .bind(d.g)
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(pending, 2, "both notices were committed with the reset");
-    perform(&mut alice, d.g).await.dr_ok();
+    assert_eq!(pending, 2, "the redraw keeps both reset notices");
     d.transport.unblock();
     d.idle().await;
-    let old = d.reset_mails(d.bob, GROUP_NAME).await.len()
-        + d.reset_mails(d.carol, GROUP_NAME).await.len();
-    assert!(old <= 1, "no stale reset may start after the redraw: {old}");
+
+    let draw = en_with("email.drawResult.subject", &[("group", GROUP_NAME)]);
+    let reset_subject = en_with("email.drawReset.subject", &[("group", GROUP_NAME)]);
+    for user in [d.bob, d.carol] {
+        assert_eq!(d.reset_mails(user, GROUP_NAME).await.len(), 1);
+        assert_eq!(d.draw_mails(user, GROUP_NAME).await.len(), 2);
+        assert_eq!(
+            d.transport.subjects_to(d.email_of(user)),
+            vec![draw.clone(), reset_subject.clone(), draw.clone()],
+            "old result, reset notice, new result"
+        );
+    }
+    // The admin who reset gets no reset mail, only both results.
+    assert_eq!(d.reset_mails(d.alice, GROUP_NAME).await.len(), 0);
+    assert_eq!(d.draw_mails(d.alice, GROUP_NAME).await.len(), 2);
     let pending: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?")
             .bind(d.g)
@@ -389,6 +405,56 @@ async fn redraw_discards_old_reset_notices_except_an_already_inflight_one(pool: 
             .await
             .unwrap();
     assert_eq!(pending, 0);
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+}
+
+/// Group archive (#61): an archive is read-only for the members, not for the mail
+/// worker; notices committed before the archive are still delivered.
+#[sqlx::test(migrations = "../migrations")]
+async fn pending_notices_of_an_archived_group_are_still_delivered(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+        .bind(d.g).bind(d.carol).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE `groups` SET archived_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(d.g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    assert_eq!(d.draw_mails(d.alice, GROUP_NAME).await.len(), 1);
+    assert_eq!(d.reset_mails(d.carol, GROUP_NAME).await.len(), 1);
+}
+
+/// Review of #84: a wake-up that arrives while the group's job runs is not lost; the job
+/// runs once more after it finishes (no periodic recovery in this test).
+#[sqlx::test(migrations = "../migrations")]
+async fn a_wakeup_during_a_running_job_is_not_lost(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    d.transport.block();
+    d.worker.draw_result(d.g);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the first row did not reach the transport");
+    // Committed while the job is past its row read, then woken (like perform_draw).
+    ts::add_assignment(&pool, d.g, d.bob, d.carol).await;
+    d.worker.draw_result(d.g);
+    d.transport.unblock();
+    d.idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+    assert_eq!(
+        d.transport.attempts_to(&d.emails[1]),
+        1,
+        "the second wake-up must not be swallowed by the running job"
+    );
 }
 
 #[sqlx::test(migrations = "../migrations")]

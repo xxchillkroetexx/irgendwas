@@ -5,19 +5,18 @@ ALTER TABLE gift_assignments
     ADD COLUMN notification_claim_until TIMESTAMP(6) NULL,
     ADD COLUMN notification_next_attempt_at TIMESTAMP(6) NULL;
 
--- A generation identifies the current draw/reset cycle, including on old groups.
+-- One lease per group: at most one draw or reset mail of a group is in flight.
 ALTER TABLE `groups`
-    ADD COLUMN draw_generation BIGINT UNSIGNED NOT NULL DEFAULT 0,
     ADD COLUMN draw_mail_claim CHAR(43) CHARACTER SET ascii COLLATE ascii_bin NULL,
     ADD COLUMN draw_mail_claim_until TIMESTAMP(6) NULL;
 
 -- A reset is recorded in the same transaction as deleting the assignments. It
 -- contains no pairing or receiver data; recipient details are read when sending.
+-- A later draw does not discard it: a giver's new result mail waits for it.
 CREATE TABLE draw_reset_notifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
     group_id INT NOT NULL,
     recipient_id INT NOT NULL,
-    generation BIGINT UNSIGNED NOT NULL,
     group_name VARCHAR(255) NOT NULL,
     admin_name VARCHAR(255) NOT NULL,
     attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,

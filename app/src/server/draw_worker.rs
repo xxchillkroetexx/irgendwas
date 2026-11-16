@@ -80,9 +80,10 @@ struct Shared {
     outstanding: watch::Sender<usize>,
     retrying: Mutex<HashSet<i32>>,
     retrying_reset: Mutex<HashSet<i32>>,
-    // Prevent periodic scans from piling up group hints behind a slow transport.
-    queued_draw_groups: Mutex<HashSet<i32>>,
-    queued_reset_groups: Mutex<HashSet<i32>>,
+    // Prevent periodic scans from piling up group hints behind a slow transport, without
+    // losing a wake-up that arrives while the group's job runs.
+    draw_groups: Mutex<GroupJobs>,
+    reset_groups: Mutex<GroupJobs>,
     deferred_draw_groups: Mutex<HashSet<i32>>,
     deferred_reset_groups: Mutex<HashSet<i32>>,
 }
@@ -139,8 +140,8 @@ impl DrawWorker {
             outstanding,
             retrying: Mutex::new(HashSet::new()),
             retrying_reset: Mutex::new(HashSet::new()),
-            queued_draw_groups: Mutex::new(HashSet::new()),
-            queued_reset_groups: Mutex::new(HashSet::new()),
+            draw_groups: Mutex::new(GroupJobs::default()),
+            reset_groups: Mutex::new(GroupJobs::default()),
             deferred_draw_groups: Mutex::new(HashSet::new()),
             deferred_reset_groups: Mutex::new(HashSet::new()),
         });
@@ -166,12 +167,19 @@ impl DrawWorker {
                             "draw worker: job panicked; recovery will retry"
                         );
                     }
+                    // A wake-up that arrived while the group's job ran runs it again.
                     match kind {
                         "draw_result" => {
-                            lock(&shared.queued_draw_groups).remove(&id);
+                            let again = lock(&shared.draw_groups).finish(id);
+                            if again {
+                                shared.enqueue(Job::DrawResult { group_id: id });
+                            }
                         }
                         "reset_group" => {
-                            lock(&shared.queued_reset_groups).remove(&id);
+                            let again = lock(&shared.reset_groups).finish(id);
+                            if again {
+                                shared.enqueue(Job::ResetGroup { group_id: id });
+                            }
                         }
                         _ => {}
                     }
@@ -207,6 +215,47 @@ impl DrawWorker {
     pub async fn wait_idle(&self) {
         let mut outstanding = self.shared.outstanding.subscribe();
         let _ = outstanding.wait_for(|n| *n == 0).await;
+    }
+}
+
+/// Per-group job bookkeeping: at most one job per group is waiting or running. A wake-up
+/// for a waiting group is redundant; one for a running group marks it to run once more
+/// when it finishes, because the running job may already have read its rows.
+#[derive(Default)]
+struct GroupJobs {
+    pending: HashSet<i32>,
+    running: HashSet<i32>,
+    rerun: HashSet<i32>,
+}
+
+impl GroupJobs {
+    /// Whether a new job must be enqueued.
+    fn wake(&mut self, group_id: i32) -> bool {
+        if self.pending.contains(&group_id) {
+            false
+        } else if self.running.contains(&group_id) {
+            self.rerun.insert(group_id);
+            false
+        } else {
+            self.pending.insert(group_id);
+            true
+        }
+    }
+
+    fn start(&mut self, group_id: i32) {
+        self.pending.remove(&group_id);
+        self.running.insert(group_id);
+    }
+
+    /// Whether the job must run again (it was woken while running).
+    fn finish(&mut self, group_id: i32) -> bool {
+        self.running.remove(&group_id);
+        if self.rerun.remove(&group_id) {
+            self.pending.insert(group_id);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -250,13 +299,15 @@ impl Shared {
     }
 
     fn enqueue_draw_group(self: &Arc<Self>, group_id: i32) {
-        if lock(&self.queued_draw_groups).insert(group_id) {
+        let wake = lock(&self.draw_groups).wake(group_id);
+        if wake {
             self.enqueue(Job::DrawResult { group_id });
         }
     }
 
     fn enqueue_reset_group(self: &Arc<Self>, group_id: i32) {
-        if lock(&self.queued_reset_groups).insert(group_id) {
+        let wake = lock(&self.reset_groups).wake(group_id);
+        if wake {
             self.enqueue(Job::ResetGroup { group_id });
         }
     }
@@ -314,6 +365,8 @@ impl Shared {
              AND ga.notification_attempts < ? \
              AND (ga.notification_claim_until IS NULL OR ga.notification_claim_until <= CURRENT_TIMESTAMP(6)) \
              AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6)) \
+             AND NOT EXISTS (SELECT 1 FROM draw_reset_notifications n \
+                 WHERE n.group_id = ga.group_id AND n.recipient_id = ga.giver_id) \
              ORDER BY ga.group_id",
         ).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await.map_err(|err| {
             tracing::error!(error = %super::db::redacted(&err), "draw worker: recovery query failed");
@@ -323,8 +376,8 @@ impl Shared {
             self.enqueue_draw_group(group);
         }
         let groups = sqlx::query_scalar::<_, i32>(
-            "SELECT DISTINCT n.group_id FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
-             WHERE g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? \
+            "SELECT DISTINCT n.group_id FROM draw_reset_notifications n \
+             WHERE n.attempts < ? \
              AND (n.claim_until IS NULL OR n.claim_until <= CURRENT_TIMESTAMP(6)) \
              AND (n.next_attempt_at IS NULL OR n.next_attempt_at <= CURRENT_TIMESTAMP(6)) ORDER BY n.group_id",
         ).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await.map_err(|err| {
@@ -339,15 +392,13 @@ impl Shared {
 
     async fn run(self: &Arc<Self>, job: Job) {
         match job {
-            Job::DrawResult { group_id } => self.send_group(group_id).await,
+            Job::DrawResult { group_id } => {
+                lock(&self.draw_groups).start(group_id);
+                self.send_group(group_id).await;
+            }
             Job::RetryGroup { group_id } => {
                 lock(&self.deferred_draw_groups).remove(&group_id);
-                let queued = lock(&self.queued_draw_groups).contains(&group_id);
-                if queued {
-                    self.defer_draw_group(group_id);
-                } else {
-                    self.enqueue_draw_group(group_id);
-                }
+                self.enqueue_draw_group(group_id);
             }
             Job::RetryRow { row_id } => {
                 lock(&self.retrying).remove(&row_id);
@@ -355,15 +406,13 @@ impl Shared {
                     self.defer_draw_group(group_id);
                 }
             }
-            Job::ResetGroup { group_id } => self.send_reset_group(group_id).await,
+            Job::ResetGroup { group_id } => {
+                lock(&self.reset_groups).start(group_id);
+                self.send_reset_group(group_id).await;
+            }
             Job::RetryResetGroup { group_id } => {
                 lock(&self.deferred_reset_groups).remove(&group_id);
-                let queued = lock(&self.queued_reset_groups).contains(&group_id);
-                if queued {
-                    self.defer_reset_group(group_id);
-                } else {
-                    self.enqueue_reset_group(group_id);
-                }
+                self.enqueue_reset_group(group_id);
             }
             Job::RetryReset { row_id } => {
                 lock(&self.retrying_reset).remove(&row_id);
@@ -378,7 +427,12 @@ impl Shared {
         let rows = sqlx::query_scalar::<_, i32>(
             "SELECT ga.id FROM gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
              WHERE ga.group_id = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE \
-             AND ga.notification_attempts < ? ORDER BY ga.id",
+             AND ga.notification_attempts < ? \
+             AND (ga.notification_claim_until IS NULL OR ga.notification_claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6)) \
+             AND NOT EXISTS (SELECT 1 FROM draw_reset_notifications n \
+                 WHERE n.group_id = ga.group_id AND n.recipient_id = ga.giver_id) \
+             ORDER BY ga.id",
         )
         .bind(group_id)
         .bind(MAX_ATTEMPTS)
@@ -466,7 +520,9 @@ impl Shared {
              SET ga.notification_claim = ?, ga.notification_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
              WHERE ga.id = ? AND g.is_drawn = TRUE AND ga.notification_sent = FALSE AND ga.notification_attempts < ? \
              AND (ga.notification_claim_until IS NULL OR ga.notification_claim_until <= CURRENT_TIMESTAMP(6)) \
-             AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6))",
+             AND (ga.notification_next_attempt_at IS NULL OR ga.notification_next_attempt_at <= CURRENT_TIMESTAMP(6)) \
+             AND NOT EXISTS (SELECT 1 FROM draw_reset_notifications n \
+                 WHERE n.group_id = ga.group_id AND n.recipient_id = ga.giver_id)",
         ).bind(claim).bind(LEASE_SECONDS).bind(row_id).bind(MAX_ATTEMPTS).execute(&self.pool).await;
         match claimed {
             Ok(result) if result.rows_affected() == 1 => {}
@@ -562,8 +618,10 @@ impl Shared {
 
     async fn send_reset_group(self: &Arc<Self>, group_id: i32) {
         let rows = sqlx::query_scalar::<_, i32>(
-            "SELECT n.id FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
-             WHERE n.group_id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? ORDER BY n.id",
+            "SELECT n.id FROM draw_reset_notifications n \
+             WHERE n.group_id = ? AND n.attempts < ? \
+             AND (n.claim_until IS NULL OR n.claim_until <= CURRENT_TIMESTAMP(6)) \
+             AND (n.next_attempt_at IS NULL OR n.next_attempt_at <= CURRENT_TIMESTAMP(6)) ORDER BY n.id",
         ).bind(group_id).bind(MAX_ATTEMPTS).fetch_all(&self.pool).await;
         let rows = match rows {
             Ok(rows) => rows,
@@ -582,11 +640,11 @@ impl Shared {
     }
 
     async fn send_reset(self: &Arc<Self>, row_id: i32) -> Option<i32> {
-        let target = sqlx::query_as::<_, (i32, u64)>(
-            "SELECT n.group_id, n.generation FROM draw_reset_notifications n \
+        let target = sqlx::query_scalar::<_, i32>(
+            "SELECT n.group_id FROM draw_reset_notifications n \
              JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id WHERE n.id = ?",
         ).bind(row_id).fetch_optional(&self.pool).await;
-        let (group_id, generation) = match target {
+        let group_id = match target {
             Ok(Some(target)) => target,
             Ok(None) => return None,
             Err(err) => {
@@ -598,23 +656,23 @@ impl Shared {
             tracing::error!("draw worker: could not generate reset claim");
             return None;
         };
+        // A reset notice stays valid after a redraw (spec D7: a re-roll stays visible to
+        // every former giver), so the group lease is taken whether or not it is drawn.
         let group_claim = sqlx::query(
             "UPDATE `groups` SET draw_mail_claim = ?, draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), updated_at = updated_at \
-             WHERE id = ? AND is_drawn = FALSE AND draw_generation = ? \
-             AND (draw_mail_claim_until IS NULL OR draw_mail_claim_until <= CURRENT_TIMESTAMP(6))",
-        ).bind(&claim).bind(LEASE_SECONDS).bind(group_id).bind(generation).execute(&self.pool).await;
+             WHERE id = ? AND (draw_mail_claim_until IS NULL OR draw_mail_claim_until <= CURRENT_TIMESTAMP(6))",
+        ).bind(&claim).bind(LEASE_SECONDS).bind(group_id).execute(&self.pool).await;
         match group_claim {
             Ok(result) if result.rows_affected() == 1 => {}
             Ok(_) => {
-                return match sqlx::query_as::<_, (bool, u64)>(
-                    "SELECT is_drawn, draw_generation FROM `groups` WHERE id = ?",
-                )
-                .bind(group_id)
-                .fetch_optional(&self.pool)
-                .await
+                // Another sender holds the lease; a deleted group has nothing left to send.
+                return match sqlx::query_scalar::<_, i32>("SELECT id FROM `groups` WHERE id = ?")
+                    .bind(group_id)
+                    .fetch_optional(&self.pool)
+                    .await
                 {
-                    Ok(Some((false, current))) if current == generation => Some(group_id),
-                    Ok(_) => None,
+                    Ok(Some(_)) => Some(group_id),
+                    Ok(None) => None,
                     Err(err) => {
                         tracing::error!(group_id, error = %super::db::redacted(&err), "draw worker: cannot read reset group status");
                         None
@@ -639,10 +697,16 @@ impl Shared {
             "UPDATE draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id \
              JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
              SET n.claim = ?, n.claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
-             WHERE n.id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation AND n.attempts < ? \
+             WHERE n.id = ? AND n.attempts < ? \
              AND (n.claim_until IS NULL OR n.claim_until <= CURRENT_TIMESTAMP(6)) \
              AND (n.next_attempt_at IS NULL OR n.next_attempt_at <= CURRENT_TIMESTAMP(6))",
-        ).bind(claim).bind(LEASE_SECONDS).bind(row_id).bind(MAX_ATTEMPTS).execute(&self.pool).await;
+        )
+        .bind(claim)
+        .bind(LEASE_SECONDS)
+        .bind(row_id)
+        .bind(MAX_ATTEMPTS)
+        .execute(&self.pool)
+        .await;
         match claimed {
             Ok(result) if result.rows_affected() == 1 => {}
             Ok(_) => return,
@@ -654,9 +718,9 @@ impl Shared {
         let row = sqlx::query_as::<_, ResetRow>(
             "SELECT n.group_id, n.recipient_id, n.attempts, u.email AS recipient_email, u.name AS recipient_name, \
                     u.locale AS recipient_locale, n.group_name, n.admin_name \
-             FROM draw_reset_notifications n JOIN `groups` g ON g.id = n.group_id JOIN users u ON u.id = n.recipient_id \
+             FROM draw_reset_notifications n JOIN users u ON u.id = n.recipient_id \
              JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
-             WHERE n.id = ? AND n.claim = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation",
+             WHERE n.id = ? AND n.claim = ?",
         ).bind(row_id).bind(claim).fetch_optional(&self.pool).await;
         let row = match row {
             Ok(Some(row)) => row,
@@ -671,8 +735,7 @@ impl Shared {
              JOIN group_members gm ON gm.group_id = n.group_id AND gm.user_id = n.recipient_id \
              SET g.draw_mail_claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)), g.updated_at = g.updated_at, \
                  n.claim_until = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6)) \
-             WHERE g.id = ? AND n.id = ? AND g.is_drawn = FALSE AND n.generation = g.draw_generation \
-             AND g.draw_mail_claim = ? AND n.claim = ?",
+             WHERE g.id = ? AND n.id = ? AND g.draw_mail_claim = ? AND n.claim = ?",
         ).bind(LEASE_SECONDS).bind(LEASE_SECONDS).bind(group_id).bind(row_id).bind(claim).bind(claim).execute(&self.pool).await;
         match renewed {
             Ok(result) if result.rows_affected() > 0 => {}
@@ -697,14 +760,17 @@ impl Shared {
             .unwrap_or_else(|_| Err(MailError::Smtp("delivery timeout".into())));
         let attempt = row.attempts.saturating_add(1);
         if result.is_ok() || attempt >= MAX_ATTEMPTS {
-            if let Err(err) =
-                sqlx::query("DELETE FROM draw_reset_notifications WHERE id = ? AND claim = ?")
-                    .bind(row_id)
-                    .bind(claim)
-                    .execute(&self.pool)
-                    .await
+            match sqlx::query("DELETE FROM draw_reset_notifications WHERE id = ? AND claim = ?")
+                .bind(row_id)
+                .bind(claim)
+                .execute(&self.pool)
+                .await
             {
-                tracing::error!(group_id = row.group_id, user_id = row.recipient_id, error = %super::db::redacted(&err), "draw worker: reset acknowledgement failed; recovery will retry");
+                // A redraw's result mail to this recipient waited for this notice.
+                Ok(_) => self.enqueue_draw_group(row.group_id),
+                Err(err) => {
+                    tracing::error!(group_id = row.group_id, user_id = row.recipient_id, error = %super::db::redacted(&err), "draw worker: reset acknowledgement failed; recovery will retry");
+                }
             }
         } else {
             let delay = self.delay_after(attempt);

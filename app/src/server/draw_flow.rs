@@ -487,14 +487,9 @@ async fn draw_locked(
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("perform_draw: insert", e))?;
-    // A new generation makes any older reset notice obsolete. An already in-flight
-    // SMTP delivery can still complete, so mail text must tolerate reordering.
-    sqlx::query("DELETE FROM draw_reset_notifications WHERE group_id = ?")
-        .bind(group_id)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| db_error("perform_draw: discard stale reset notices", e))?;
-    sqlx::query("UPDATE `groups` SET is_drawn = TRUE, drawn_at = CURRENT_TIMESTAMP, draw_generation = draw_generation + 1 WHERE id = ?")
+    // Unsent reset notices of an earlier reset stay (spec D7, amended 2026-11-16): they
+    // name no receiver, and the worker sends a giver's new result only after them.
+    sqlx::query("UPDATE `groups` SET is_drawn = TRUE, drawn_at = CURRENT_TIMESTAMP WHERE id = ?")
         .bind(group_id)
         .execute(&mut **tx)
         .await
@@ -536,11 +531,11 @@ async fn reset_locked(
         return Err(DrawApiError::NotDrawn);
     }
     // Durable notices are committed atomically with the reset. They store giver ids
-    // but never receiver ids or pairings, and are invalidated by a later draw.
+    // but never receiver ids or pairings, and a later draw does not discard them.
     sqlx::query(
         "INSERT INTO draw_reset_notifications \
-         (group_id, recipient_id, generation, group_name, admin_name) \
-         SELECT ga.group_id, ga.giver_id, g.draw_generation + 1, g.name, admin.name \
+         (group_id, recipient_id, group_name, admin_name) \
+         SELECT ga.group_id, ga.giver_id, g.name, admin.name \
          FROM gift_assignments ga JOIN `groups` g ON g.id = ga.group_id \
          JOIN users admin ON admin.id = g.admin_id \
          WHERE ga.group_id = ? AND ga.giver_id <> ?",
@@ -559,8 +554,7 @@ async fn reset_locked(
     // archive clock (group-archive A4, P3).
     sqlx::query(
         "UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL, \
-         kept_active_at = CURRENT_TIMESTAMP, draw_generation = draw_generation + 1 \
-         WHERE id = ?",
+         kept_active_at = CURRENT_TIMESTAMP WHERE id = ?",
     )
     .bind(group_id)
     .execute(&mut **tx)
