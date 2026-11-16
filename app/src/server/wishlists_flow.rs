@@ -291,17 +291,14 @@ fn normalize_link(raw: &str) -> Result<Option<String>, WishlistFieldError> {
     Ok(Some(normalized.to_string()))
 }
 
-/// Imported data can predate validation; validate again before making it clickable.
+/// Imported data can predate validation: a stored link is made clickable only through the
+/// same rules as a new one (W9, [`normalize_link`]). A PHP-era link without a scheme
+/// (`www.shop.de/x`) gets `https://`; credentials and other schemes give no target. Returns
+/// the target and its host.
 fn safe_link(link: &str) -> Option<(String, String)> {
-    let url = url::Url::parse(link).ok()?;
-    if !matches!(url.scheme(), "http" | "https")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return None;
-    }
-    let host = url.host_str()?.to_string();
-    Some((url.to_string(), host))
+    let target = normalize_link(link).ok().flatten()?;
+    let host = url::Url::parse(&target).ok()?.host_str()?.to_string();
+    Some((target, host))
 }
 
 /// Checks every field (W8, W9) and returns all problems together.

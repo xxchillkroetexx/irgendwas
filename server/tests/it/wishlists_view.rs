@@ -13,15 +13,25 @@ async fn legacy_links_are_only_clickable_when_they_are_safe_and_remain_editable(
     let f = fixture(&pool).await;
     let mut bob = f.w.bob().await;
     let mut carol = f.w.carol().await;
+    // (stored, expected target and host). Scheme-less PHP-era links get `https://` like a
+    // new link (W9, review of #84); credentials and other schemes are never clickable.
     for (stored, expected) in [
         ("javascript:alert(1)", None),
         ("data:text/html,hello", None),
         ("ftp://shop.example/item", None),
-        ("shop.example/item", None),
         ("https://user:secret@shop.example/item", None),
+        ("user:secret@shop.example/item", None),
+        (
+            "shop.example/item",
+            Some(("https://shop.example/item", "shop.example")),
+        ),
+        (
+            "www.amazon.de/dp/123",
+            Some(("https://www.amazon.de/dp/123", "www.amazon.de")),
+        ),
         (
             "HTTPS://Shop.Example/item",
-            Some("https://shop.example/item"),
+            Some(("https://shop.example/item", "shop.example")),
         ),
     ] {
         sqlx::query("UPDATE wishlist_items SET link = ? WHERE id = ?")
@@ -34,8 +44,11 @@ async fn legacy_links_are_only_clickable_when_they_are_safe_and_remain_editable(
         let own: WishlistView = get_my_wishlist(&mut bob, f.w.g).await.wl_value();
         for item in [&view.items[0], &own.items[0]] {
             assert_eq!(item.link.as_deref(), Some(stored));
-            assert_eq!(item.link_target.as_deref(), expected);
-            assert_eq!(item.link_host.as_deref(), expected.map(|_| "shop.example"));
+            assert_eq!(
+                item.link_target.as_deref(),
+                expected.map(|(target, _)| target)
+            );
+            assert_eq!(item.link_host.as_deref(), expected.map(|(_, host)| host));
         }
         let page = carol.get(&view_path(f.w.g, f.w.bob)).await;
         let editor = bob.get(&format!("{}?edit={}", edit_path(f.w.g), f.a)).await;
@@ -46,8 +59,11 @@ async fn legacy_links_are_only_clickable_when_they_are_safe_and_remain_editable(
         let tag_start = editor.body[..start].rfind("<input").unwrap();
         let tag_end = start + editor.body[start..].find('>').unwrap();
         assert!(editor.body[tag_start..tag_end].contains(&format!("value=\"{stored}\"")));
-        if let Some(target) = expected {
+        if let Some((target, _)) = expected {
             assert!(page.body.contains(&format!("href=\"{target}\"")));
+            // The list on the edit page (no row in edit mode) links it too.
+            let list = bob.get(&edit_path(f.w.g)).await;
+            assert!(list.body.contains(&format!("href=\"{target}\"")));
         } else {
             assert!(!page.body.contains(&format!("href=\"{stored}\"")));
             assert!(!editor.body.contains(&format!("href=\"{stored}\"")));
