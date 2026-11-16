@@ -10,19 +10,26 @@
 //!
 //! Plain HTML form posts (no JavaScript) end with `302` and a session flash; the server fn
 //! client gets the flash too and navigates by the redirect header where the spec says so.
+//!
+//! Archive (spec: group-archive A1, A9): an archived group is read-only. Every mutation
+//! except `delete_group` and `restore_group` answers `Archived`, checked after the existing
+//! authorization (so members still get `Forbidden`, outsiders `NotFound`) and before its own
+//! state errors: once without a lock (fast fail) and again on the locked row.
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use chrono_tz::Tz;
 use sqlx::{FromRow, MySql, Transaction};
 
+use crate::domain::archive::{GroupClock, archive_dates};
 use crate::error::AppError;
 use crate::flash::FlashMessage;
 use crate::groups_api::{
-    AdminView, ClosedReason, DESCRIPTION_MAX, GROUP_NAME_MAX, GroupDetail, GroupError, GroupField,
-    GroupFieldError, GroupOp, GroupStatus, GroupSummary, Invitation, InvitationPreview, MemberView,
-    join_path,
+    AdminView, ArchiveSchedule, ArchivedGroupSummary, ClosedReason, DESCRIPTION_MAX,
+    GROUP_NAME_MAX, GroupDetail, GroupError, GroupField, GroupFieldError, GroupOp, GroupStatus,
+    GroupSummary, Invitation, InvitationPreview, MemberView, join_path,
 };
 use crate::paths::{group_path, login_url};
+use crate::server::db::{self, IsolationLevel};
 use crate::server::{
     AppState, auth, auth_mail, authz, flash, invite, membership, rate_limit, respond,
 };
@@ -90,11 +97,35 @@ struct LockedGroup {
     invitation_code: String,
     registration_deadline: Option<DateTime<Utc>>,
     is_drawn: Option<bool>,
+    archived_at: Option<DateTime<Utc>>,
 }
 
 impl LockedGroup {
     fn drawn(&self) -> bool {
         self.is_drawn.unwrap_or(false)
+    }
+
+    /// Read-only (spec: group-archive A1).
+    fn archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
+
+    /// `Archived` for an archived group (A9: after the rights, before the state errors).
+    fn writable(&self) -> Result<(), GroupError> {
+        if self.archived() {
+            Err(GroupError::Archived)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// The fast-fail check before the lock (re-checked on the locked row).
+fn writable(access: authz::GroupAccess) -> Result<(), GroupError> {
+    if access.archived {
+        Err(GroupError::Archived)
+    } else {
+        Ok(())
     }
 }
 
@@ -105,7 +136,7 @@ async fn lock_group(
     group_id: i32,
 ) -> Result<Option<LockedGroup>, GroupError> {
     sqlx::query_as::<_, LockedGroup>(
-        "SELECT invitation_code, registration_deadline, is_drawn FROM `groups` \
+        "SELECT invitation_code, registration_deadline, is_drawn, archived_at FROM `groups` \
          WHERE id = ? FOR UPDATE",
     )
     .bind(group_id)
@@ -422,6 +453,7 @@ pub async fn list_my_groups() -> Result<Vec<GroupSummary>, GroupError> {
          FROM `groups` g \
          JOIN group_members m ON m.group_id = g.id AND m.user_id = ? \
          JOIN users u ON u.id = g.admin_id \
+         WHERE g.archived_at IS NULL \
          ORDER BY g.created_at DESC, g.id DESC",
     )
     .bind(user_id)
@@ -449,6 +481,53 @@ pub async fn list_my_groups() -> Result<Vec<GroupSummary>, GroupError> {
 }
 
 #[derive(FromRow)]
+struct ArchivedRow {
+    id: i32,
+    name: String,
+    admin_id: i32,
+    admin_name: String,
+    member_count: i64,
+    is_drawn: Option<bool>,
+    drawn_at: Option<DateTime<Utc>>,
+    archived_at: Option<DateTime<Utc>>,
+}
+
+/// The caller's archived groups, newest archive first (spec: group-archive A3). No
+/// assignment data.
+pub async fn list_archived_groups() -> Result<Vec<ArchivedGroupSummary>, GroupError> {
+    let user_id = user_id().await?;
+    let state = state()?;
+    let rows = sqlx::query_as::<_, ArchivedRow>(
+        "SELECT g.id, g.name, g.admin_id, u.name AS admin_name, \
+                (SELECT COUNT(*) FROM group_members c WHERE c.group_id = g.id) AS member_count, \
+                g.is_drawn, g.drawn_at, g.archived_at \
+         FROM `groups` g \
+         JOIN group_members m ON m.group_id = g.id AND m.user_id = ? \
+         JOIN users u ON u.id = g.admin_id \
+         WHERE g.archived_at IS NOT NULL \
+         ORDER BY g.archived_at DESC, g.id DESC",
+    )
+    .bind(user_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| db_error("list_archived_groups", e))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(ArchivedGroupSummary {
+                id: row.id,
+                name: row.name,
+                is_admin: row.admin_id == user_id,
+                admin_name: row.admin_name,
+                member_count: u32::try_from(row.member_count).unwrap_or(u32::MAX),
+                drawn_at: row.drawn_at.filter(|_| row.is_drawn.unwrap_or(false)),
+                archived_at: row.archived_at?,
+            })
+        })
+        .collect())
+}
+
+#[derive(FromRow)]
 struct DetailRow {
     id: i32,
     name: String,
@@ -459,7 +538,10 @@ struct DetailRow {
     registration_deadline: Option<DateTime<Utc>>,
     draw_date: Option<DateTime<Utc>>,
     is_drawn: Option<bool>,
+    drawn_at: Option<DateTime<Utc>>,
     created_at: Option<DateTime<Utc>>,
+    kept_active_at: Option<DateTime<Utc>>,
+    archived_at: Option<DateTime<Utc>>,
 }
 
 #[derive(FromRow)]
@@ -478,7 +560,8 @@ pub async fn get_group(group_id: i32) -> Result<GroupDetail, GroupError> {
 
     let row = sqlx::query_as::<_, DetailRow>(
         "SELECT g.id, g.name, g.description, g.admin_id, u.name AS admin_name, \
-                g.invitation_code, g.registration_deadline, g.draw_date, g.is_drawn, g.created_at \
+                g.invitation_code, g.registration_deadline, g.draw_date, g.is_drawn, \
+                g.drawn_at, g.created_at, g.kept_active_at, g.archived_at \
          FROM `groups` g JOIN users u ON u.id = g.admin_id WHERE g.id = ?",
     )
     .bind(group_id)
@@ -501,6 +584,24 @@ pub async fn get_group(group_id: i32) -> Result<GroupDetail, GroupError> {
         return Err(GroupError::NotFound);
     }
     let is_drawn = row.is_drawn.unwrap_or(false);
+    let archived = row.archived_at.is_some();
+    let created_at = row.created_at.unwrap_or(DateTime::UNIX_EPOCH);
+    let now = Utc::now();
+    // The archive date is the admin's only (U9), and only while the group is active.
+    let archive_schedule = (is_admin && !archived).then(|| {
+        let (warn_at, auto_archive_at) = archive_dates(&GroupClock {
+            is_drawn,
+            drawn_at: row.drawn_at,
+            created_at,
+            registration_deadline: row.registration_deadline,
+            draw_date: row.draw_date,
+            kept_active_at: row.kept_active_at,
+        });
+        ArchiveSchedule {
+            auto_archive_at,
+            archive_soon: now >= warn_at,
+        }
+    });
     let members = members
         .into_iter()
         .map(|m| MemberView {
@@ -512,7 +613,8 @@ pub async fn get_group(group_id: i32) -> Result<GroupDetail, GroupError> {
             name: m.name,
         })
         .collect();
-    let invitation = is_admin.then(|| Invitation {
+    // An archived group's code is kept but cannot be used (A10): no invitation card.
+    let invitation = (is_admin && !archived).then(|| Invitation {
         link: auth_mail::app_link(
             &state.config,
             &join_path(&row.invitation_code).unwrap_or_else(|| JOIN_PATH.to_string()),
@@ -523,11 +625,15 @@ pub async fn get_group(group_id: i32) -> Result<GroupDetail, GroupError> {
         id: row.id,
         name: row.name,
         description: row.description,
-        created_at: row.created_at.unwrap_or(DateTime::UNIX_EPOCH),
+        created_at,
         registration_deadline: row.registration_deadline,
         draw_date: row.draw_date,
         is_drawn,
-        status: status_of(is_drawn, row.registration_deadline, Utc::now()),
+        status: if archived {
+            GroupStatus::Archived
+        } else {
+            status_of(is_drawn, row.registration_deadline, now)
+        },
         is_admin,
         admin: AdminView {
             id: row.admin_id,
@@ -535,7 +641,9 @@ pub async fn get_group(group_id: i32) -> Result<GroupDetail, GroupError> {
         },
         members,
         invitation,
-        can_leave: !is_admin && !is_drawn,
+        can_leave: !is_admin && !is_drawn && !archived,
+        archived_at: row.archived_at,
+        archive_schedule,
     })
 }
 
@@ -588,9 +696,10 @@ pub async fn update_group(
 ) -> Result<(), GroupError> {
     let user_id = user_id().await?;
     let state = state()?;
-    authz::require_admin(&state.pool, user_id, group_id)
+    let access = authz::require_admin(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
     let values = validate(
         &name,
         &description,
@@ -600,15 +709,17 @@ pub async fn update_group(
     )?;
 
     let mut tx = begin(&state, "update_group: begin").await?;
-    lock_group(&mut tx, group_id)
+    let locked = lock_group(&mut tx, group_id)
         .await?
         .ok_or(GroupError::NotFound)?;
     authz::require_admin(&mut *tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    locked.writable()?;
+    // An edit can move the dates backwards: it restarts the archive clock (A4, P3).
     sqlx::query(
         "UPDATE `groups` SET name = ?, description = ?, registration_deadline = ?, \
-         draw_date = ? WHERE id = ?",
+         draw_date = ?, kept_active_at = CURRENT_TIMESTAMP WHERE id = ?",
     )
     .bind(&values.name)
     .bind(&values.description)
@@ -653,9 +764,10 @@ pub async fn delete_group(group_id: i32) -> Result<(), GroupError> {
 pub async fn regenerate_invitation(group_id: i32) -> Result<String, GroupError> {
     let user_id = user_id().await?;
     let state = state()?;
-    authz::require_admin(&state.pool, user_id, group_id)
+    let access = authz::require_admin(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
 
     let mut tx = begin(&state, "regenerate_invitation: begin").await?;
     let locked = lock_group(&mut tx, group_id)
@@ -664,6 +776,7 @@ pub async fn regenerate_invitation(group_id: i32) -> Result<String, GroupError> 
     authz::require_admin(&mut *tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    locked.writable()?;
     let old = locked.invitation_code;
     // A new code is never the old one (D12: the old one must stop working).
     let mut next_code = move || loop {
@@ -691,6 +804,7 @@ struct CodeRow {
     already_member: bool,
     is_drawn: Option<bool>,
     registration_deadline: Option<DateTime<Utc>>,
+    archived: bool,
 }
 
 /// Normalises `raw` and looks the code up, under the per-user limit on invalid codes
@@ -722,7 +836,8 @@ async fn checked_lookup(
                     (SELECT COUNT(*) FROM group_members c WHERE c.group_id = g.id) AS member_count, \
                     EXISTS(SELECT 1 FROM group_members m WHERE m.group_id = g.id AND m.user_id = ?) \
                         AS already_member, \
-                    g.is_drawn, g.registration_deadline \
+                    g.is_drawn, g.registration_deadline, \
+                    (g.archived_at IS NOT NULL) AS archived \
              FROM `groups` g JOIN users u ON u.id = g.admin_id WHERE g.invitation_code = ?",
         )
         .bind(user_id)
@@ -747,7 +862,9 @@ pub async fn preview_invitation(code: String) -> Result<InvitationPreview, Group
     let user_id = user_id().await?;
     let state = state()?;
     let (_, row) = checked_lookup(&state, user_id, &code).await?;
-    let closed = if row.is_drawn.unwrap_or(false) {
+    let closed = if row.archived {
+        Some(ClosedReason::Archived)
+    } else if row.is_drawn.unwrap_or(false) {
         Some(ClosedReason::Drawn)
     } else if deadline_passed(row.registration_deadline, Utc::now()) {
         Some(ClosedReason::DeadlinePassed)
@@ -802,6 +919,7 @@ pub async fn join_group(code: String) -> Result<i32, GroupError> {
     if access.is_some_and(|a| a.is_member || a.is_admin) {
         return Err(GroupError::AlreadyMember { group_id });
     }
+    locked.writable()?;
     if locked.drawn() {
         return Err(GroupError::AlreadyDrawn);
     }
@@ -830,9 +948,10 @@ pub async fn join_group(code: String) -> Result<i32, GroupError> {
 pub async fn leave_group(group_id: i32) -> Result<(), GroupError> {
     let user_id = user_id().await?;
     let state = state()?;
-    authz::require_member(&state.pool, user_id, group_id)
+    let access = authz::require_member(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
 
     let mut tx = begin(&state, "leave_group: begin").await?;
     let locked = lock_group(&mut tx, group_id)
@@ -841,6 +960,8 @@ pub async fn leave_group(group_id: i32) -> Result<(), GroupError> {
     let access = authz::require_member(&mut *tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    // Archived before AdminCannotLeave (A9).
+    locked.writable()?;
     if access.is_admin {
         return Err(GroupError::AdminCannotLeave);
     }
@@ -858,9 +979,10 @@ pub async fn leave_group(group_id: i32) -> Result<(), GroupError> {
 pub async fn remove_member(group_id: i32, target: i32) -> Result<(), GroupError> {
     let user_id = user_id().await?;
     let state = state()?;
-    authz::require_admin(&state.pool, user_id, group_id)
+    let access = authz::require_admin(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
     if target == user_id {
         return Err(GroupError::CannotRemoveSelf);
     }
@@ -872,6 +994,7 @@ pub async fn remove_member(group_id: i32, target: i32) -> Result<(), GroupError>
     authz::require_admin(&mut *tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    locked.writable()?;
     // The target must be a member of *this* group, checked under its lock.
     if !is_member(&mut tx, group_id, target).await? {
         return Err(GroupError::TargetNotMember);
@@ -890,21 +1013,23 @@ pub async fn remove_member(group_id: i32, target: i32) -> Result<(), GroupError>
 pub async fn transfer_admin(group_id: i32, target: i32) -> Result<(), GroupError> {
     let user_id = user_id().await?;
     let state = state()?;
-    authz::require_admin(&state.pool, user_id, group_id)
+    let access = authz::require_admin(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
     if target == user_id {
         return Err(GroupError::TargetIsSelf);
     }
 
     let mut tx = begin(&state, "transfer_admin: begin").await?;
-    lock_group(&mut tx, group_id)
+    let locked = lock_group(&mut tx, group_id)
         .await?
         .ok_or(GroupError::NotFound)?;
     // A concurrent transfer that won the lock makes the caller a plain member.
     authz::require_admin(&mut *tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    locked.writable()?;
     if !is_member(&mut tx, group_id, target).await? {
         return Err(GroupError::TargetNotMember);
     }
@@ -917,4 +1042,95 @@ pub async fn transfer_admin(group_id: i32, target: i32) -> Result<(), GroupError
     commit(tx, "transfer_admin: commit").await?;
     tracing::info!(user_id, group_id, target, "admin transferred");
     Ok(())
+}
+
+// ------------------------------------------------- archive / restore / keep
+
+/// What [`archive_change`] does under the lock.
+#[derive(Clone, Copy)]
+enum ArchiveChange {
+    Archive,
+    Restore,
+    KeepActive,
+}
+
+impl ArchiveChange {
+    fn context(self) -> &'static str {
+        match self {
+            ArchiveChange::Archive => "archive_group",
+            ArchiveChange::Restore => "restore_group",
+            ArchiveChange::KeepActive => "keep_group_active",
+        }
+    }
+}
+
+/// Admin only (spec: group-archive A8): `require_admin` (fast fail), then a READ COMMITTED
+/// transaction with the group row `FOR UPDATE` (gone: `NotFound`) and `require_admin` again
+/// under the lock. Archive and restore are idempotent (a conditional UPDATE); keep active
+/// refuses an archived group.
+async fn archive_change(group_id: i32, change: ArchiveChange) -> Result<(), GroupError> {
+    let user_id = user_id().await?;
+    let state = state()?;
+    authz::require_admin(&state.pool, user_id, group_id)
+        .await
+        .map_err(from_app)?;
+
+    let context = change.context();
+    let mut conn = state
+        .pool
+        .acquire()
+        .await
+        .map_err(|e| db_error(context, e))?;
+    let mut tx = db::begin_with(&mut conn, IsolationLevel::ReadCommitted)
+        .await
+        .map_err(|e| db_error(context, e))?;
+    let locked = lock_group(&mut tx, group_id)
+        .await?
+        .ok_or(GroupError::NotFound)?;
+    authz::require_admin(&mut *tx, user_id, group_id)
+        .await
+        .map_err(from_app)?;
+    let sql = match change {
+        ArchiveChange::Archive => {
+            "UPDATE `groups` SET archived_at = CURRENT_TIMESTAMP \
+             WHERE id = ? AND archived_at IS NULL"
+        }
+        ArchiveChange::Restore => {
+            "UPDATE `groups` SET archived_at = NULL, kept_active_at = CURRENT_TIMESTAMP \
+             WHERE id = ? AND archived_at IS NOT NULL"
+        }
+        ArchiveChange::KeepActive => {
+            locked.writable()?;
+            "UPDATE `groups` SET kept_active_at = CURRENT_TIMESTAMP WHERE id = ?"
+        }
+    };
+    let changed = sqlx::query(sql)
+        .bind(group_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| db_error(context, e))?
+        .rows_affected();
+    tx.commit().await.map_err(|e| db_error(context, e))?;
+    match change {
+        ArchiveChange::Archive => {
+            tracing::info!(user_id, group_id, changed, "group archived");
+        }
+        ArchiveChange::Restore => {
+            tracing::info!(user_id, group_id, changed, "group restored");
+        }
+        ArchiveChange::KeepActive => tracing::info!(user_id, group_id, "group kept active"),
+    }
+    Ok(())
+}
+
+pub async fn archive_group(group_id: i32) -> Result<(), GroupError> {
+    archive_change(group_id, ArchiveChange::Archive).await
+}
+
+pub async fn restore_group(group_id: i32) -> Result<(), GroupError> {
+    archive_change(group_id, ArchiveChange::Restore).await
+}
+
+pub async fn keep_group_active(group_id: i32) -> Result<(), GroupError> {
+    archive_change(group_id, ArchiveChange::KeepActive).await
 }

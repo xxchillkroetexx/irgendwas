@@ -1,6 +1,6 @@
 //! `/groups/:id/wishlist/:user_id`: a member's list, read-only (spec: wishlists, UI notes
 //! "view"). Every current member may see every current member's list; the owner also gets
-//! an Edit button.
+//! an Edit button, except in an archived group (group-archive: the list is read-only).
 
 use leptos::prelude::*;
 
@@ -46,6 +46,8 @@ fn ReadOnlyView(wishlist: WishlistView) -> impl IntoView {
     let i18n = use_i18n();
     let group_id = wishlist.group.id;
     let is_own = wishlist.is_own;
+    // The owner's links to the edit page; none in an archived group.
+    let editable = is_own && !wishlist.archived;
     let has_items = !wishlist.items.is_empty();
     // Only a list with items says when it changed (and that it is in order).
     let updated = wishlist.updated_at.filter(|_| has_items);
@@ -69,7 +71,7 @@ fn ReadOnlyView(wishlist: WishlistView) -> impl IntoView {
             <ol class="list-unstyled">{cards}</ol>
         }
         .into_any()
-    } else if is_own {
+    } else if editable {
         view! {
             <div class="alert alert-info">
                 <p class="mb-1">{i18n.t("wishlist.view.empty")}</p>
@@ -77,6 +79,13 @@ fn ReadOnlyView(wishlist: WishlistView) -> impl IntoView {
                 <a href=wishlist_edit_path(group_id) class="btn btn-primary btn-sm">
                     {i18n.t("wishlist.view.addNow")}
                 </a>
+            </div>
+        }
+        .into_any()
+    } else if is_own {
+        view! {
+            <div class="alert alert-info">
+                <p class="mb-0">{i18n.t("wishlist.view.empty")}</p>
             </div>
         }
         .into_any()
@@ -100,7 +109,7 @@ fn ReadOnlyView(wishlist: WishlistView) -> impl IntoView {
                     <a href=group_path(group_id)>{wishlist.group.name}</a>
                 </p>
             </div>
-            {is_own
+            {editable
                 .then(|| {
                     view! {
                         <a href=wishlist_edit_path(group_id) class="btn btn-primary">

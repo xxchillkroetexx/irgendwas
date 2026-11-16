@@ -1,7 +1,11 @@
 //! `/groups/:id`: one group as the calling member sees it (spec: groups, UI notes "group
 //! page"). Every mutation is an `ActionForm` (a plain form post without JavaScript) behind
-//! a confirm dialog. Delete and leave navigate away (server redirect); regenerate, remove
-//! and transfer stay and re-read the group and the flash.
+//! a confirm dialog. Delete and leave navigate away (server redirect); regenerate, remove,
+//! transfer, archive, restore and keep active stay and re-read the group and the flash.
+//!
+//! Archive (spec: group-archive, UI notes): an archived group is shown read-only (notice,
+//! no controls but Restore and Delete for the admin). Only the admin sees the archive date
+//! of an active group, and the warning alert with "Keep active" once its window began.
 
 use leptos::prelude::*;
 
@@ -9,9 +13,11 @@ use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
 use crate::components::{PageLoading, RequireUser};
 use crate::flash::{Toasts, use_toasts};
+use crate::format::LocalDate;
 use crate::groups_api::{
-    DeleteGroup, GroupDetail, GroupError, GroupOp, GroupStatus, Invitation, LeaveGroup, MemberView,
-    RegenerateInvitation, RemoveMember, TransferAdmin, get_group,
+    ArchiveGroup, ArchiveSchedule, DeleteGroup, GroupDetail, GroupError, GroupOp, GroupStatus,
+    Invitation, KeepGroupActive, LeaveGroup, MemberView, RegenerateInvitation, RemoveMember,
+    RestoreGroup, TransferAdmin, get_group,
 };
 use crate::i18n::use_i18n;
 use crate::pages::draw::{DrawActions, DrawPanel, DrawPanelData, DrawResource, draw_resource};
@@ -56,6 +62,9 @@ struct Actions {
     leave: ServerAction<LeaveGroup>,
     remove: ServerAction<RemoveMember>,
     transfer: ServerAction<TransferAdmin>,
+    archive: ServerAction<ArchiveGroup>,
+    restore: ServerAction<RestoreGroup>,
+    keep: ServerAction<KeepGroupActive>,
     draw: DrawActions,
 }
 
@@ -69,6 +78,9 @@ fn GroupShow(group: GroupResource, panel: PanelResource, draw: DrawResource) -> 
         leave: ServerAction::new(),
         remove: ServerAction::new(),
         transfer: ServerAction::new(),
+        archive: ServerAction::new(),
+        restore: ServerAction::new(),
+        keep: ServerAction::new(),
         draw: DrawActions::new(),
     };
 
@@ -123,6 +135,21 @@ fn GroupShow(group: GroupResource, panel: PanelResource, draw: DrawResource) -> 
             after_stay(result, GroupOp::Other);
         }
     });
+    Effect::new(move |_| {
+        if let Some(result) = actions.archive.value().get() {
+            after_stay(result, GroupOp::Other);
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(result) = actions.restore.value().get() {
+            after_stay(result, GroupOp::Other);
+        }
+    });
+    Effect::new(move |_| {
+        if let Some(result) = actions.keep.value().get() {
+            after_stay(result, GroupOp::Other);
+        }
+    });
     // Delete and leave navigate on success (server redirect); only errors are left.
     Effect::new(move |_| {
         if let Some(Err(err)) = actions.delete.value().get() {
@@ -161,8 +188,13 @@ fn GroupDetailView(
 ) -> impl IntoView {
     let i18n = use_i18n();
     let id = detail.id;
+    let archived_at = detail.archived_at;
+    let archived = archived_at.is_some();
     let header_actions = if detail.is_admin {
-        view! { <AdminActions id actions status=detail.status/> }.into_any()
+        view! { <AdminActions id actions status=detail.status archived/> }.into_any()
+    } else if archived {
+        // Members of an archived group: nothing to do here (no leave text either).
+        ().into_any()
     } else if detail.can_leave {
         view! {
             <ActionForm action=actions.leave>
@@ -185,8 +217,22 @@ fn GroupDetailView(
         .map(|invitation| view! { <InvitationCard invitation status=detail.status/> });
     let members = detail.members.clone();
     let (is_admin, is_drawn) = (detail.is_admin, detail.is_drawn);
+    let archived_notice = archived_at.map(|at| {
+        view! {
+            <div class="alert alert-secondary" role="status" data-testid="archived-notice">
+                {t!(i18n, "group.show.archivedNotice", date = LocalDate(at))}
+            </div>
+        }
+    });
+    // Admin only (U9), from the server's schedule: no clock is read while rendering.
+    let archive_soon = detail
+        .archive_schedule
+        .filter(|schedule| schedule.archive_soon)
+        .map(|schedule| view! { <ArchiveSoon id schedule action=actions.keep/> });
 
     view! {
+        {archived_notice}
+        {archive_soon}
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
             <div>
                 <h1 class="h2">{detail.name.clone()}</h1>
@@ -199,26 +245,66 @@ fn GroupDetailView(
         </div>
         <div class="group-detail-grid">
             <div class="group-draw">
-                <DrawPanel group_id=id is_admin is_drawn data=draw actions=actions.draw/>
+                <DrawPanel group_id=id is_admin is_drawn archived data=draw actions=actions.draw/>
             </div>
             <div class="group-wishlist" data-testid="group-wishlist">
-                {panel.map(|data| view! { <WishlistPanel group_id=id data/> })}
+                {panel.map(|data| view! { <WishlistPanel group_id=id data archived/> })}
             </div>
             <div class="group-details" data-testid="group-details"><DetailsCard detail/></div>
             <div class="group-members" data-testid="group-members">
-                <MembersCard group_id=id members is_admin is_drawn actions/>
+                <MembersCard group_id=id members manage={is_admin && !archived} is_drawn actions/>
             </div>
             <div class="group-invitation" data-testid="group-invitation">{invitation}</div>
             <div class="group-exclusions">
-                <ExclusionsLink group_id=id is_drawn/>
+                <ExclusionsLink group_id=id is_drawn archived/>
             </div>
         </div>
     }
 }
 
+/// The admin's warning alert inside the 14-day window, with "Keep active" (no confirm).
 #[component]
-fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView {
+fn ArchiveSoon(
+    id: i32,
+    schedule: ArchiveSchedule,
+    action: ServerAction<KeepGroupActive>,
+) -> impl IntoView {
     let i18n = use_i18n();
+    view! {
+        <div class="alert alert-warning" role="status" data-testid="archive-soon">
+            <p class="mb-2">
+                {t!(i18n, "group.show.archiveSoon", date = LocalDate(schedule.auto_archive_at))}
+            </p>
+            <ActionForm action>
+                <input type="hidden" name="group_id" value=id/>
+                <button type="submit" class="btn btn-sm btn-warning">
+                    {i18n.t("group.show.keepActive")}
+                </button>
+            </ActionForm>
+        </div>
+    }
+}
+
+#[component]
+fn AdminActions(id: i32, actions: Actions, status: GroupStatus, archived: bool) -> impl IntoView {
+    let i18n = use_i18n();
+    if archived {
+        // Read-only: bring it back, or delete it for good.
+        return view! {
+            <div class="d-flex flex-wrap gap-2">
+                <ActionForm action=actions.restore>
+                    <input type="hidden" name="group_id" value=id/>
+                    <ConfirmSubmit
+                        label=i18n.t("group.show.restoreGroup")
+                        confirm=i18n.t("group.show.restoreGroupConfirm")
+                        class="btn btn-outline-primary"
+                    />
+                </ActionForm>
+                <DeleteForm id action=actions.delete/>
+            </div>
+        }
+        .into_any();
+    }
     view! {
         <div class="d-flex flex-wrap gap-2">
             <a href=format!("/groups/{id}/edit") class="btn btn-outline-primary">
@@ -234,15 +320,32 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus) -> impl IntoView
                     />
                 </ActionForm>
             })}
-            <ActionForm action=actions.delete>
+            <ActionForm action=actions.archive>
                 <input type="hidden" name="group_id" value=id/>
                 <ConfirmSubmit
-                    label=i18n.t("group.show.deleteGroup")
-                    confirm=i18n.t("group.show.deleteGroupConfirm")
-                    class="btn btn-outline-danger"
+                    label=i18n.t("group.show.archiveGroup")
+                    confirm=i18n.t("group.show.archiveGroupConfirm")
+                    class="btn btn-outline-secondary"
                 />
             </ActionForm>
+            <DeleteForm id action=actions.delete/>
         </div>
+    }
+    .into_any()
+}
+
+#[component]
+fn DeleteForm(id: i32, action: ServerAction<DeleteGroup>) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <ActionForm action>
+            <input type="hidden" name="group_id" value=id/>
+            <ConfirmSubmit
+                label=i18n.t("group.show.deleteGroup")
+                confirm=i18n.t("group.show.deleteGroupConfirm")
+                class="btn btn-outline-danger"
+            />
+        </ActionForm>
     }
 }
 
@@ -255,6 +358,14 @@ fn date_or_dash(i18n: &crate::i18n::I18n, date: Option<chrono::DateTime<chrono::
 #[component]
 fn DetailsCard(detail: GroupDetail) -> impl IntoView {
     let i18n = use_i18n();
+    // The admin's archive date (U9); members and archived groups have no schedule.
+    let auto_archive = detail.archive_schedule.map(|schedule| {
+        view! {
+            <div class="form-text" data-testid="auto-archive-on">
+                {t!(i18n, "group.show.autoArchiveOn", date = LocalDate(schedule.auto_archive_at))}
+            </div>
+        }
+    });
     view! {
         <div class="card mb-4">
             <div class="card-body">
@@ -263,6 +374,7 @@ fn DetailsCard(detail: GroupDetail) -> impl IntoView {
                     <dt class="col-sm-5">{i18n.t("group.show.status")}</dt>
                     <dd class="col-sm-7">
                         <span class=detail.status.badge_class()>{i18n.t(detail.status.label_key())}</span>
+                        {auto_archive}
                     </dd>
                     <dt class="col-sm-5">{i18n.t("group.adminLabel")}</dt>
                     <dd class="col-sm-7">{detail.admin.name}</dd>
@@ -357,7 +469,8 @@ fn InvitationCard(invitation: Invitation, status: GroupStatus) -> impl IntoView 
 fn MembersCard(
     group_id: i32,
     members: Vec<MemberView>,
-    is_admin: bool,
+    /// The admin of an active group: Make admin / Remove buttons.
+    manage: bool,
     is_drawn: bool,
     actions: Actions,
 ) -> impl IntoView {
@@ -366,7 +479,7 @@ fn MembersCard(
     let rows = members
         .into_iter()
         .map(|member| {
-            let manage = (is_admin && !member.is_me).then(|| {
+            let manage = (manage && !member.is_me).then(|| {
                 let user_id = member.user_id;
                 view! {
                     <div class="d-flex flex-wrap gap-2">

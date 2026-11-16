@@ -58,7 +58,8 @@ pub type DrawResource = Resource<Result<DrawPanelData, DrawApiError>>;
 
 /// The panel's data for the group in `group_id`. Waits for the group (the caller's role and
 /// the draw state decide which fns run): members only ask for their own assignment, and
-/// only the admin asks for the admin status.
+/// only the admin of an active group asks for the admin status (an archived group has no
+/// admin section: group-archive).
 pub fn draw_resource(
     group_id: Memo<Option<i32>>,
     group: Resource<Result<GroupDetail, GroupError>>,
@@ -75,7 +76,7 @@ pub fn draw_resource(
             } else {
                 None
             };
-            let admin = if detail.is_admin {
+            let admin = if detail.is_admin && detail.archived_at.is_none() {
                 Some(fetch_admin_status(id).await?)
             } else {
                 None
@@ -133,12 +134,14 @@ impl Default for DrawActions {
     }
 }
 
-/// The draw card of the group page (hook defined by the groups spec).
+/// The draw card of the group page (hook defined by the groups spec). For an archived group
+/// only the caller's own assignment card (if drawn), nothing else (group-archive).
 #[component]
 pub fn DrawPanel(
     group_id: i32,
     is_admin: bool,
     is_drawn: bool,
+    archived: bool,
     data: Option<DrawPanelData>,
     actions: DrawActions,
 ) -> impl IntoView {
@@ -147,6 +150,21 @@ pub fn DrawPanel(
         Some(data) => (data.mine, data.admin),
         None => (None, None),
     };
+    if archived {
+        return mine
+            .filter(|_| is_drawn)
+            .map(|mine| {
+                view! {
+                    <div class="card mb-4" data-testid="draw-panel">
+                        <div class="card-body">
+                            <h2 class="h5 card-title">{i18n.t("group.draw.title")}</h2>
+                            <AssignmentCard group_id mine/>
+                        </div>
+                    </div>
+                }
+            })
+            .into_any();
+    }
     let body = if !is_drawn {
         match (is_admin, admin) {
             (true, Some(status)) => view! { <ReadySection group_id status actions/> }.into_any(),
@@ -176,6 +194,7 @@ pub fn DrawPanel(
             </div>
         </div>
     }
+    .into_any()
 }
 
 /// The admin's undrawn view: who takes part, the small-group hint, the one "Perform draw"

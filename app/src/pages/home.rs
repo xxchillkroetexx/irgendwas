@@ -12,76 +12,77 @@ use crate::paths::DASHBOARD_PATH;
 pub fn HomePage() -> impl IntoView {
     let i18n = use_i18n();
     view! {
-        <RedirectIfLoggedIn to=DASHBOARD_PATH.to_string()/>
-        <div class="text-center mb-5">
-            <h1 class="display-4">{i18n.t("home.title")}</h1>
-            <p class="lead">{i18n.t("home.subtitle")}</p>
-        </div>
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card mb-4">
-                            <div class="card-body text-center">
-                                <h5 class="card-title">{i18n.t("home.login.title")}</h5>
-                                <p class="card-text">{i18n.t("home.login.description")}</p>
-                                <a href="/auth/login" class="btn btn-primary">{i18n.t("auth.login")}</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card mb-4">
-                            <div class="card-body text-center">
-                                <h5 class="card-title">{i18n.t("home.register.title")}</h5>
-                                <p class="card-text">{i18n.t("home.register.description")}</p>
-                                <a href="/auth/register" class="btn btn-secondary">
-                                    {i18n.t("auth.register")}
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                // "/join" is protected: anonymous visitors go through login (next=/join).
-                <p class="text-center">
-                    <span>{i18n.t("home.join.text")}</span>
-                    " "
-                    <a href="/join">{i18n.t("group.joinButton")}</a>
-                </p>
-
-                <div class="mt-5">
-                    <h2 class="text-center mb-4">{i18n.t("home.howItWorks.title")}</h2>
+        <RedirectIfLoggedIn to=DASHBOARD_PATH.to_string()>
+            <div class="text-center mb-5">
+                <h1 class="display-4">{i18n.t("home.title")}</h1>
+                <p class="lead">{i18n.t("home.subtitle")}</p>
+            </div>
+            <div class="row justify-content-center">
+                <div class="col-md-8">
                     <div class="row">
-                        <Step
-                            icon=StepIcon::People
-                            title=i18n.t("home.howItWorks.step1.title")
-                            description=i18n.t("home.howItWorks.step1.description")
-                        />
-                        <Step
-                            icon=StepIcon::ListCheck
-                            title=i18n.t("home.howItWorks.step2.title")
-                            description=i18n.t("home.howItWorks.step2.description")
-                        />
-                        <Step
-                            icon=StepIcon::Gift
-                            title=i18n.t("home.howItWorks.step3.title")
-                            description=i18n.t("home.howItWorks.step3.description")
-                        />
+                        <div class="col-md-6">
+                            <div class="card mb-4">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">{i18n.t("home.login.title")}</h5>
+                                    <p class="card-text">{i18n.t("home.login.description")}</p>
+                                    <a href="/auth/login" class="btn btn-primary">{i18n.t("auth.login")}</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card mb-4">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">{i18n.t("home.register.title")}</h5>
+                                    <p class="card-text">{i18n.t("home.register.description")}</p>
+                                    <a href="/auth/register" class="btn btn-secondary">
+                                        {i18n.t("auth.register")}
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                <div class="mt-5 text-center">
-                    <h2>{i18n.t("home.features.title")}</h2>
-                    <div class="row mt-3">
-                        <Feature text=i18n.t("home.features.multipleGroups")/>
-                        <Feature text=i18n.t("home.features.emailNotifications")/>
-                        <Feature text=i18n.t("home.features.exclusionRules")/>
-                        <Feature text=i18n.t("home.features.prioritizedWishlists")/>
-                        <Feature text=i18n.t("home.features.secretAssignments")/>
+                    // "/join" is protected: anonymous visitors go through login (next=/join).
+                    <p class="text-center">
+                        <span>{i18n.t("home.join.text")}</span>
+                        " "
+                        <a href="/join">{i18n.t("group.joinButton")}</a>
+                    </p>
+
+                    <div class="mt-5">
+                        <h2 class="text-center mb-4">{i18n.t("home.howItWorks.title")}</h2>
+                        <div class="row">
+                            <Step
+                                icon=StepIcon::People
+                                title=i18n.t("home.howItWorks.step1.title")
+                                description=i18n.t("home.howItWorks.step1.description")
+                            />
+                            <Step
+                                icon=StepIcon::ListCheck
+                                title=i18n.t("home.howItWorks.step2.title")
+                                description=i18n.t("home.howItWorks.step2.description")
+                            />
+                            <Step
+                                icon=StepIcon::Gift
+                                title=i18n.t("home.howItWorks.step3.title")
+                                description=i18n.t("home.howItWorks.step3.description")
+                            />
+                        </div>
+                    </div>
+
+                    <div class="mt-5 text-center">
+                        <h2>{i18n.t("home.features.title")}</h2>
+                        <div class="row mt-3">
+                            <Feature text=i18n.t("home.features.multipleGroups")/>
+                            <Feature text=i18n.t("home.features.emailNotifications")/>
+                            <Feature text=i18n.t("home.features.exclusionRules")/>
+                            <Feature text=i18n.t("home.features.prioritizedWishlists")/>
+                            <Feature text=i18n.t("home.features.secretAssignments")/>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </RedirectIfLoggedIn>
     }
 }
 

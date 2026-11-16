@@ -7,11 +7,12 @@ status: approved
 Dashboard shell, profile (name), change password, email change with verification. The `/api/user/:id` endpoint is removed.
 Login, logout, registration and password reset are covered by the `auth` slice. This spec only relies on its `require_user()` guard, its shared validators and its token helper.
 
-Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names.
+Fresh start: no production data is migrated and users register again. The Rust app owns its schema; the PHP schema is only a reference for shapes and names. (Superseded 2026-11-15, see the amendment below.)
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). Both mails use the account language (`users.locale` via `mail_i18n`) instead of the request locale; the pending-change expiry is formatted with `app::format`. AC27 was revised; AC38 and AC39 were added.
 Revised 2026-11-01 (review): current-password attempts are rate limited (AC40); no-JS confirm works and token pages use `Referrer-Policy: same-origin` (AC41); `no-store` on profile/verify (AC42); per-recipient mail limit (AC43); no-JS profile forms show their result as a flash (AC44).
 Amended 2026-11-09 (#71, credential races): a password change (and auth's password reset) also clears a pending email change, so a change started with the old credentials can no longer be confirmed; `request_email_change` re-checks the verified hash and `session_epoch` under its row lock and answers `Unauthorized` if they changed.
+Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The import dropped every pending email change and verification token (plaintext in PHP) and lowercased and trimmed the emails, so Resolved 8 still holds for the migrated rows. Migrated accounts reach the profile only after a password reset (auth amendment of the same date).
 
 ## Current PHP behaviour
 
@@ -261,4 +262,4 @@ None.
 5. **Mail on password change**: no.
 6. **URLs**: keep `/user/dashboard` and `/user/profile`.
 7. **"Last login" on the dashboard**: no.
-8. **`users.email` collation**: moot, there is no production DB. Emails are lowercased on write and compared lowercased, the same rule as auth (D13; AC20, AC22).
+8. **`users.email` collation**: moot, there is no production DB (2026-11-15: there is one now, with emails normalised by the import; see the amendment at the top). Emails are lowercased on write and compared lowercased, the same rule as auth (D13; AC20, AC22).

@@ -98,6 +98,10 @@ pub fn GroupEditPage() -> impl IntoView {
                 if !detail.is_admin {
                     return Err(GroupError::Forbidden);
                 }
+                // Read-only (group-archive): the notice instead of the form.
+                if detail.archived_at.is_some() {
+                    return Err(GroupError::Archived);
+                }
                 Ok(EditValues {
                     id: detail.id,
                     name: detail.name,
@@ -115,6 +119,10 @@ pub fn GroupEditPage() -> impl IntoView {
                 {move || Suspend::new(async move {
                     match group.await {
                         Ok(values) => view! { <EditForm values/> }.into_any(),
+                        Err(GroupError::Archived) => {
+                            let back = id.get_untracked().map(group_path).unwrap_or_default();
+                            view! { <ArchivedNotice back/> }.into_any()
+                        }
                         Err(GroupError::Forbidden) => {
                             match id.get_untracked() {
                                 Some(group_id) => view! {
@@ -128,6 +136,22 @@ pub fn GroupEditPage() -> impl IntoView {
                 })}
             </Transition>
         </RequireUser>
+    }
+}
+
+/// An archived group cannot be edited: the notice and a link back to the group.
+#[component]
+fn ArchivedNotice(back: String) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="alert alert-secondary" role="status">
+                    {i18n.t("flash.error.group_archived")}
+                </div>
+                <a href=back class="btn btn-outline-secondary">{i18n.t("wishlist.view.backToGroup")}</a>
+            </div>
+        </div>
     }
 }
 

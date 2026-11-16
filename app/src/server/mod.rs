@@ -21,9 +21,13 @@
 //! - [`draw`]: the pure draw algorithm; [`draw_flow`], [`draw_mail`]: the draw server fn
 //!   bodies and their mails; [`draw_worker`]: the in-process draw mail worker.
 //! - [`mail`]: SMTP [`Mailer`](mail::Mailer) (off the request path) and `escape_html`.
+//! - [`archive_flow`], [`archive_mail`]: the group archive sweep (started by the server
+//!   process, never per request) and its warning mail.
 
 pub mod account_flow;
 pub mod account_mail;
+pub mod archive_flow;
+pub mod archive_mail;
 pub mod auth;
 pub mod auth_flow;
 pub mod auth_mail;

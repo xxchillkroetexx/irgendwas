@@ -1,4 +1,5 @@
-//! `/groups`: the caller's groups, newest first (spec: groups, UI notes "`/groups` list").
+//! `/groups`: the caller's active groups, newest first (spec: groups, UI notes "`/groups`
+//! list"), with a link to the archive page (group-archive).
 
 use leptos::prelude::*;
 
@@ -6,6 +7,7 @@ use super::{GroupErrorView, group_path, when_logged_in};
 use crate::components::RequireUser;
 use crate::groups_api::{GroupError, GroupSummary, list_my_groups};
 use crate::i18n::use_i18n;
+use crate::paths::ARCHIVE_PATH;
 use crate::t_plural;
 
 type ListResource = Resource<Result<Vec<GroupSummary>, GroupError>>;
@@ -29,6 +31,7 @@ fn GroupList(groups: ListResource) -> impl IntoView {
             <div class="d-flex flex-wrap gap-2">
                 <a href="/groups/new" class="btn btn-primary">{i18n.t("group.createButton")}</a>
                 <a href="/join" class="btn btn-outline-primary">{i18n.t("group.joinButton")}</a>
+                <a href=ARCHIVE_PATH class="btn btn-outline-secondary">{i18n.t("group.archive.title")}</a>
             </div>
         </div>
         <Transition fallback=|| ()>

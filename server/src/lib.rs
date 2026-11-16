@@ -14,6 +14,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use app::server::archive_flow;
 use app::server::draw_worker::{self, DrawWorker};
 use app::server::mail::{MailError, Mailer};
 use app::server::{AppState, Config, db};
@@ -167,7 +168,8 @@ pub fn app_state(
     })
 }
 
-/// Starts the server: config, DB (with retry), migrations, session cleanup, HTTP.
+/// Starts the server: config, DB (with retry), migrations, session cleanup, archive sweep,
+/// HTTP.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let dotenv = app::server::config::load_dotenv();
     init_tracing();
@@ -196,6 +198,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(err) = state.draw_worker.recover().await {
         tracing::error!(?err, "draw mail recovery failed");
     }
+    // Archives old groups and warns their admins (spec: group-archive A5): at once, then
+    // hourly. Not in `app_state`, so test routers have no background sweeper.
+    archive_flow::spawn_archive_sweep(
+        state.pool.clone(),
+        state.config.clone(),
+        Arc::new(state.mailer.clone()),
+        archive_flow::ARCHIVE_SWEEP_PERIOD,
+    );
     let app = router(state);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("listening on http://{addr}");

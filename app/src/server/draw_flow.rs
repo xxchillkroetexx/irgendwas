@@ -16,6 +16,9 @@
 //! under the lock is what committed before it, and the inserts take no gap locks. The lock
 //! is held only for reading members and rules, drawing (on a blocking thread) and one
 //! insert; the mails are queued after the commit.
+//!
+//! Archive (spec: group-archive A9): every write answers `Archived` on an archived group,
+//! after the admin check; `reset_draw` restarts the archive clock (`kept_active_at`).
 
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -137,14 +140,16 @@ async fn finish<T>(
 }
 
 /// D5 step 2: the group row `FOR UPDATE` (gone: `NotFound`), then the caller must still be
-/// its admin (transferred meanwhile: `Forbidden`). Returns `is_drawn`.
+/// its admin (transferred meanwhile: `Forbidden`) and the group must not be archived
+/// (`Archived`). Returns `is_drawn`.
 async fn lock_group_as_admin(
     tx: &mut Transaction<'_, MySql>,
     group_id: i32,
     me: i32,
 ) -> Result<bool, DrawApiError> {
-    let (admin_id, is_drawn) = sqlx::query_as::<_, (i32, bool)>(
-        "SELECT admin_id, is_drawn FROM `groups` WHERE id = ? FOR UPDATE",
+    let (admin_id, is_drawn, archived) = sqlx::query_as::<_, (i32, bool, bool)>(
+        "SELECT admin_id, is_drawn, (archived_at IS NOT NULL) AS archived FROM `groups` \
+         WHERE id = ? FOR UPDATE",
     )
     .bind(group_id)
     .fetch_optional(&mut **tx)
@@ -153,6 +158,9 @@ async fn lock_group_as_admin(
     .ok_or(DrawApiError::NotFound)?;
     if admin_id != me {
         return Err(DrawApiError::Forbidden);
+    }
+    if archived {
+        return Err(DrawApiError::Archived);
     }
     Ok(is_drawn)
 }
@@ -272,6 +280,7 @@ pub async fn list_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiEr
          JOIN group_members gm ON gm.group_id = ga.group_id AND gm.user_id = ga.giver_id \
          JOIN users receiver ON receiver.id = ga.receiver_id \
          WHERE ga.giver_id = ? AND g.is_drawn = TRUE AND g.drawn_at IS NOT NULL \
+           AND g.archived_at IS NULL \
          ORDER BY g.drawn_at DESC, g.id DESC",
     )
     .bind(me)
@@ -546,11 +555,17 @@ async fn reset_locked(
         .execute(&mut **tx)
         .await
         .map_err(|e| db_error("reset_draw: delete", e))?;
-    sqlx::query("UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL, draw_generation = draw_generation + 1 WHERE id = ?")
-        .bind(group_id)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| db_error("reset_draw: mark undrawn", e))?;
+    // The reference date moves back from `drawn_at` to the planned dates: restart the
+    // archive clock (group-archive A4, P3).
+    sqlx::query(
+        "UPDATE `groups` SET is_drawn = FALSE, drawn_at = NULL, \
+         kept_active_at = CURRENT_TIMESTAMP, draw_generation = draw_generation + 1 \
+         WHERE id = ?",
+    )
+    .bind(group_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| db_error("reset_draw: mark undrawn", e))?;
     Ok(())
 }
 
@@ -558,9 +573,13 @@ async fn reset_locked(
 pub async fn resend_draw_notifications(group_id: i32) -> Result<u32, DrawApiError> {
     let me = user_id().await?;
     let state = state()?;
-    authz::require_admin(&state.pool, me, group_id)
+    let access = authz::require_admin(&state.pool, me, group_id)
         .await
         .map_err(from_app)?;
+    // Unlocked, like the rest of resend (group-archive P5).
+    if access.archived {
+        return Err(DrawApiError::Archived);
+    }
     let is_drawn = sqlx::query_scalar::<_, bool>("SELECT is_drawn FROM `groups` WHERE id = ?")
         .bind(group_id)
         .fetch_optional(&state.pool)

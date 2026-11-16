@@ -22,7 +22,9 @@ migrations/         sqlx migrations, embedded in the binary and applied at start
 locales/            en.json, de.json (flat keys, `{name}` placeholders)
 public/             static assets, served at / (e.g. /assets/css/styles.css)
 end2end/            Playwright tests (run in the Playwright container image, see "E2E")
-scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh (CI)
+scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh and
+                    install-cargo-audit.sh (CI)
+.cargo/audit.toml   exceptions to the CI advisory check, each with its reason
 compose.dev.yml     MariaDB (dev + RAM test DB) and Mailpit for development and tests
 Dockerfile          production image (cargo-leptos release build → distroless, non-root)
 compose.yml         production stack: app + MariaDB behind Traefik (see "Production")
@@ -33,8 +35,10 @@ docs/               decisions.md (decision log), specs/ (one spec per feature)
 ```
 
 CI: `.forgejo/workflows/ci.yml` (fmt, clippy, `cargo leptos test` with MariaDB and Mailpit
-services; e2e in a separate job in the Playwright image; on pushes to `dev` and `main` the
-image is built and pushed as `:dev` or `:latest`, plus `:sha-<12>`). Documentation-only
+services; e2e in a separate job in the Playwright image; `lockfile` checks that Cargo.lock
+matches the manifests; `audit` runs cargo-audit against the RustSec advisories and does not
+hold back the image; on pushes to `dev` and `main` the image is built and pushed as `:dev`
+or `:latest`, plus `:sha-<12>`). Documentation-only
 changes skip it. check and e2e keep `target/` in a named volume of the runner's engine; the
 runner setup (Docker-in-Docker, `valid_volumes`, seccomp for buildah) is in the workflow's
 header comment.

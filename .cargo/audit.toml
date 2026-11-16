@@ -1,0 +1,14 @@
+# cargo-audit configuration (CI job `audit`, see .forgejo/workflows/ci.yml).
+#
+# Exceptions to the advisory check. Every entry needs a reason and the condition under
+# which it goes away; remove it as soon as that condition holds. Prefer `cargo update -p`
+# to an exception whenever a fixed version is semver-compatible.
+[advisories]
+ignore = [
+    # libsqlite3-sys 0.37 bundles SQLite < 3.54 (CVE-2026-119375). It is in Cargo.lock
+    # only because sqlx's optional SQLite driver (sqlx-sqlite) is listed there through
+    # weak feature dependencies; the workspace enables sqlx's `mysql` driver only, so
+    # neither sqlx-sqlite nor libsqlite3-sys is compiled or linked. Remove when sqlx
+    # moves to libsqlite3-sys >= 0.39.
+    "RUSTSEC-2026-0459",
+]

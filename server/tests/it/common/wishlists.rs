@@ -352,3 +352,142 @@ pub fn assert_no_raw_keys(html: &str, what: &str) {
         );
     }
 }
+
+// ------------------------------------------------------------------ copy-wishes (#76)
+
+/// `get_copy_sources` as `c`.
+pub async fn get_copy_sources(c: &mut Client, group: i32) -> Reply {
+    c.call("get_copy_sources", &[("group_id", &group.to_string())])
+        .await
+}
+
+/// Inserts an item straight into the database (as migrated data could look: no validation).
+/// Returns its id.
+pub async fn insert_item(
+    pool: &MySqlPool,
+    list: i32,
+    title: &str,
+    description: Option<&str>,
+    link: Option<&str>,
+) -> i32 {
+    let result = sqlx::query(
+        "INSERT INTO wishlist_items (wishlist_id, title, description, link) VALUES (?, ?, ?, ?)",
+    )
+    .bind(list)
+    .bind(title)
+    .bind(description)
+    .bind(link)
+    .execute(pool)
+    .await
+    .expect("insert item");
+    i32::try_from(result.last_insert_id()).expect("item id fits i32")
+}
+
+/// Id of the item `title` on `list`.
+pub async fn item_id(pool: &MySqlPool, list: i32, title: &str) -> i32 {
+    sqlx::query_scalar("SELECT id FROM wishlist_items WHERE wishlist_id = ? AND title = ?")
+        .bind(list)
+        .bind(title)
+        .fetch_one(pool)
+        .await
+        .unwrap_or_else(|e| panic!("item {title:?}: {e}"))
+}
+
+/// Adds `n` filler items `Filler 0`, `Filler 1`, ... to `list`.
+pub async fn add_fillers(pool: &MySqlPool, list: i32, n: usize) {
+    for i in 0..n {
+        insert_item(pool, list, &format!("Filler {i}"), None, None).await;
+    }
+}
+
+/// The copy-wishes spec's fixture (docs/specs/copy-wishes.md, "Acceptance criteria"):
+/// group T "Family 2026" (not drawn; Alice, Bob, Carol; Bob's list: "Socks"), S1 "Family
+/// 2025" (drawn; Alice, Bob; Bob's list: "Book" (Paperback, https://shop.example/book),
+/// "socks" (https://shop.example/socks), "Tea"; updated 2025-12-01; Alice's list: "Scarf"),
+/// S2 "Office" (Bob, Carol; Bob's list: "Mug"; updated 2025-06-01) and E "Empty Group"
+/// (Bob, no list). Carol has no list anywhere, Dave is in none of the groups. T's list of
+/// Bob was last changed 2020-01-01.
+pub struct CopyWorld {
+    pub w: W,
+    pub t: i32,
+    pub s1: i32,
+    pub s2: i32,
+    pub e: i32,
+    pub t_list: i32,
+    pub s1_list: i32,
+    pub s2_list: i32,
+    pub socks_t: i32,
+    pub book: i32,
+    pub socks: i32,
+    pub tea: i32,
+    pub mug: i32,
+    pub scarf: i32,
+}
+
+pub async fn copy_world(pool: &MySqlPool) -> CopyWorld {
+    use chrono::TimeZone;
+    let w = world(pool).await;
+    let t = ts::create_group(pool, w.alice, "Family 2026").await;
+    ts::add_member(pool, t, w.bob).await;
+    ts::add_member(pool, t, w.carol).await;
+    let s1 = ts::create_group(pool, w.alice, "Family 2025").await;
+    ts::add_member(pool, s1, w.bob).await;
+    ts::set_drawn(pool, s1).await;
+    let s2 = ts::create_group(pool, w.bob, "Office").await;
+    ts::add_member(pool, s2, w.carol).await;
+    let e = ts::create_group(pool, w.bob, "Empty Group").await;
+
+    let t_list = ts::create_wishlist(pool, t, w.bob, &["Socks"]).await;
+    set_updated_at(
+        pool,
+        t_list,
+        chrono::Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
+    )
+    .await;
+    let s1_list = ts::create_wishlist(pool, s1, w.bob, &["Book", "socks", "Tea"]).await;
+    sqlx::query(
+        "UPDATE wishlist_items SET description = 'Paperback', link = ? \
+         WHERE wishlist_id = ? AND title = 'Book'",
+    )
+    .bind("https://shop.example/book")
+    .bind(s1_list)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE wishlist_items SET link = ? WHERE wishlist_id = ? AND title = 'socks'")
+        .bind("https://shop.example/socks")
+        .bind(s1_list)
+        .execute(pool)
+        .await
+        .unwrap();
+    set_updated_at(
+        pool,
+        s1_list,
+        chrono::Utc.with_ymd_and_hms(2025, 12, 1, 0, 0, 0).unwrap(),
+    )
+    .await;
+    let alice_s1 = ts::create_wishlist(pool, s1, w.alice, &["Scarf"]).await;
+    let s2_list = ts::create_wishlist(pool, s2, w.bob, &["Mug"]).await;
+    set_updated_at(
+        pool,
+        s2_list,
+        chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap(),
+    )
+    .await;
+    CopyWorld {
+        socks_t: item_id(pool, t_list, "Socks").await,
+        book: item_id(pool, s1_list, "Book").await,
+        socks: item_id(pool, s1_list, "socks").await,
+        tea: item_id(pool, s1_list, "Tea").await,
+        mug: item_id(pool, s2_list, "Mug").await,
+        scarf: item_id(pool, alice_s1, "Scarf").await,
+        w,
+        t,
+        s1,
+        s2,
+        e,
+        t_list,
+        s1_list,
+        s2_list,
+    }
+}

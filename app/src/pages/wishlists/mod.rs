@@ -18,6 +18,7 @@ use leptos_router::hooks::use_params_map;
 
 use crate::AppError;
 use crate::auth::get_current_user;
+use crate::components::LoginRedirect;
 use crate::i18n::{I18n, use_i18n};
 use crate::pages::groups::parse_group_id;
 use crate::pages::{NotFound, ServerError};
@@ -47,13 +48,13 @@ async fn when_logged_in<T>(
 }
 
 /// What a wishlist page shows instead of its content: the 404 page (missing group, not a
-/// member, target not a member: indistinguishable), nothing while the guard redirects,
-/// else the 500 page.
+/// member, target not a member: indistinguishable), the login redirect when the session
+/// ended after the guard let the visitor in, else the 500 page.
 #[component]
 fn WishlistErrorView(error: WishlistError) -> impl IntoView {
     match error {
         WishlistError::NotFound => view! { <NotFound/> }.into_any(),
-        WishlistError::Unauthorized => ().into_any(),
+        WishlistError::Unauthorized => view! { <LoginRedirect/> }.into_any(),
         _ => view! { <ServerError/> }.into_any(),
     }
 }

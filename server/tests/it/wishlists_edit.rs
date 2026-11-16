@@ -4,6 +4,7 @@
 use crate::common::auth::*;
 use crate::common::groups::*;
 use crate::common::wishlists::*;
+use app::paths::{wishlist_item_anchor, wishlist_item_edit_path, wishlist_item_path};
 use app::test_support as ts;
 use app::wishlists_api::{
     WishlistError, WishlistField as Fld, WishlistFieldError as Err_, WishlistView,
@@ -553,7 +554,24 @@ async fn ac19_edit_with_someone_elses_item_id_renders_no_form_and_no_foreign_ite
             "{foreign}"
         );
         assert!(!page.body.contains(ALICE_ITEM));
-        assert!(!page.body.contains(ITEM_X));
+        // The copy section (copy-wishes, #76) lists Bob's own H list, ITEM_X included, and
+        // its data is serialized for hydration: look at the rest of the markup.
+        let copy = page
+            .body
+            .find("<details id=\"copy\"")
+            .unwrap_or(page.body.len());
+        let items = copy
+            + page.body[copy..]
+                .find(&en("wishlist.edit.itemsHeading"))
+                .unwrap_or(0);
+        let mut outside_copy = format!("{}{}", &page.body[..copy], &page.body[items..]);
+        while let Some(script) = outside_copy.find("<script") {
+            let end = outside_copy[script..]
+                .find("</script>")
+                .map_or(outside_copy.len(), |end| script + end + "</script>".len());
+            outside_copy.replace_range(script..end, "");
+        }
+        assert!(!outside_copy.contains(ITEM_X));
         assert!(page.body.contains(ITEM_A), "own list still shown");
     }
     for junk in ["abc", "-1", "0", "1.5", ""] {
@@ -728,4 +746,88 @@ async fn ac26_after_the_draw_the_owner_can_still_change_the_list(pool: MySqlPool
     assert_eq!(item_row(&pool, new).await, None);
     add_item(&mut bob, f.w.g, "Again", "", "").await.wl_ok();
     assert_eq!(titles(&pool, f.w.g, f.w.bob).await, ["Again"]);
+}
+
+// ------------------------------------------------------------------ Issue #69
+
+/// The opening tag of the element with `id="{id}"`.
+fn tag_with_id<'a>(html: &'a str, id: &str) -> &'a str {
+    let at = pos(html, &format!("id=\"{id}\""));
+    let start = html[..at].rfind('<').expect("tag start");
+    let end = at + html[at..].find('>').expect("tag end");
+    &html[start..=end]
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn issue69_rows_carry_an_anchor_that_edit_and_cancel_link_to(pool: MySqlPool) {
+    let f = fixture(&pool).await;
+    let mut bob = f.w.bob().await;
+    let path = edit_path(f.w.g);
+
+    // Plain page: every row is `#item-{id}`, and its Edit link jumps there.
+    assert_eq!(wishlist_item_anchor(7), "item-7");
+    assert_eq!(
+        wishlist_item_edit_path(f.w.g, 7),
+        format!("{path}?edit=7#item-7")
+    );
+    assert_eq!(wishlist_item_path(f.w.g, 7), format!("{path}#item-7"));
+    let plain = bob.get(&path).await;
+    assert_eq!(plain.status, 200);
+    for id in [f.a, f.b, f.c] {
+        assert!(
+            tag_with_id(&plain.body, &wishlist_item_anchor(id)).starts_with("<li"),
+            "row {id}"
+        );
+        let edit = format!("href=\"{}\"", wishlist_item_edit_path(f.w.g, id));
+        assert!(plain.body.contains(&edit), "edit link of {id}");
+    }
+
+    // `?edit=`: the inline form's row keeps the anchor (a page load without JavaScript lands
+    // there), and Cancel leads back to the row.
+    let page = bob.get(&format!("{path}?edit={}", f.b)).await;
+    assert_eq!(page.status, 200);
+    assert!(html_contains(&page.body, &en("wishlist.edit.save")));
+    assert!(tag_with_id(&page.body, &wishlist_item_anchor(f.b)).starts_with("<li"));
+    let title = tag_with_id(&page.body, &format!("edit-{}-title", f.b));
+    assert!(title.contains("value=\"Item B\""), "{title}");
+    let cancel = format!("href=\"{}\"", wishlist_item_path(f.w.g, f.b));
+    assert!(page.body.contains(&cancel), "cancel link");
+    // The other rows are plain rows with their anchors.
+    assert!(tag_with_id(&page.body, &wishlist_item_anchor(f.a)).starts_with("<li"));
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn issue69_a_plain_add_ends_on_an_empty_add_form(pool: MySqlPool) {
+    let f = fixture(&pool).await;
+    let mut bob = f.w.bob().await;
+    bob.headers.push(("accept".into(), "text/html".into()));
+    let reply = add_item(
+        &mut bob,
+        f.w.g,
+        "Fresh wish",
+        "Fresh description",
+        "https://fresh.example/x",
+    )
+    .await;
+    assert_eq!(reply.status, 302, "{}", reply.body);
+    assert_eq!(reply.location(), Some(edit_path(f.w.g)));
+
+    let page = bob.get(&edit_path(f.w.g)).await;
+    assert_eq!(page.status, 200);
+    assert!(
+        html_contains(&page.body, "Fresh wish"),
+        "the item is listed"
+    );
+    for id in ["add-title", "add-link"] {
+        let input = tag_with_id(&page.body, id);
+        assert!(input.contains("value=\"\""), "{input}");
+        assert!(
+            !input.contains("Fresh") && !input.contains("fresh.example"),
+            "{input}"
+        );
+    }
+    let open = tag_with_id(&page.body, "add-description");
+    let after = pos(&page.body, open) + open.len();
+    let content = &page.body[after..after + page.body[after..].find("</textarea>").unwrap()];
+    assert_eq!(content, "", "empty description");
 }

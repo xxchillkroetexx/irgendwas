@@ -184,14 +184,61 @@ jobs:
           name: playwright-report
           path: end2end/playwright-report/
 
+  # Cargo.lock matches the manifests. check and e2e build without --locked, so a stale
+  # lockfile would be rewritten silently and tested against other versions than committed.
+  # Resolves against the index only (no crate downloads, a few seconds). Gates the image.
+  lockfile:
+    runs-on: docker
+    container:
+      image: docker.io/library/rust:1.99.1-slim-trixie
+    env:
+      # The image's toolchain is the pinned one; skips installing rust-toolchain.toml's
+      # components and wasm target, which resolving does not need.
+      RUSTUP_TOOLCHAIN: "1.99.1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git and node (needed by checkout)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git nodejs
+      - uses: actions/checkout@v4
+      - name: Cargo.lock is up to date
+        run: cargo update --workspace --locked
+
+  # RustSec advisories for every crate in Cargo.lock. Exceptions, each with its reason, go
+  # in .cargo/audit.toml. Not a dependency of the image job: an advisory published today
+  # marks the run red without holding back the deployment of unrelated changes.
+  audit:
+    runs-on: docker
+    container:
+      image: docker.io/library/rust:1.99.1-slim-trixie
+    env:
+      RUSTUP_TOOLCHAIN: "1.99.1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git and node (needed by checkout)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git nodejs
+      - uses: actions/checkout@v4
+      - name: cargo-audit
+        run: sh scripts/install-cargo-audit.sh
+      - name: Advisories
+        run: cargo audit
+
   # Image → Forgejo container registry, for pushes to dev (tag :dev) and main (tag
-  # :latest), after check and e2e passed; both also get :sha-<12 chars> of the commit.
+  # :latest), after check, e2e and lockfile passed; both also get :sha-<12 chars> of the
+  # commit.
   # buildah (chroot isolation, vfs storage) needs neither the engine's socket nor a
   # privileged container. Repo secrets: REGISTRY_USER and
   # REGISTRY_TOKEN (an access token with package write scope).
   image:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-    needs: [check, e2e]
+    needs: [check, e2e, lockfile]
     runs-on: docker
     container:
       image: quay.io/buildah/stable:latest

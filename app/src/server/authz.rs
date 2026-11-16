@@ -27,12 +27,16 @@ pub struct GroupAccess {
     pub is_admin: bool,
     /// A `group_members` row exists.
     pub is_member: bool,
+    /// `groups.archived_at IS NOT NULL` (spec: group-archive A12): the group is read-only.
+    /// Flows map it to their own `Archived` error after the role checks (A9).
+    pub archived: bool,
 }
 
 #[derive(FromRow)]
 struct AccessRow {
     admin_id: i32,
     is_member: bool,
+    archived: bool,
 }
 
 /// Loads the caller's relation to a group (without deciding anything).
@@ -46,7 +50,8 @@ where
 {
     let row = sqlx::query_as::<_, AccessRow>(
         "SELECT g.admin_id, \
-                EXISTS(SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = ?) AS is_member \
+                EXISTS(SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = ?) AS is_member, \
+                (g.archived_at IS NOT NULL) AS archived \
          FROM `groups` g WHERE g.id = ?",
     )
     .bind(user_id)
@@ -59,6 +64,7 @@ where
         user_id,
         is_admin: r.admin_id == user_id,
         is_member: r.is_member,
+        archived: r.archived,
     }))
 }
 

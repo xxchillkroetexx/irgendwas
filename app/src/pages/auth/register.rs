@@ -21,49 +21,50 @@ pub fn RegisterPage() -> impl IntoView {
     let login_href = move || with_next("/auth/login", next.get().as_deref());
 
     view! {
-        <RedirectIfLoggedIn to=DASHBOARD_PATH.to_string()/>
-        <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-5">
-                <div class="card">
-                    <div class="card-body">
-                        <h1 class="h3 card-title mb-3">{i18n.t("auth.register.title")}</h1>
-                        <Show
-                            when=done
-                            fallback=move || {
-                                view! {
-                                    <p class="text-muted">{i18n.t("auth.register.description")}</p>
-                                    <ErrorAlert error/>
-                                    <ActionForm action>
-                                        {move || {
-                                            next.get().map(|next| view! { <input type="hidden" name="next" value=next/> })
-                                        }}
-                                        <AuthInput
-                                            id="register-email"
-                                            name="email"
-                                            label=i18n.t("auth.register.email")
-                                            kind="email"
-                                            autocomplete="email"
-                                            field=Field::Email
-                                            error
-                                        />
-                                        <button type="submit" class="btn btn-primary w-100">
-                                            {i18n.t("auth.register.submit")}
-                                        </button>
-                                    </ActionForm>
+        <RedirectIfLoggedIn to=DASHBOARD_PATH.to_string()>
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-5">
+                    <div class="card">
+                        <div class="card-body">
+                            <h1 class="h3 card-title mb-3">{i18n.t("auth.register.title")}</h1>
+                            <Show
+                                when=done
+                                fallback=move || {
+                                    view! {
+                                        <p class="text-muted">{i18n.t("auth.register.description")}</p>
+                                        <ErrorAlert error/>
+                                        <ActionForm action>
+                                            {move || {
+                                                next.get().map(|next| view! { <input type="hidden" name="next" value=next/> })
+                                            }}
+                                            <AuthInput
+                                                id="register-email"
+                                                name="email"
+                                                label=i18n.t("auth.register.email")
+                                                kind="email"
+                                                autocomplete="email"
+                                                field=Field::Email
+                                                error
+                                            />
+                                            <button type="submit" class="btn btn-primary w-100">
+                                                {i18n.t("auth.register.submit")}
+                                            </button>
+                                        </ActionForm>
+                                    }
                                 }
-                            }
-                        >
-                            <div class="alert alert-success" role="status">
-                                {i18n.t("flash.success.registration_instructions")}
+                            >
+                                <div class="alert alert-success" role="status">
+                                    {i18n.t("flash.success.registration_instructions")}
+                                </div>
+                            </Show>
+                            <div class="mt-3 text-center">
+                                {i18n.t("auth.register.haveAccount")} " "
+                                <a href=login_href>{i18n.t("auth.login")}</a>
                             </div>
-                        </Show>
-                        <div class="mt-3 text-center">
-                            {i18n.t("auth.register.haveAccount")} " "
-                            <a href=login_href>{i18n.t("auth.login")}</a>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </RedirectIfLoggedIn>
     }
 }

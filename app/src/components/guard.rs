@@ -97,12 +97,18 @@ fn apply_redirect(redirect: Option<&str>) {
 #[component]
 pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     let here = current_path_and_query();
+    let location = use_location();
     let access = Resource::new_blocking(
-        move || here.get(),
-        |here| async move {
+        // Query-only navigation stays on the same protected page.
+        move || location.pathname.get(),
+        move |_| async move {
             let access = match get_current_user().await {
                 Ok(Some(_)) => Access::Allowed,
-                Ok(None) | Err(AppError::Unauthorized) => Access::Redirect(login_url(&here)),
+                Ok(None) | Err(AppError::Unauthorized) => match here.try_get_untracked() {
+                    Some(here) => Access::Redirect(login_url(&here)),
+                    // The route can be disposed while the request is in flight.
+                    None => Access::Failed,
+                },
                 Err(_) => Access::Failed,
             };
             if let Access::Redirect(to) = &access {
@@ -133,22 +139,49 @@ pub fn RequireUser(children: ChildrenFn) -> impl IntoView {
     }
 }
 
-/// For pages that make no sense when logged in (login, register): a logged-in visitor is
-/// sent to `to`. Renders nothing.
+/// Where a protected page's data came back `Unauthorized` although its [`RequireUser`]
+/// let the visitor in: the session ended since (logout in another tab, expiry), and the
+/// guard does not check again on a query-only navigation (#81). Sends the visitor to the
+/// login page and back here. Renders nothing.
 #[component]
-pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>) -> impl IntoView {
+pub fn LoginRedirect() -> impl IntoView {
+    let to = login_url(&current_path_and_query().get_untracked());
+    apply_redirect(Some(&to));
+    view! { <ClientRedirect path=to/> }
+}
+
+/// For pages that make no sense when logged in (landing, login, register): shows
+/// `children` only once the check found no logged-in user; a logged-in visitor is sent to
+/// `to` without ever seeing them (on the client, a navigation to such a page shows
+/// `PageLoading` while the check runs instead of flashing the logged-out content, #72).
+///
+/// Checked once, when the page mounts: a query-only change stays on the same page (and
+/// keeps its typed input), and leaving it needs no check (a pathname key would send one
+/// whose result nobody uses).
+#[component]
+pub fn RedirectIfLoggedIn(#[prop(into)] to: Signal<String>, children: ChildrenFn) -> impl IntoView {
     let target = Resource::new_blocking(
-        move || to.get(),
-        |to| async move {
-            let redirect = matches!(get_current_user().await, Ok(Some(_))).then_some(to);
+        || (),
+        move |()| async move {
+            let logged_in = matches!(get_current_user().await, Ok(Some(_)));
+            // Use the latest query and tolerate route disposal during the request.
+            let redirect = if logged_in {
+                to.try_get_untracked()
+            } else {
+                None
+            };
             apply_redirect(redirect.as_deref());
             redirect
         },
     );
+    let children = StoredValue::new(children);
     view! {
-        <Suspense fallback=|| ()>
+        <Suspense fallback=|| view! { <PageLoading/> }>
             {move || Suspend::new(async move {
-                target.await.map(|to| view! { <ClientRedirect path=to/> })
+                match target.await {
+                    Some(to) => view! { <ClientRedirect path=to/> }.into_any(),
+                    None => children.read_value()().into_any(),
+                }
             })}
         </Suspense>
     }

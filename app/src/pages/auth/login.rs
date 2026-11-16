@@ -35,61 +35,62 @@ pub fn LoginPage() -> impl IntoView {
     let forgot_href = move || with_next("/auth/forgot-password", valid_next.get().as_deref());
 
     view! {
-        <RedirectIfLoggedIn to=target/>
-        <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-5">
-                {move || {
-                    valid_next
-                        .get()
-                        .map(|_| {
-                            view! {
-                                <div class="alert alert-info" role="status">
-                                    {i18n.t("auth.login.required")}
-                                </div>
-                            }
-                        })
-                }}
-                <div class="card">
-                    <div class="card-body">
-                        <h1 class="h3 card-title mb-4">{i18n.t("auth.login.title")}</h1>
-                        <ErrorAlert error/>
-                        <ActionForm action>
-                            {move || {
-                                next.get().map(|next| view! { <input type="hidden" name="next" value=next/> })
-                            }}
-                            <AuthInput
-                                id="login-email"
-                                name="email"
-                                label=i18n.t("auth.login.email")
-                                kind="email"
-                                autocomplete="email"
-                                field=Field::Email
-                                error
-                            />
-                            <AuthInput
-                                id="login-password"
-                                name="password"
-                                label=i18n.t("auth.login.password")
-                                kind="password"
-                                autocomplete="current-password"
-                                field=Field::Password
-                                error
-                                node_ref=password
-                            />
-                            <button type="submit" class="btn btn-primary w-100">
-                                {i18n.t("auth.login.submit")}
-                            </button>
-                        </ActionForm>
-                        <div class="mt-3 text-center">
-                            <a href=forgot_href>{i18n.t("auth.login.forgotPassword")}</a>
-                        </div>
-                        <div class="mt-2 text-center">
-                            {i18n.t("auth.login.noAccount")} " "
-                            <a href=register_href>{i18n.t("auth.register")}</a>
+        <RedirectIfLoggedIn to=target>
+            <div class="row justify-content-center">
+                <div class="col-md-6 col-lg-5">
+                    {move || {
+                        valid_next
+                            .get()
+                            .map(|_| {
+                                view! {
+                                    <div class="alert alert-info" role="status">
+                                        {i18n.t("auth.login.required")}
+                                    </div>
+                                }
+                            })
+                    }}
+                    <div class="card">
+                        <div class="card-body">
+                            <h1 class="h3 card-title mb-4">{i18n.t("auth.login.title")}</h1>
+                            <ErrorAlert error/>
+                            <ActionForm action>
+                                {move || {
+                                    next.get().map(|next| view! { <input type="hidden" name="next" value=next/> })
+                                }}
+                                <AuthInput
+                                    id="login-email"
+                                    name="email"
+                                    label=i18n.t("auth.login.email")
+                                    kind="email"
+                                    autocomplete="email"
+                                    field=Field::Email
+                                    error
+                                />
+                                <AuthInput
+                                    id="login-password"
+                                    name="password"
+                                    label=i18n.t("auth.login.password")
+                                    kind="password"
+                                    autocomplete="current-password"
+                                    field=Field::Password
+                                    error
+                                    node_ref=password
+                                />
+                                <button type="submit" class="btn btn-primary w-100">
+                                    {i18n.t("auth.login.submit")}
+                                </button>
+                            </ActionForm>
+                            <div class="mt-3 text-center">
+                                <a href=forgot_href>{i18n.t("auth.login.forgotPassword")}</a>
+                            </div>
+                            <div class="mt-2 text-center">
+                                {i18n.t("auth.login.noAccount")} " "
+                                <a href=register_href>{i18n.t("auth.register")}</a>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </RedirectIfLoggedIn>
     }
 }

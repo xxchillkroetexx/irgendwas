@@ -8,9 +8,12 @@ Scope: one wishlist per member and group. The owner adds, edits, removes and reo
 
 Not in scope: assignments and the draw (draw slice), exclusions, a global "one list for all my groups", reserving or marking items as bought.
 
-Fresh start: no production data is migrated. The Rust app owns its schema, and `0001_baseline.sql` (the PHP schema) is the starting point.
+Fresh start: no production data is migrated. The Rust app owns its schema, and `0001_baseline.sql` (the PHP schema) is the starting point. (Superseded 2026-11-15, see the amendment below.)
 
 Revised 2026-10-31: aligned with i18n-foundation (built before auth). `wishlist.view.lastUpdated` uses `LocalDate` (`app::format`); the panel item counts are plural keys. AC33 was added.
+Revised 2026-11-16 (group-archive, #61; see `docs/specs/group-archive.md`): every write to a list in an archived group (also `copy_items` into it and the share target's `add_shared_wish`) answers `WishlistError::Archived` (409), checked after membership and again under the group row's share lock; `WishlistView.archived`; the edit page of an archived group shows the notice and the items read-only; an archived group stays a copy *source*.
+
+Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The import trimmed titles, turned empty descriptions and links into NULL, normalised line breaks and numbered `position` by item id; links were otherwise copied as PHP stored them (PHP did not restrict them to http/https). Wishlists that members who left in PHP still had were copied too (groups amendment of the same date). The old PHP URLs are still not kept: a bookmark to `/wishlist/...` gets the 404 page.
 
 ## Current PHP behaviour
 
@@ -119,7 +122,7 @@ Every existing handler calls `requireAuth()`: anonymous users are sent to `/auth
 
 - `/groups/:id/wishlist/:me` is the read-only view of my own list ("how others see it"), with an Edit button.
 - The draw slice's assignment card on the group page and its dashboard assignments card link to `/groups/{group_id}/wishlist/{receiver_id}`.
-- Old PHP URLs (`/wishlist/...`) are not kept (fresh start).
+- Old PHP URLs (`/wishlist/...`) are not kept (fresh start; 2026-11-15: still true with the migrated data, see the amendment at the top).
 - Non-numeric or non-positive `:id` / `:user_id` gives the 404 page. Logged-out visitors are redirected to login with `?next=` (auth slice) and land back on the same URL.
 - Edit page query `?edit={item_id}`: renders that item's row as an inline edit form. This is a plain GET navigation, so it also works without JS. If the id is not one of my items in this group, the parameter is ignored.
 
@@ -180,6 +183,7 @@ CREATE INDEX idx_wishlist_items_order ON wishlist_items (wishlist_id, position, 
 - Empty state: `wishlist.edit.noItems` + `wishlist.edit.addSome`.
 - **Clear list**: a bordered section with `wishlist.edit.deleteWishlist` (reword en "Remove all items", de "Alle Artikel entfernen"), a required checkbox `wishlist.edit.deleteWishlistConfirm` (reword to en "Yes, remove all items from this list. This cannot be undone.", de "Ja, alle Artikel dieser Liste entfernen. Das kann nicht rückgängig gemacht werden."), and a submit button. The checkbox is the confirmation, so it works without JS. It is shown only when the list has items.
 - Field errors appear inline (with JS). Without JS, the page reloads and shows the error through the foundation's no-JS server fn error path, and entered values may be lost (accepted degradation).
+- Amended 2026-11-09 (#69): with JS, a successful add empties the add form (title, description, link) and focuses its title; a failed add keeps the entered values. Every item row is `<li id="item-{id}">`; Edit links to `?edit=ID#item-ID`, Cancel to the page without `?edit` at `#item-ID` (without JS the browser jumps to the row; it does not focus a field). With JS a plain click on Edit or Cancel goes to the same URL without the fragment and keeps the scroll position, so the form opens and closes in place (amended 2026-11-15, after #81); a new tab keeps the fragment. The inline title is focused when the form opens, but a later re-read of the list (add, move, remove) does not take the focus from elsewhere; a successful save keeps the scroll position too. A save returns to the URL without `?edit` and without a fragment, like the no-JS redirect. Amended 2026-11-13 (#69 review): the add form is disabled while its add is in flight (text typed for the next wish can't be lost by the reset), and the focus returns to its title once the add has finished.
 
 **`/groups/:id/wishlist/:user_id` (view):**
 - Title `wishlist.view.title` (`{name}`), then `wishlist.view.forGroup` and a group link.
@@ -261,6 +265,8 @@ None.
 
 
 ## Issue #57: copying own wishes (approved 2026-11-03)
+
+Amended 2026-11-16 (#76, copy wishes): the source selection described here (source `<select>`, "Show wishes", `?source=`) is replaced by the copy section of `docs/specs/copy-wishes.md`, which also adds `get_copy_sources`, the `already_on_list` / `item_not_copyable` checks, the counted flash and the `?copy=1` redirects of failed plain posts. The server rules below still apply.
 
 The user requested implementation of #57, extending the original exclusion of copying. The editor at `/groups/:id/wishlist` provides own source-list selection and checkbox selection of one or more items. Copy preserves source order, title, description and normalized link, generates new IDs and timestamps, and appends to the destination. Source rows and timestamps remain unchanged. Historical/drawn groups remain available while the user is still a member; departed/deleted lists are unavailable under W12.
 
