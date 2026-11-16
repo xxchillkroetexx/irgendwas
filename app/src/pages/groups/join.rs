@@ -207,6 +207,12 @@ fn PreviewCard(
         .into_any()
     } else {
         match preview.closed {
+            Some(ClosedReason::Archived) => view! {
+                <div class="alert alert-warning" role="alert">
+                    {i18n.t("flash.error.join_closed_archived")}
+                </div>
+            }
+            .into_any(),
             Some(ClosedReason::Drawn) => view! {
                 <div class="alert alert-warning" role="alert">{i18n.t("flash.error.join_closed_drawn")}</div>
             }

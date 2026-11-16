@@ -1,11 +1,13 @@
-//! Group pages (spec: groups, "Pages / routes"): the list, a group, create/edit, and the
-//! invitation pages `/join` and `/join/:code`.
+//! Group pages (spec: groups, "Pages / routes"): the list, a group, create/edit, the
+//! invitation pages `/join` and `/join/:code`, and the archive page `/groups/archive`
+//! (spec: group-archive).
 //!
 //! Every page is behind [`RequireUser`](crate::components::RequireUser). Its data resource is
 //! created synchronously at page level (never inside the guard's async children) and only
 //! calls the protected server fn for a logged-in visitor. Hooks for later slices (wishlist
 //! panel, exclusions link, draw panel) come from those slices' page modules.
 
+mod archive;
 mod form;
 mod join;
 mod list;
@@ -23,6 +25,7 @@ use crate::groups_api::GroupError;
 use crate::pages::{Forbidden, NotFound, ServerError};
 use crate::paths::group_path;
 
+pub use archive::GroupArchivePage;
 pub use form::{GroupCreatePage, GroupEditPage};
 pub use join::{JoinPage, JoinPreviewPage};
 pub use list::GroupsPage;

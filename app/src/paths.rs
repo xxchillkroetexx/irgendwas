@@ -33,6 +33,12 @@ pub const DASHBOARD_PATH: &str = "/user/dashboard";
 /// The profile page (account slice).
 pub const PROFILE_PATH: &str = "/user/profile";
 
+/// The list of the caller's active groups.
+pub const GROUPS_PATH: &str = "/groups";
+
+/// The list of the caller's archived groups (group-archive).
+pub const ARCHIVE_PATH: &str = "/groups/archive";
+
 /// The page of a group.
 pub fn group_path(group_id: i32) -> String {
     format!("/groups/{group_id}")

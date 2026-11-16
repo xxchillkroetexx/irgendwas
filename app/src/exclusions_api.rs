@@ -36,6 +36,9 @@ pub enum ExclusionError {
     TooManyExclusions { max: u8 },
     #[error("would make the draw impossible")]
     WouldMakeDrawImpossible,
+    /// The group is archived and read-only (spec: group-archive).
+    #[error("group archived")]
+    Archived,
     #[error("internal server error")]
     Internal,
 }
@@ -51,6 +54,7 @@ impl ExclusionError {
             ExclusionError::TargetNotMember => "flash.error.user_not_in_group",
             ExclusionError::TooManyExclusions { .. } => "flash.error.exclusion_limit_reached",
             ExclusionError::WouldMakeDrawImpossible => "flash.error.exclusion_would_block_draw",
+            ExclusionError::Archived => "flash.error.group_archived",
             ExclusionError::Internal => "error.generic.message",
         }
     }
@@ -69,7 +73,9 @@ impl ExclusionError {
         match self {
             ExclusionError::Unauthorized => 401,
             ExclusionError::NotFound => 404,
-            ExclusionError::AlreadyDrawn | ExclusionError::WouldMakeDrawImpossible => 409,
+            ExclusionError::AlreadyDrawn
+            | ExclusionError::WouldMakeDrawImpossible
+            | ExclusionError::Archived => 409,
             ExclusionError::CannotExcludeSelf
             | ExclusionError::TargetNotMember
             | ExclusionError::TooManyExclusions { .. } => 422,
@@ -126,15 +132,17 @@ pub struct ExclusionsPage {
     pub group_id: i32,
     pub group_name: String,
     pub is_drawn: bool,
+    /// The group is archived: read-only like after the draw (group-archive).
+    pub archived: bool,
     /// Only `user_id = me` rules, ordered by `name, user_id`.
     pub my_rules: Vec<MemberRef>,
     /// Current members except me and except `my_rules`, ordered by `name, user_id`. Empty
-    /// when drawn.
+    /// when drawn or archived.
     pub candidates: Vec<MemberRef>,
     pub max_rules: u8,
-    /// `!is_drawn && my_rules.len() < max_rules && !candidates.is_empty()`.
+    /// `!is_drawn && !archived && my_rules.len() < max_rules && !candidates.is_empty()`.
     pub can_add: bool,
-    /// `None` when drawn, feasible, or with fewer than 2 members.
+    /// `None` when drawn, archived, feasible, or with fewer than 2 members.
     pub notice: Option<FeasibilityNotice>,
 }
 

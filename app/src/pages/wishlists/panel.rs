@@ -28,9 +28,10 @@ pub fn panel_resource(group_id: Memo<Option<i32>>) -> PanelResource {
 }
 
 /// The card. The group page awaits the panel data together with the group (both resources
-/// resolve before the page is sent, also when the group is not found).
+/// resolve before the page is sent, also when the group is not found). An archived group
+/// has no "Edit my wishlist" button (group-archive); the view links stay.
 #[component]
-pub fn WishlistPanel(group_id: i32, data: PanelData) -> impl IntoView {
+pub fn WishlistPanel(group_id: i32, data: PanelData, archived: bool) -> impl IntoView {
     let i18n = use_i18n();
     let me = data.members.iter().find(|m| m.is_me).map(|m| m.user_id);
     let mine = i64::from(data.my_item_count);
@@ -72,9 +73,14 @@ pub fn WishlistPanel(group_id: i32, data: PanelData) -> impl IntoView {
                 <h2 class="h5 card-title">{i18n.t("group.show.yourWishlist")}</h2>
                 <p class="text-muted">{i18n.t("group.show.wishlistHelp")}</p>
                 <p class="mb-2">{t_plural!(i18n, "wishlist.panel.myItemCount", mine, count = mine)}</p>
-                <a href=wishlist_edit_path(group_id) class="btn btn-primary">
-                    {i18n.t("group.show.editWishlist")}
-                </a>
+                {(!archived)
+                    .then(|| {
+                        view! {
+                            <a href=wishlist_edit_path(group_id) class="btn btn-primary">
+                                {i18n.t("group.show.editWishlist")}
+                            </a>
+                        }
+                    })}
                 {me
                     .map(|me| {
                         view! {

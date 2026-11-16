@@ -111,15 +111,16 @@ async fn acquire(state: &AppState) -> Result<PoolConnection<MySql>, ExclusionErr
 }
 
 /// Step 1–3 of add and remove: the group row `FOR UPDATE` (gone: `NotFound`), the caller's
-/// membership under the lock (`NotFound`), then `is_drawn` (NULL counts as false:
-/// `AlreadyDrawn`).
+/// membership under the lock (`NotFound`), the archive (`Archived`, group-archive A9), then
+/// `is_drawn` (NULL counts as false: `AlreadyDrawn`).
 async fn lock_open_group(
     tx: &mut Transaction<'_, MySql>,
     group_id: i32,
     user_id: i32,
 ) -> Result<(), ExclusionError> {
-    let is_drawn = sqlx::query_scalar::<_, Option<bool>>(
-        "SELECT is_drawn FROM `groups` WHERE id = ? FOR UPDATE",
+    let (is_drawn, archived) = sqlx::query_as::<_, (Option<bool>, bool)>(
+        "SELECT is_drawn, (archived_at IS NOT NULL) AS archived FROM `groups` \
+         WHERE id = ? FOR UPDATE",
     )
     .bind(group_id)
     .fetch_optional(&mut **tx)
@@ -129,6 +130,9 @@ async fn lock_open_group(
     authz::require_member(&mut **tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    if archived {
+        return Err(ExclusionError::Archived);
+    }
     if is_drawn.unwrap_or(false) {
         return Err(ExclusionError::AlreadyDrawn);
     }
@@ -196,6 +200,7 @@ pub async fn outcome(
 struct GroupRow {
     name: String,
     is_drawn: Option<bool>,
+    archived: bool,
 }
 
 #[derive(FromRow)]
@@ -220,13 +225,18 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
     authz::require_member(&mut *tx, me, group_id)
         .await
         .map_err(from_app)?;
-    let group = sqlx::query_as::<_, GroupRow>("SELECT name, is_drawn FROM `groups` WHERE id = ?")
-        .bind(group_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| db_error("get_exclusions: group", e))?
-        .ok_or(ExclusionError::NotFound)?;
+    let group = sqlx::query_as::<_, GroupRow>(
+        "SELECT name, is_drawn, (archived_at IS NOT NULL) AS archived FROM `groups` WHERE id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| db_error("get_exclusions: group", e))?
+    .ok_or(ExclusionError::NotFound)?;
     let is_drawn = group.is_drawn.unwrap_or(false);
+    let archived = group.archived;
+    // Drawn or archived: the rules are only listed (no candidates, no notice).
+    let locked = is_drawn || archived;
     let members = sqlx::query_as::<_, MemberRow>(
         "SELECT u.id AS user_id, u.name, \
                 EXISTS(SELECT 1 FROM exclusion_rules e \
@@ -241,7 +251,7 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
     .await
     .map_err(|e| db_error("get_exclusions: members", e))?;
     // The whole group's rules feed the one-bit notice only; they never leave this fn.
-    let rules = if is_drawn {
+    let rules = if locked {
         Vec::new()
     } else {
         load_rules(&mut tx, group_id).await.map_err(from_app)?
@@ -259,7 +269,7 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
         .filter(|row| row.excluded && row.user_id != me)
         .map(member_ref)
         .collect();
-    let candidates: Vec<MemberRef> = if is_drawn {
+    let candidates: Vec<MemberRef> = if locked {
         Vec::new()
     } else {
         members
@@ -268,7 +278,7 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
             .map(member_ref)
             .collect()
     };
-    let notice = if is_drawn {
+    let notice = if locked {
         None
     } else {
         let ids: Vec<i32> = members.iter().map(|row| row.user_id).collect();
@@ -282,11 +292,12 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
         }
     };
     let max_rules = MAX_EXCLUSIONS_PER_MEMBER;
-    let can_add = !is_drawn && my_rules.len() < usize::from(max_rules) && !candidates.is_empty();
+    let can_add = !locked && my_rules.len() < usize::from(max_rules) && !candidates.is_empty();
     Ok(ExclusionsPage {
         group_id,
         group_name: group.name,
         is_drawn,
+        archived,
         my_rules,
         candidates,
         max_rules,

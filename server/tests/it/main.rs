@@ -32,6 +32,7 @@ mod exclusions_edit;
 mod exclusions_feasibility;
 mod exclusions_security;
 mod exclusions_view;
+mod group_archive;
 mod groups_concurrency;
 mod groups_create;
 mod groups_edit;

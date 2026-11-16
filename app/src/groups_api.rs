@@ -126,6 +126,9 @@ pub enum GroupError {
     TargetNotMember,
     #[error("target is yourself")]
     TargetIsSelf,
+    /// The group is archived and read-only (spec: group-archive A1).
+    #[error("group archived")]
+    Archived,
     #[error("internal server error")]
     Internal,
 }
@@ -156,6 +159,10 @@ impl GroupError {
             GroupError::CannotRemoveSelf => "flash.error.cannot_remove_self",
             GroupError::TargetNotMember => "flash.error.user_not_in_group",
             GroupError::TargetIsSelf => "flash.error.target_is_self",
+            GroupError::Archived => match op {
+                GroupOp::Join => "flash.error.join_closed_archived",
+                GroupOp::Leave | GroupOp::Remove | GroupOp::Other => "flash.error.group_archived",
+            },
             GroupError::Internal => "error.generic.message",
         }
     }
@@ -214,7 +221,8 @@ impl GroupError {
             GroupError::AlreadyMember { .. }
             | GroupError::RegistrationClosed
             | GroupError::AlreadyDrawn
-            | GroupError::AdminCannotLeave => 409,
+            | GroupError::AdminCannotLeave
+            | GroupError::Archived => 409,
             GroupError::TooManyAttempts { .. } => 429,
             GroupError::Internal => 500,
         }
@@ -252,6 +260,8 @@ pub enum GroupStatus {
     Open,
     RegistrationClosed,
     Drawn,
+    /// Read-only (spec: group-archive); wins over the other states.
+    Archived,
 }
 
 impl GroupStatus {
@@ -261,6 +271,7 @@ impl GroupStatus {
             GroupStatus::Open => "group.status.open",
             GroupStatus::RegistrationClosed => "group.status.registrationClosed",
             GroupStatus::Drawn => "group.status.drawn",
+            GroupStatus::Archived => "group.status.archived",
         }
     }
 
@@ -270,6 +281,7 @@ impl GroupStatus {
             GroupStatus::Open => "badge bg-success",
             GroupStatus::RegistrationClosed => "badge bg-warning text-dark",
             GroupStatus::Drawn => "badge bg-secondary",
+            GroupStatus::Archived => "badge bg-dark",
         }
     }
 }
@@ -311,6 +323,15 @@ pub struct Invitation {
     pub link: String,
 }
 
+/// When an active group moves to the archive by itself (spec: group-archive A4). Only ever
+/// sent to the group's admin (U9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveSchedule {
+    pub auto_archive_at: DateTime<Utc>,
+    /// The 14-day warning window has begun (computed on the server).
+    pub archive_soon: bool,
+}
+
 /// A group as a member sees it. Never contains assignment data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupDetail {
@@ -327,10 +348,29 @@ pub struct GroupDetail {
     pub members: Vec<MemberView>,
     pub invitation: Option<Invitation>,
     pub can_leave: bool,
+    /// `Some` iff the group is archived (read-only).
+    pub archived_at: Option<DateTime<Utc>>,
+    /// `Some` only for the admin of an active group (U9: members never see the date).
+    pub archive_schedule: Option<ArchiveSchedule>,
+}
+
+/// One row of the archive page (`/groups/archive`). No assignment data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchivedGroupSummary {
+    pub id: i32,
+    pub name: String,
+    pub is_admin: bool,
+    pub admin_name: String,
+    pub member_count: u32,
+    /// Set iff the group is drawn.
+    pub drawn_at: Option<DateTime<Utc>>,
+    pub archived_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClosedReason {
+    /// The group is archived (reported before the other reasons).
+    Archived,
     Drawn,
     DeadlinePassed,
 }
@@ -364,10 +404,18 @@ pub fn join_path(code: &str) -> Option<String> {
         .then(|| format!("/join/{}", crate::paths::encode_query_value(code)))
 }
 
-/// The caller's groups, newest first.
+/// The caller's active groups, newest first (archived groups are on the archive page).
 #[server(prefix = "/api", endpoint = "list_my_groups")]
 pub async fn list_my_groups() -> Result<Vec<GroupSummary>, GroupError> {
     crate::server::respond::with_error_status(crate::server::groups_flow::list_my_groups().await)
+}
+
+/// The caller's archived groups, newest archive first.
+#[server(prefix = "/api", endpoint = "list_archived_groups")]
+pub async fn list_archived_groups() -> Result<Vec<ArchivedGroupSummary>, GroupError> {
+    crate::server::respond::with_error_status(
+        crate::server::groups_flow::list_archived_groups().await,
+    )
 }
 
 /// One group as the calling member sees it (`NotFound` for non-members and missing groups).
@@ -494,6 +542,54 @@ pub async fn transfer_admin(group_id: i32, user_id: i32) -> Result<(), GroupErro
             group_id,
             result,
             "flash.success.admin_transferred",
+            GroupOp::Other,
+        )
+        .await,
+    )
+}
+
+/// Admin only: moves the group to the archive (read-only). Idempotent.
+#[server(prefix = "/api", endpoint = "archive_group")]
+pub async fn archive_group(group_id: i32) -> Result<(), GroupError> {
+    use crate::server::groups_flow as flow;
+    let result = flow::archive_group(group_id).await;
+    crate::server::respond::with_error_status(
+        flow::stay_outcome(
+            group_id,
+            result,
+            "flash.success.group_archived",
+            GroupOp::Other,
+        )
+        .await,
+    )
+}
+
+/// Admin only: brings an archived group back and restarts its archive clock. Idempotent.
+#[server(prefix = "/api", endpoint = "restore_group")]
+pub async fn restore_group(group_id: i32) -> Result<(), GroupError> {
+    use crate::server::groups_flow as flow;
+    let result = flow::restore_group(group_id).await;
+    crate::server::respond::with_error_status(
+        flow::stay_outcome(
+            group_id,
+            result,
+            "flash.success.group_restored",
+            GroupOp::Other,
+        )
+        .await,
+    )
+}
+
+/// Admin only: restarts the archive clock of an active group ("Keep active").
+#[server(prefix = "/api", endpoint = "keep_group_active")]
+pub async fn keep_group_active(group_id: i32) -> Result<(), GroupError> {
+    use crate::server::groups_flow as flow;
+    let result = flow::keep_group_active(group_id).await;
+    crate::server::respond::with_error_status(
+        flow::stay_outcome(
+            group_id,
+            result,
+            "flash.success.group_kept_active",
             GroupOp::Other,
         )
         .await,

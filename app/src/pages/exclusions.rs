@@ -113,8 +113,9 @@ fn ExclusionsView(page: ExclusionsPage, actions: Actions) -> impl IntoView {
         .notice
         .clone()
         .map(|notice| view! { <NoticeBanner notice/> });
-    let add_card =
-        (!page.is_drawn).then(|| view! { <AddCard page=page.clone() action=actions.add/> });
+    // Drawn or archived: the rules are listed read-only (group-archive).
+    let editable = !page.is_drawn && !page.archived;
+    let add_card = editable.then(|| view! { <AddCard page=page.clone() action=actions.add/> });
     view! {
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
             <div>
@@ -129,11 +130,19 @@ fn ExclusionsView(page: ExclusionsPage, actions: Actions) -> impl IntoView {
             </a>
         </div>
         <p class="text-muted">{i18n.t("exclusion.privacy")}</p>
-        {page
-            .is_drawn
-            .then(|| {
-                view! { <div class="alert alert-info" role="status">{i18n.t("exclusion.locked")}</div> }
-            })}
+        {if page.archived {
+            view! {
+                <div class="alert alert-secondary" role="status">
+                    {i18n.t("flash.error.group_archived")}
+                </div>
+            }
+                .into_any()
+        } else if page.is_drawn {
+            view! { <div class="alert alert-info" role="status">{i18n.t("exclusion.locked")}</div> }
+                .into_any()
+        } else {
+            ().into_any()
+        }}
         {notice}
         <div class="row">
             <div class="col-lg-6">
@@ -144,7 +153,7 @@ fn ExclusionsView(page: ExclusionsPage, actions: Actions) -> impl IntoView {
                 <CurrentCard
                     group_id
                     rules=page.my_rules
-                    editable=!page.is_drawn
+                    editable
                     action=actions.remove
                 />
             </div>
@@ -322,11 +331,11 @@ fn CurrentCard(
 }
 
 /// The group page's hook (spec: "Pages / routes"): a link to the caller's exclusions while
-/// the group is not drawn, nothing after the draw.
+/// the group is not drawn, nothing after the draw or in an archived group (group-archive).
 #[component]
-pub fn ExclusionsLink(group_id: i32, is_drawn: bool) -> impl IntoView {
+pub fn ExclusionsLink(group_id: i32, is_drawn: bool, archived: bool) -> impl IntoView {
     let i18n = use_i18n();
-    (!is_drawn).then(|| {
+    (!is_drawn && !archived).then(|| {
         view! {
             <p class="mb-4">
                 <a href=exclusions_path(group_id) class="btn btn-outline-primary">

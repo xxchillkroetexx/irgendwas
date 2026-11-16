@@ -27,6 +27,10 @@
 //!
 //! Plain HTML form posts (no JavaScript) end with `302` to the edit page and a session flash;
 //! the server fn client gets the flash and re-reads the page itself.
+//!
+//! Archive (spec: group-archive A9, A11): writes to a list in an archived group answer
+//! `Archived`, after the membership check, once without a lock and again under the group
+//! row's share lock. An archived group stays a valid copy *source*.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -342,6 +346,22 @@ struct NameRow {
 }
 
 #[derive(FromRow)]
+struct GroupNameRow {
+    id: i32,
+    name: String,
+    archived: bool,
+}
+
+/// The fast-fail archive check before a write transaction (re-checked under the lock).
+fn writable(access: authz::GroupAccess) -> Result<(), WishlistError> {
+    if access.archived {
+        Err(WishlistError::Archived)
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(FromRow)]
 struct ListRow {
     id: i32,
     updated_at: Option<DateTime<Utc>>,
@@ -373,12 +393,14 @@ async fn load_view(
     .await
     .map_err(|e| db_error("view: owner", e))?
     .ok_or(WishlistError::NotFound)?;
-    let group = sqlx::query_as::<_, NameRow>("SELECT id, name FROM `groups` WHERE id = ?")
-        .bind(group_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| db_error("view: group", e))?
-        .ok_or(WishlistError::NotFound)?;
+    let group = sqlx::query_as::<_, GroupNameRow>(
+        "SELECT id, name, (archived_at IS NOT NULL) AS archived FROM `groups` WHERE id = ?",
+    )
+    .bind(group_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| db_error("view: group", e))?
+    .ok_or(WishlistError::NotFound)?;
     let list = sqlx::query_as::<_, ListRow>(
         "SELECT id, updated_at FROM wishlists WHERE user_id = ? AND group_id = ?",
     )
@@ -423,6 +445,7 @@ async fn load_view(
             })
             .collect(),
         updated_at,
+        archived: group.archived,
     })
 }
 
@@ -510,15 +533,15 @@ async fn commit(tx: Transaction<'_, MySql>) -> Result<(), Fail> {
 
 /// Steps 1 and 2 of the lock order: the group row in shared mode, the caller's membership
 /// row `FOR UPDATE`, then the membership check. `NotFound` when the group is gone or the
-/// caller is no (longer a) member.
+/// caller is no (longer a) member. Returns whether the group is archived.
 ///
 /// The membership check runs after the locks are held, so it sees every membership change
-/// that committed before them.
+/// (and an archive) that committed before them.
 async fn lock_group_for_member(
     tx: &mut Transaction<'_, MySql>,
     group_id: i32,
     user_id: i32,
-) -> Result<(), Fail> {
+) -> Result<bool, Fail> {
     sqlx::query_scalar::<_, i32>("SELECT id FROM `groups` WHERE id = ? LOCK IN SHARE MODE")
         .bind(group_id)
         .fetch_optional(&mut **tx)
@@ -533,9 +556,22 @@ async fn lock_group_for_member(
     .fetch_optional(&mut **tx)
     .await
     .map_err(tx_error("lock membership"))?;
-    authz::require_member(&mut **tx, user_id, group_id)
+    let access = authz::require_member(&mut **tx, user_id, group_id)
         .await
         .map_err(from_app)?;
+    Ok(access.archived)
+}
+
+/// [`lock_group_for_member`] for a write to the caller's list in `group_id`: an archived
+/// group answers `Archived` (group-archive A9).
+async fn lock_writable_group(
+    tx: &mut Transaction<'_, MySql>,
+    group_id: i32,
+    user_id: i32,
+) -> Result<(), Fail> {
+    if lock_group_for_member(tx, group_id, user_id).await? {
+        return Err(WishlistError::Archived.into());
+    }
     Ok(())
 }
 
@@ -613,7 +649,7 @@ async fn lock_own_item(
     user_id: i32,
     item_id: i32,
 ) -> Result<i32, Fail> {
-    lock_group_for_member(tx, group_id, user_id).await?;
+    lock_writable_group(tx, group_id, user_id).await?;
     let list_id = lock_list(tx, group_id, user_id)
         .await?
         .ok_or(WishlistError::NotFound)?;
@@ -658,13 +694,17 @@ async fn writer_turn(user_id: i32) -> tokio::sync::OwnedMutexGuard<()> {
 }
 
 /// The unlocked checks before an item transaction: their own item, and that they are a
-/// member of its group. Returns the group id.
-async fn item_group(state: &AppState, user_id: i32, item_id: i32) -> Result<i32, WishlistError> {
+/// member of its group. Returns the group id and whether the group is archived.
+async fn item_group(
+    state: &AppState,
+    user_id: i32,
+    item_id: i32,
+) -> Result<(i32, bool), WishlistError> {
     let group_id = own_item_group(state, user_id, item_id).await?;
-    authz::require_member(&state.pool, user_id, group_id)
+    let access = authz::require_member(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
-    Ok(group_id)
+    Ok((group_id, access.archived))
 }
 
 /// Runs the item change `change` for the caller, in their write queue. Returns the group
@@ -684,7 +724,8 @@ where
     };
     let _turn = writer_turn(user_id).await;
     let group_id = match item_group(&state, user_id, item_id).await {
-        Ok(id) => id,
+        Ok((id, false)) => id,
+        Ok((id, true)) => return (Some(id), Err(WishlistError::Archived)),
         Err(err) => return (None, Err(err)),
     };
     (Some(group_id), change(state, user_id, group_id).await)
@@ -702,9 +743,10 @@ pub async fn add_item(
     let state = state()?;
     let _turn = writer_turn(user_id).await;
     // Membership first: a non-member learns nothing from validation.
-    authz::require_member(&state.pool, user_id, group_id)
+    let access = authz::require_member(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
     let values = validate(&title, &description, &link)?;
 
     let item_id = retrying(|| add_item_tx(&state, group_id, user_id, &values)).await?;
@@ -736,7 +778,7 @@ async fn add_item_tx(
 ) -> Result<i32, Fail> {
     let mut conn = connection(state).await?;
     let mut tx = begin(&mut conn).await?;
-    lock_group_for_member(&mut tx, group_id, user_id).await?;
+    lock_writable_group(&mut tx, group_id, user_id).await?;
     // W5: the list row is created by the first item.
     sqlx::query(
         "INSERT INTO wishlists (user_id, group_id) VALUES (?, ?) \
@@ -888,9 +930,10 @@ pub async fn clear_wishlist(group_id: i32, confirm: bool) -> Result<(), Wishlist
     let user_id = user_id().await?;
     let state = state()?;
     let _turn = writer_turn(user_id).await;
-    authz::require_member(&state.pool, user_id, group_id)
+    let access = authz::require_member(&state.pool, user_id, group_id)
         .await
         .map_err(from_app)?;
+    writable(access)?;
     if !confirm {
         return Err(WishlistError::Validation(vec![(
             WishlistField::Confirm,
@@ -901,7 +944,7 @@ pub async fn clear_wishlist(group_id: i32, confirm: bool) -> Result<(), Wishlist
     retrying(move || async move {
         let mut conn = connection(state).await?;
         let mut tx = begin(&mut conn).await?;
-        lock_group_for_member(&mut tx, group_id, user_id).await?;
+        lock_writable_group(&mut tx, group_id, user_id).await?;
         if let Some(list_id) = lock_list(&mut tx, group_id, user_id).await? {
             // The items go with it (ON DELETE CASCADE).
             sqlx::query("DELETE FROM wishlists WHERE id = ?")
@@ -1041,11 +1084,15 @@ pub async fn copy_items(
     let user_id = user_id().await?;
     let state = state()?;
     let _turn = writer_turn(user_id).await;
-    // Authorize both groups before reporting selection validation.
+    // Authorize both groups before reporting selection validation. Only the destination
+    // must be active: an archived group stays a source (group-archive A11).
     for id in [group_id, source_group_id] {
-        authz::require_member(&state.pool, user_id, id)
+        let access = authz::require_member(&state.pool, user_id, id)
             .await
             .map_err(from_app)?;
+        if id == group_id {
+            writable(access)?;
+        }
     }
     let ids: std::collections::BTreeSet<_> = item_ids.into_iter().collect();
     if group_id == source_group_id
@@ -1100,7 +1147,10 @@ async fn copy_items_tx(
         [source_group_id, group_id]
     };
     for id in ordered {
-        lock_group_for_member(&mut tx, id, user_id).await?;
+        let archived = lock_group_for_member(&mut tx, id, user_id).await?;
+        if archived && id == group_id {
+            return Err(WishlistError::Archived.into());
+        }
     }
     let mut destination = None;
     let mut source = None;

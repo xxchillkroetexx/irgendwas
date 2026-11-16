@@ -125,6 +125,9 @@ pub enum WishlistError {
     NotFound,
     #[error("validation failed")]
     Validation(Vec<(WishlistField, WishlistFieldError)>),
+    /// The group (the destination of a copy) is archived and read-only (group-archive).
+    #[error("group archived")]
+    Archived,
     #[error("internal server error")]
     Internal,
 }
@@ -139,6 +142,7 @@ impl WishlistError {
                 .first()
                 .map(|(_, problem)| problem.message_key())
                 .unwrap_or("error.generic.message"),
+            WishlistError::Archived => "flash.error.group_archived",
             WishlistError::Internal => "error.generic.message",
         }
     }
@@ -171,6 +175,7 @@ impl WishlistError {
             WishlistError::Unauthorized => 401,
             WishlistError::NotFound => 404,
             WishlistError::Validation(_) => 422,
+            WishlistError::Archived => 409,
             WishlistError::Internal => 500,
         }
     }
@@ -278,6 +283,8 @@ pub struct WishlistView {
     pub items: Vec<ItemView>,
     /// `None` when the owner has no list row (nothing added yet, or cleared).
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The group is archived: the list is read-only (group-archive).
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

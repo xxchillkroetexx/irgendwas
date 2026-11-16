@@ -39,6 +39,9 @@ pub enum DrawApiError {
     DrawImpossible,
     #[error("nothing to resend")]
     NothingToResend,
+    /// The group is archived and read-only (spec: group-archive).
+    #[error("group archived")]
+    Archived,
     #[error("internal server error")]
     Internal,
 }
@@ -55,6 +58,7 @@ impl DrawApiError {
             DrawApiError::AlreadyDrawn => one("flash.error.already_drawn"),
             DrawApiError::NotDrawn => one("flash.error.not_drawn"),
             DrawApiError::NothingToResend => one("flash.error.nothing_to_resend"),
+            DrawApiError::Archived => one("flash.error.group_archived"),
             DrawApiError::TooFewMembers { count, min } => {
                 vec![
                     FlashMessage::error("group.draw.blocked.tooFewMembers")
@@ -86,7 +90,8 @@ impl crate::error::HttpStatus for DrawApiError {
             DrawApiError::AlreadyDrawn
             | DrawApiError::NotDrawn
             | DrawApiError::NothingToResend
-            | DrawApiError::DrawImpossible => 409,
+            | DrawApiError::DrawImpossible
+            | DrawApiError::Archived => 409,
             DrawApiError::TooFewMembers { .. } | DrawApiError::TooManyMembers { .. } => 422,
             DrawApiError::Internal => 500,
         }
@@ -169,7 +174,8 @@ pub async fn get_my_assignment(group_id: i32) -> Result<Option<MyAssignment>, Dr
     )
 }
 
-/// The caller's receivers in all drawn groups they are a member of, newest draw first.
+/// The caller's receivers in all drawn, active groups they are a member of, newest draw
+/// first (archived groups are left out: group-archive U8).
 #[server(prefix = "/api", endpoint = "list_my_assignments")]
 pub async fn list_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiError> {
     crate::server::respond::with_error_status(crate::server::draw_flow::list_my_assignments().await)

@@ -13,6 +13,10 @@
 //! other non-empty lists, each with its own copy form. It renders from its own resource,
 //! outside the list's `Transition`s, so adding, editing or moving items never re-renders it
 //! (its open state and ticks stay). `?copy` (any value) renders it open.
+//!
+//! In an archived group (group-archive) the page shows the notice and the items read-only:
+//! no add, edit, move, remove, clear controls and no copy section (nothing can be copied
+//! *into* an archived group; it stays a copy source for the owner's other lists).
 
 use std::time::Duration;
 
@@ -218,6 +222,9 @@ pub fn WishlistEditPage() -> impl IntoView {
             <Transition fallback=|| ()>
                 {move || Suspend::new(async move {
                     match list.await {
+                        Ok(wishlist) if wishlist.archived => {
+                            view! { <ArchivedView wishlist/> }.into_any()
+                        }
                         Ok(wishlist) => view! { <EditHead wishlist actions add_form/> }.into_any(),
                         Err(error) => view! { <WishlistErrorView error/> }.into_any(),
                     }
@@ -227,6 +234,8 @@ pub fn WishlistEditPage() -> impl IntoView {
             <Transition fallback=|| ()>
                 {move || Suspend::new(async move {
                     match list.await {
+                        // The first Transition shows the archived list read-only.
+                        Ok(wishlist) if wishlist.archived => ().into_any(),
                         Ok(wishlist) => {
                             view! { <ItemsView wishlist editing list actions settled/> }.into_any()
                         }
@@ -236,6 +245,46 @@ pub fn WishlistEditPage() -> impl IntoView {
                 })}
             </Transition>
         </RequireUser>
+    }
+}
+
+/// The list of an archived group: the notice and the items, nothing to change.
+#[component]
+fn ArchivedView(wishlist: WishlistView) -> impl IntoView {
+    let i18n = use_i18n();
+    let group_id = wishlist.group.id;
+    let has_items = !wishlist.items.is_empty();
+    let items = wishlist
+        .items
+        .into_iter()
+        .map(|item| {
+            let host = item.link_host.clone();
+            view! {
+                <li class="list-group-item text-break" id=wishlist_item_anchor(item.id)>
+                    <div class="fw-semibold">{item.title}</div>
+                    {item
+                        .description
+                        .map(|text| {
+                            view! { <div class="small text-muted" style="white-space: pre-line">{text}</div> }
+                        })}
+                    {item.link.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
+                </li>
+            }
+        })
+        .collect_view();
+    view! {
+        <h1 class="h2">{i18n.t("wishlist.edit.title")}</h1>
+        <p class="mb-1">
+            {i18n.t("wishlist.edit.forGroup")} " "
+            <a href=group_path(group_id)>{wishlist.group.name}</a>
+        </p>
+        <div class="alert alert-secondary" role="status">{i18n.t("flash.error.group_archived")}</div>
+        <h2 class="h4">{i18n.t("wishlist.edit.itemsHeading")}</h2>
+        {if has_items {
+            view! { <ul class="list-group mb-4">{items}</ul> }.into_any()
+        } else {
+            view! { <p class="mb-4">{i18n.t("wishlist.edit.noItems")}</p> }.into_any()
+        }}
     }
 }
 
@@ -810,6 +859,10 @@ fn CopySection(
                 // Set before the re-read: if the failing source (or every source) is gone
                 // afterwards, the section still shows the message.
                 let stale = is_stale(&error);
+                // Archived meanwhile: the page turns into the read-only view (no section).
+                if error == WishlistError::Archived {
+                    list.refetch();
+                }
                 if let Some(source) = state.submitted.get_value() {
                     state.failed.set(Some((source, error)));
                 }
@@ -824,6 +877,10 @@ fn CopySection(
     view! {
         <Transition fallback=|| ()>
             {move || Suspend::new(async move {
+                // Nothing can be copied into an archived group (group-archive A11).
+                if list.await.is_ok_and(|wishlist| wishlist.archived) {
+                    return ().into_any();
+                }
                 let Ok(data) = sources.await else {
                     return ().into_any();
                 };

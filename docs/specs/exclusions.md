@@ -11,6 +11,8 @@ Fresh start: no production data is migrated. The PHP schema is only a reference.
 
 Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The migrations ran on the empty schema before the import (so the cleanup in `0007` was a no-op there too), and the import kept only rules between two members of the group, as the member FKs require.
 
+Revised 2026-11-16 (group-archive, #61; see `docs/specs/group-archive.md`): `add_exclusion` / `remove_exclusion` answer `ExclusionError::Archived` (409) for an archived group (before `AlreadyDrawn`); `ExclusionsPage.archived`; the page of an archived group is read-only like after the draw, with the notice `flash.error.group_archived`; the group page shows no exclusions link.
+
 ## Current PHP behaviour
 
 ### Routes (`src/Core/Application.php`, `ExclusionController`)

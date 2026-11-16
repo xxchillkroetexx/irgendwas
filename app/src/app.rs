@@ -13,7 +13,8 @@ use crate::pages::auth::{
 };
 use crate::pages::exclusions::ExclusionsManagePage;
 use crate::pages::groups::{
-    GroupCreatePage, GroupEditPage, GroupPage, GroupsPage, JoinPage, JoinPreviewPage,
+    GroupArchivePage, GroupCreatePage, GroupEditPage, GroupPage, GroupsPage, JoinPage,
+    JoinPreviewPage,
 };
 use crate::pages::wishlists::{WishlistEditPage, WishlistViewPage};
 use crate::pages::{DashboardPage, ErrorPage, HomePage, NotFound, ProfilePage, VerifyEmailPage};
@@ -99,6 +100,7 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/user/verify-email/:token") view=VerifyEmailPage ssr=SsrMode::Async/>
                         <Route path=path!("/groups") view=GroupsPage ssr=SsrMode::Async/>
                         <Route path=path!("/groups/new") view=GroupCreatePage ssr=SsrMode::Async/>
+                        <Route path=path!("/groups/archive") view=GroupArchivePage ssr=SsrMode::Async/>
                         <Route path=path!("/groups/:id") view=GroupPage ssr=SsrMode::Async/>
                         <Route path=path!("/groups/:id/edit") view=GroupEditPage ssr=SsrMode::Async/>
                         <Route path=path!("/groups/:id/wishlist") view=WishlistEditPage ssr=SsrMode::Async/>
