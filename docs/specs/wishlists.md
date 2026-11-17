@@ -15,6 +15,8 @@ Revised 2026-11-16 (group-archive, #61; see `docs/specs/group-archive.md`): ever
 
 Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. The import trimmed titles, turned empty descriptions and links into NULL, normalised line breaks and numbered `position` by item id; links were otherwise copied as PHP stored them (PHP did not restrict them to http/https). Wishlists that members who left in PHP still had were copied too (groups amendment of the same date). The old PHP URLs are still not kept: a bookmark to `/wishlist/...` gets the 404 page.
 
+Amended 2026-11-17 (#84 review, stored links): W10's "Values read from the DB are not re-validated on render" and the `ItemView` type below keep their original wording and are marked; this paragraph replaces them. Since the import, stored links can predate W9, so a stored link is made clickable only through W9 itself: the server runs it through the same normalisation as a new link and links only the result. A PHP-era link without a scheme (`www.shop.de/x`) gets `https://` and stays clickable; a stored link that W9 rejects (another scheme such as `javascript:` or `data:`, a user name or password, no host) or that is longer than 2048 characters before or after normalisation is not linked (no link and no host are shown). `ItemView` gains `link_target: Option<String>`, the normalised URL, and `link_host` is the host of that URL; both are `None` when the stored link is not linked. Only `link_target` is ever rendered as `href`: on the read-only view, the edit page's item list and the archived group's read-only list. `link` keeps the stored value, used only to fill the inline edit form, so the owner can correct a legacy link. The copy section's link host (`docs/specs/copy-wishes.md`, `CopyItem.link_host`) comes from the same check. AC27 still holds.
+
 ## Current PHP behaviour
 
 ### Routes (`src/Core/Application.php`, `WishlistController`)
@@ -101,8 +103,8 @@ Every existing handler calls `requireAuth()`: anonymous users are sent to `/auth
   4. Store `Url::as_str()` (the normalised form). Reject it with `validation.wishlist.link_too_long` if the input or the normalised form is longer than 2048.
 - **W10 Safe rendering.**
   - Title and description are rendered as text nodes; there is no `inner_html` anywhere in this slice. Line breaks in the description are preserved via CSS `white-space: pre-line`.
-  - Links render as `<a href={link} target="_blank" rel="noopener noreferrer nofollow">`, followed by the link's host (computed on the server, punycode as is) so viewers see where it goes.
-  - Values read from the DB are not re-validated on render. Only W9-validated values can be stored.
+  - Links render as `<a href={link} target="_blank" rel="noopener noreferrer nofollow">`, followed by the link's host (computed on the server, punycode as is) so viewers see where it goes. (Amended 2026-11-17: `href={link_target}`, the normalised link, and its host; see the amendment at the top.)
+  - Values read from the DB are not re-validated on render. Only W9-validated values can be stored. (Amended 2026-11-17: stored links are re-validated with W9 and only the normalised result is linked; see the amendment at the top.)
 - **W11 Concurrency.** Every mutation runs in one transaction, and the lock order is fixed to avoid deadlocks:
   1. `SELECT id FROM \`groups\` WHERE id = ? LOCK IN SHARE MODE`. For item fns, the group id is first read without a lock, then the group row is locked and the item is re-read under the lock.
   2. The membership check, inside the transaction.
@@ -142,7 +144,7 @@ Every existing handler calls `requireAuth()`: anonymous users are sent to `/auth
 Types:
 - `ItemInput { title: String, description: String, link: String }`. Validation per W8 and W9. On any error nothing is written.
 - `WishlistView { group: { id, name }, owner: { id, name }, is_own: bool, items: Vec<ItemView>, updated_at: Option<DateTime<Utc>> }`
-- `ItemView { id, title, description: Option<String>, link: Option<String>, link_host: Option<String> }`. Items are ordered `position, id`.
+- `ItemView { id, title, description: Option<String>, link: Option<String>, link_host: Option<String> }`. Items are ordered `position, id`. (Amended 2026-11-17: plus `link_target: Option<String>`, the only value rendered as `href`; see the amendment at the top.)
 - `WishlistPanel { my_item_count: u32, members: Vec<{ user_id, name, is_me, item_count: u32 }> }`. Members are ordered like the group page (`joined_at, id`). One query: `group_members` ⋈ `users` ⟕ `wishlists` ⟕ `wishlist_items`.
 - None of these types contains email addresses or assignment data.
 - `validation` keys use the same field→key error shape as the groups slice (`Validation{field→key}`).

@@ -4,7 +4,7 @@
 use crate::common::draw::*;
 use crate::common::groups::*;
 use app::draw_api::DrawApiError;
-use app::server::draw_worker::DrawWorker;
+use app::server::draw_worker::{self, DrawWorker};
 use app::server::mail::escape_html;
 use app::test_support as ts;
 use sqlx::MySqlPool;
@@ -408,6 +408,203 @@ async fn a_quick_redraw_keeps_the_reset_notices_and_sends_them_before_the_new_re
     assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
 }
 
+// ------------------------------------------------- a reset notice holds its giver's result
+
+/// A drawn group G whose three result rows (Alice -> Bob, Bob -> Carol, Carol -> Alice, in
+/// that id order) are all pending.
+async fn pending_results(d: &D) {
+    ts::set_drawn(&d.pool, d.g).await;
+    ts::add_assignment(&d.pool, d.g, d.alice, d.bob).await;
+    ts::add_assignment(&d.pool, d.g, d.bob, d.carol).await;
+    ts::add_assignment(&d.pool, d.g, d.carol, d.alice).await;
+}
+
+/// A pending reset notice of G for `recipient` (as `reset_draw` writes it).
+async fn add_reset_notice(d: &D, recipient: i32) {
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+        .bind(d.g).bind(recipient).bind(GROUP_NAME).bind("Alice").execute(&d.pool).await.unwrap();
+}
+
+/// `(recipient, attempts)` of G's reset notices.
+async fn reset_notices(d: &D) -> Vec<(i32, u8)> {
+    sqlx::query_as::<_, (i32, u8)>(
+        "SELECT recipient_id, attempts FROM draw_reset_notifications WHERE group_id = ? \
+         ORDER BY recipient_id",
+    )
+    .bind(d.g)
+    .fetch_all(&d.pool)
+    .await
+    .unwrap()
+}
+
+fn result_subject() -> String {
+    en_with("email.drawResult.subject", &[("group", GROUP_NAME)])
+}
+
+fn reset_subject() -> String {
+    en_with("email.drawReset.subject", &[("group", GROUP_NAME)])
+}
+
+/// Alice and Carol have their result; Bob, whose reset notice is pending, has nothing yet
+/// and his result row is untouched.
+async fn only_bob_is_held_back(d: &D) {
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[0]),
+        vec![result_subject()]
+    );
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[2]),
+        vec![result_subject()]
+    );
+    assert_eq!(
+        d.transport.attempts_to(&d.emails[1]),
+        0,
+        "Bob's result must wait for his reset notice"
+    );
+    assert_eq!(
+        delivery(&d.pool, d.g).await,
+        vec![(d.alice, true, 1), (d.bob, false, 0), (d.carol, true, 1)]
+    );
+}
+
+/// Draw spec amendment of 2026-11-16 (#84 review): a giver's result is not sent while that
+/// giver has a reset notice of the group; the other givers are not held back. Once the
+/// notice is sent, deleting it wakes the group's result job (the worker runs no periodic
+/// recovery here, so nothing else could send Bob's result).
+#[sqlx::test(migrations = "../migrations")]
+async fn a_pending_reset_notice_holds_back_only_its_givers_result(pool: MySqlPool) {
+    let d = draw_world_without_recovery(&pool).await;
+    pending_results(&d).await;
+    add_reset_notice(&d, d.bob).await;
+
+    // Only the result job is woken: the reset notice stays pending meanwhile.
+    d.worker.draw_result(d.g);
+    d.idle().await;
+    only_bob_is_held_back(&d).await;
+    assert_eq!(reset_notices(&d).await, vec![(d.bob, 0)]);
+
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[1]),
+        vec![reset_subject(), result_subject()],
+        "the reset notice first, then the result its deletion released"
+    );
+    assert!(reset_notices(&d).await.is_empty());
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+    assert_eq!(d.reset_mails(d.bob, GROUP_NAME).await.len(), 1);
+    assert_eq!(d.draw_mails(d.bob, GROUP_NAME).await.len(), 1);
+}
+
+/// The claim re-checks the rule: a notice committed after the result job read its rows
+/// still holds that giver's result back.
+#[sqlx::test(migrations = "../migrations")]
+async fn a_reset_notice_committed_after_the_row_read_still_holds_the_result(pool: MySqlPool) {
+    let d = draw_world_without_recovery(&pool).await;
+    pending_results(&d).await;
+    d.transport.block();
+    d.worker.draw_result(d.g);
+    // Alice's row is the first: once her mail is in flight, the job has read all three.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the first result did not reach the transport");
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+    add_reset_notice(&d, d.bob).await;
+    d.transport.unblock();
+    d.idle().await;
+    only_bob_is_held_back(&d).await;
+
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[1]),
+        vec![reset_subject(), result_subject()]
+    );
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+}
+
+/// A reset notice that waits for its retry (`next_attempt_at` in the future) still holds
+/// the giver's result back, also against a recovery scan; when the retry is due and sent,
+/// the result follows.
+#[sqlx::test(migrations = "../migrations")]
+async fn a_reset_notice_waiting_for_a_retry_holds_back_its_givers_result(pool: MySqlPool) {
+    let d = draw_world_without_recovery(&pool).await;
+    pending_results(&d).await;
+    add_reset_notice(&d, d.bob).await;
+    // As after a failed first attempt with a one-hour retry delay.
+    sqlx::query(
+        "UPDATE draw_reset_notifications SET attempts = 1, \
+         next_attempt_at = CURRENT_TIMESTAMP(6) + INTERVAL 1 HOUR WHERE group_id = ?",
+    )
+    .bind(d.g)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    d.worker.draw_result(d.g);
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    only_bob_is_held_back(&d).await;
+    assert_eq!(reset_notices(&d).await, vec![(d.bob, 1)]);
+
+    // The retry is due (the scheduled retry or a recovery would wake the reset job).
+    sqlx::query(
+        "UPDATE draw_reset_notifications \
+         SET next_attempt_at = CURRENT_TIMESTAMP(6) - INTERVAL 1 SECOND WHERE group_id = ?",
+    )
+    .bind(d.g)
+    .execute(&pool)
+    .await
+    .unwrap();
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[1]),
+        vec![reset_subject(), result_subject()]
+    );
+    assert!(reset_notices(&d).await.is_empty());
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+}
+
+/// A reset notice that fails for good (deleted after its third attempt) releases the
+/// giver's result, which is then sent.
+#[sqlx::test(migrations = "../migrations")]
+async fn a_reset_notice_that_fails_for_good_releases_its_givers_result(pool: MySqlPool) {
+    let d = draw_world_without_recovery(&pool).await;
+    pending_results(&d).await;
+    add_reset_notice(&d, d.bob).await;
+    // Every reset attempt fails; the result mail after them goes through.
+    d.transport
+        .fail_times(&d.emails[1], usize::from(draw_worker::MAX_ATTEMPTS));
+
+    d.worker.draw_result(d.g);
+    d.idle().await;
+    only_bob_is_held_back(&d).await;
+
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    assert_eq!(
+        d.transport.subjects_to(&d.emails[1]),
+        vec![
+            reset_subject(),
+            reset_subject(),
+            reset_subject(),
+            result_subject()
+        ],
+        "three failed reset attempts, then the released result"
+    );
+    assert!(reset_notices(&d).await.is_empty());
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+    assert_eq!(d.reset_mails(d.bob, GROUP_NAME).await.len(), 0);
+    assert_eq!(d.draw_mails(d.bob, GROUP_NAME).await.len(), 1);
+}
+
 /// Group archive (#61): an archive is read-only for the members, not for the mail
 /// worker; notices committed before the archive are still delivered.
 #[sqlx::test(migrations = "../migrations")]
@@ -429,10 +626,11 @@ async fn pending_notices_of_an_archived_group_are_still_delivered(pool: MySqlPoo
 }
 
 /// Review of #84: a wake-up that arrives while the group's job runs is not lost; the job
-/// runs once more after it finishes (no periodic recovery in this test).
+/// runs once more after it finishes. The worker runs no periodic recovery during the test,
+/// so only that second run can send the second mail.
 #[sqlx::test(migrations = "../migrations")]
 async fn a_wakeup_during_a_running_job_is_not_lost(pool: MySqlPool) {
-    let d = draw_world(&pool).await;
+    let d = draw_world_without_recovery(&pool).await;
     ts::set_drawn(&pool, d.g).await;
     ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
     d.transport.block();

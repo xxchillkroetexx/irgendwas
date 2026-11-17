@@ -27,7 +27,7 @@
 //!   hidden `group_id`; a plain post answers 302 back to `/groups/{id}` with a flash.
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -145,6 +145,8 @@ pub async fn list_mine(c: &mut Client) -> Vec<MyAssignmentSummary> {
 pub struct TestTransport {
     mailer: Mailer,
     failing: Mutex<HashSet<String>>,
+    /// Remaining injected failures per address ([`fail_times`](Self::fail_times)).
+    failing_times: Mutex<HashMap<String, usize>>,
     blocked: Mutex<bool>,
     gate: Notify,
     attempts: Mutex<Vec<String>>,
@@ -157,6 +159,7 @@ impl TestTransport {
         Arc::new(TestTransport {
             mailer,
             failing: Mutex::new(HashSet::new()),
+            failing_times: Mutex::new(HashMap::new()),
             blocked: Mutex::new(false),
             gate: Notify::new(),
             attempts: Mutex::new(Vec::new()),
@@ -167,6 +170,14 @@ impl TestTransport {
     /// Every send to `address` fails until [`heal`](Self::heal).
     pub fn fail(&self, address: &str) {
         self.failing.lock().unwrap().insert(address.to_lowercase());
+    }
+
+    /// The next `times` sends to `address` fail; later ones go through.
+    pub fn fail_times(&self, address: &str, times: usize) {
+        self.failing_times
+            .lock()
+            .unwrap()
+            .insert(address.to_lowercase(), times);
     }
 
     pub fn heal(&self, address: &str) {
@@ -230,7 +241,14 @@ impl MailTransport for TestTransport {
                 }
                 notified.await;
             }
-            let fails = self.failing.lock().unwrap().contains(&to);
+            let fails_once = match self.failing_times.lock().unwrap().get_mut(&to) {
+                Some(left) if *left > 0 => {
+                    *left -= 1;
+                    true
+                }
+                _ => false,
+            };
+            let fails = fails_once || self.failing.lock().unwrap().contains(&to);
             if fails {
                 return Err(MailError::Smtp("injected failure".to_string()));
             }
@@ -265,6 +283,22 @@ pub async fn draw_world(pool: &MySqlPool) -> D {
 }
 
 pub async fn draw_world_with(pool: &MySqlPool, vars: &[(&str, &str)]) -> D {
+    world(pool, vars, None).await
+}
+
+/// The periodic recovery interval of [`draw_world_without_recovery`]: no test waits that
+/// long, so only explicit wake-ups (`draw_result`, `draw_reset`, `recover`, and the worker's
+/// own wake-ups) start a job.
+pub const NO_RECOVERY: Duration = Duration::from_secs(3600);
+
+/// [`draw_world`] whose worker runs no periodic recovery during the test (its first one
+/// would run after [`NO_RECOVERY`]). For tests that must not be rescued by the 10 s scan.
+pub async fn draw_world_without_recovery(pool: &MySqlPool) -> D {
+    world(pool, &[], Some(NO_RECOVERY)).await
+}
+
+/// `reconcile`: the worker's periodic recovery interval (`None`: the production default).
+async fn world(pool: &MySqlPool, vars: &[(&str, &str)], reconcile: Option<Duration>) -> D {
     let emails = [
         unique_email("alice"),
         unique_email("bob"),
@@ -287,12 +321,17 @@ pub async fn draw_world_with(pool: &MySqlPool, vars: &[(&str, &str)]) -> D {
     let borrowed: Vec<(&str, &str)> = all.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     let mut st = state(pool.clone(), config_with(&borrowed));
     let transport = TestTransport::new(Mailer::new(&st.config.mail).expect("mailer"));
-    let worker = DrawWorker::new(
-        pool.clone(),
-        st.config.clone(),
-        transport.clone(),
-        vec![Duration::ZERO, Duration::ZERO],
-    );
+    let delays = vec![Duration::ZERO, Duration::ZERO];
+    let worker = match reconcile {
+        None => DrawWorker::new(pool.clone(), st.config.clone(), transport.clone(), delays),
+        Some(interval) => DrawWorker::with_reconcile_interval(
+            pool.clone(),
+            st.config.clone(),
+            transport.clone(),
+            delays,
+            interval,
+        ),
+    };
     st.draw_worker = worker.clone();
     D {
         app: server::router_with(st, Router::new()),

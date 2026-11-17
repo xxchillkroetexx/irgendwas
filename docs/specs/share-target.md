@@ -30,3 +30,11 @@ Practical iPhone fallback: copy a product link, open the installed app, choose *
 ## Scope
 
 Text and URL shares only; no binary files, scraping, offline queues or automatic creation. OS picker registration must additionally be checked on real devices after installation/update; Playwright tests the receiving HTTP flow.
+
+## Amendments
+
+Amended 2026-11-17 (#84 review, single-use drafts): the acceptance criteria above keep their wording; this note records what the implementation adds to AC3-AC5.
+
+- A staged draft creates at most one wish, also when concurrent requests loaded the same session data. Its submit stores a one-way hash of the draft id (with the user id) in `consumed_share_drafts` (migration `0012_consumed_share_drafts.sql`) in the same transaction as the wish, after the group's membership and archive checks. A submit that fails (validation, too many items, archived group) stores no claim, so the draft can still be corrected. Claims are kept for the life of the account (sessions are rolling) and are deleted with it.
+- Only a staged draft is claimed: a logged-in submit whose id names a pending draft of this session. A submit without an id (a wish typed on the blank `/wishes/shared` page) goes through the normal add path and stores no claim; a logged-out submit keeps the entered values as a new draft for the login and claims nothing either.
+- A logged-in submit whose id is not a pending draft of this session (already consumed, e.g. a double submit after the first finished, or never staged here), or whose draft another request claimed first, creates no wish. A plain form post (no JS) gets the `error.notFound.message` flash and a redirect to the review page `/wishes/shared?id=…`, like the other failures (instead of a bare 404); that page shows the not-found alert with the "start again" link, because reading a claimed or unknown draft answers not found. The server fn client (JS) still gets the 404 (`NotFound`). A failed submit keeps the edited values as the draft again only if the draft was not claimed meanwhile.
