@@ -114,7 +114,9 @@ fn ExclusionsView(page: ExclusionsPage, actions: Actions) -> impl IntoView {
         .clone()
         .map(|notice| view! { <NoticeBanner notice/> });
     // Drawn or archived: the rules are listed read-only (group-archive).
-    let editable = !page.is_drawn && !page.archived;
+    let editable = !page.is_drawn
+        && !page.archived
+        && !matches!(&page.notice, Some(FeasibilityNotice::GroupTooLarge { .. }));
     let add_card = editable.then(|| view! { <AddCard page=page.clone() action=actions.add/> });
     view! {
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
@@ -165,13 +167,17 @@ fn ExclusionsView(page: ExclusionsPage, actions: Actions) -> impl IntoView {
 #[component]
 fn NoticeBanner(notice: FeasibilityNotice) -> impl IntoView {
     let i18n = use_i18n();
-    let FeasibilityNotice::DrawImpossible { no_receiver_for_me } = notice;
-    view! {
+    match notice {
+    FeasibilityNotice::GroupTooLarge { max } => view! {
+        <div class="alert alert-warning" role="alert">{t!(i18n, "exclusion.warning.groupTooLarge", max = max)}</div>
+    }.into_any(),
+    FeasibilityNotice::DrawImpossible { no_receiver_for_me } => view! {
         <div class="alert alert-warning" role="alert">
             <p class="mb-0">{i18n.t("exclusion.warning.drawImpossible")}</p>
             {no_receiver_for_me
                 .then(|| view! { <p class="mb-0 mt-2">{i18n.t("exclusion.warning.noReceiverLeft")}</p> })}
         </div>
+    }.into_any(),
     }
 }
 

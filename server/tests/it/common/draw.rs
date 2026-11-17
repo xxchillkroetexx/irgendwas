@@ -148,6 +148,8 @@ pub struct TestTransport {
     blocked: Mutex<bool>,
     gate: Notify,
     attempts: Mutex<Vec<String>>,
+    /// `(address, subject)` of every send started, in order.
+    log: Mutex<Vec<(String, String)>>,
 }
 
 impl TestTransport {
@@ -158,6 +160,7 @@ impl TestTransport {
             blocked: Mutex::new(false),
             gate: Notify::new(),
             attempts: Mutex::new(Vec::new()),
+            log: Mutex::new(Vec::new()),
         })
     }
 
@@ -191,6 +194,18 @@ impl TestTransport {
             .count()
     }
 
+    /// Subjects of the sends started to `address`, oldest first (failed ones included).
+    pub fn subjects_to(&self, address: &str) -> Vec<String> {
+        let address = address.to_lowercase();
+        self.log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(to, _)| *to == address)
+            .map(|(_, subject)| subject.clone())
+            .collect()
+    }
+
     /// Number of sends started in total.
     pub fn attempts_total(&self) -> usize {
         self.attempts.lock().unwrap().len()
@@ -202,6 +217,10 @@ impl MailTransport for TestTransport {
         Box::pin(async move {
             let to = message.to.to_lowercase();
             self.attempts.lock().unwrap().push(to.clone());
+            self.log
+                .lock()
+                .unwrap()
+                .push((to.clone(), message.subject.clone()));
             loop {
                 // Created before the check, so an `unblock` in between is not missed.
                 let notified = self.gate.notified();

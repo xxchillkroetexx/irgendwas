@@ -23,6 +23,68 @@ async fn member_count(pool: &MySqlPool, group: i32) -> usize {
     ts::member_ids(pool, group).await.len()
 }
 
+#[sqlx::test(migrations = "../migrations")]
+async fn legacy_invitation_links_redirect_to_the_normal_flow_without_joining(pool: MySqlPool) {
+    let w = world(&pool).await;
+    let target = format!("/join/{CODE}");
+    let legacy = format!("/groups/join?code={CODE}");
+    let mut visitor = w.anon();
+
+    let redirect = visitor.get(&legacy).await;
+    assert_eq!(redirect.location().as_deref(), Some(target.as_str()));
+    assert!(redirect.status.is_redirection());
+    assert_eq!(
+        redirect.header("cache-control").as_deref(),
+        Some("no-store")
+    );
+    assert_eq!(
+        redirect.header("referrer-policy").as_deref(),
+        Some("same-origin")
+    );
+    let login_page = visitor.get(&target).await;
+    assert_eq!(
+        login_page.location(),
+        Some(format!("/auth/login?next={}", urlencode(&target)))
+    );
+    visitor
+        .login_next(&w.emails[2], app::test_support::CAROL_PASSWORD, &target)
+        .await
+        .ok();
+    let preview = visitor.get(&target).await;
+    assert_eq!(preview.status, 200);
+    assert!(html_contains(&preview.body, &en("group.join.submit")));
+    assert!(!ts::member_ids(&pool, w.g).await.contains(&w.carol));
+
+    let mut member = w.bob().await;
+    let redirect = member.get(&legacy).await;
+    assert_eq!(redirect.location().as_deref(), Some(target.as_str()));
+    let group = member.get(&target).await;
+    assert_eq!(group.location(), Some(format!("/groups/{}", w.g)));
+    assert_eq!(member_count(&pool, w.g).await, 2);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn legacy_invitation_redirect_accepts_normalized_codes_and_rejects_unsafe_values(
+    pool: MySqlPool,
+) {
+    let w = world(&pool).await;
+    let mut visitor = w.anon();
+    let normalized = visitor.get("/groups/join?code=abcd-2345").await;
+    assert_eq!(normalized.location().as_deref(), Some("/join/ABCD2345"));
+
+    for path in [
+        "/groups/join",
+        "/groups/join?code=",
+        "/groups/join?code=%2F%2Fevil.example",
+        "/groups/join?code=..%2Fadmin",
+        "/groups/join?code=ABCD2345%0D%0ALocation%3A%20https%3A%2F%2Fevil.example",
+    ] {
+        let redirect = visitor.get(path).await;
+        assert_eq!(redirect.location().as_deref(), Some("/join"), "{path}");
+    }
+    assert_eq!(member_count(&pool, w.g).await, 2);
+}
+
 // ------------------------------------------------------------------------- AC27
 
 #[sqlx::test(migrations = "../migrations")]

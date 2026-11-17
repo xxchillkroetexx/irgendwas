@@ -11,6 +11,493 @@ use sqlx::MySqlPool;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[sqlx::test(migrations = "../migrations")]
+async fn delivery_claims_do_not_change_group_updated_at_or_overwrite_a_concurrent_edit(
+    pool: MySqlPool,
+) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    sqlx::query("UPDATE `groups` SET updated_at = '2020-01-01 00:00:00' WHERE id = ?")
+        .bind(d.g)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    for reset in [false, true] {
+        if reset {
+            sqlx::query("UPDATE `groups` SET is_drawn = FALSE, updated_at = '2020-01-01 00:00:00' WHERE id = ?")
+                .bind(d.g).execute(&pool).await.unwrap();
+            sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+                .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
+        }
+        let attempts = d.transport.attempts_total();
+        d.transport.block();
+        if reset {
+            d.worker.draw_reset(d.g);
+        } else {
+            d.worker.draw_result(d.g);
+        }
+        let started = tokio::time::timeout(Duration::from_secs(5), async {
+            while d.transport.attempts_total() == attempts {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        let before_edit: String = sqlx::query_scalar(
+            "SELECT DATE_FORMAT(updated_at, '%Y-%m-%d') FROM `groups` WHERE id = ?",
+        )
+        .bind(d.g)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        // A real edit while delivery is in flight must not be reverted by lease release.
+        sqlx::query("UPDATE `groups` SET name = 'Edited during delivery', updated_at = '2021-02-03 00:00:00' WHERE id = ?")
+            .bind(d.g).execute(&pool).await.unwrap();
+        d.transport.unblock();
+        d.worker.wait_idle().await;
+        let after_edit: (String, String) = sqlx::query_as(
+            "SELECT name, DATE_FORMAT(updated_at, '%Y-%m-%d') FROM `groups` WHERE id = ?",
+        )
+        .bind(d.g)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(started.is_ok(), "mail did not reach the blocked transport");
+        assert_eq!(
+            before_edit, "2020-01-01",
+            "claim and renewal are technical writes"
+        );
+        assert_eq!(
+            after_edit,
+            (
+                "Edited during delivery".to_string(),
+                "2021-02-03".to_string()
+            )
+        );
+    }
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn periodic_recovery_finds_committed_work_without_a_wakeup(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    let worker = DrawWorker::with_reconcile_interval(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        d.transport.clone(),
+        vec![Duration::ZERO],
+        Duration::from_millis(50),
+    );
+    // No draw_result/recover call: this models cancellation after DB commit.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if delivery(&pool, d.g).await.iter().any(|row| row.1) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("periodic recovery did not send committed assignment");
+    worker.wait_idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn transient_database_failure_is_retried_without_restarting(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    let worker = DrawWorker::with_reconcile_interval(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        d.transport.clone(),
+        vec![Duration::ZERO],
+        Duration::from_millis(50),
+    );
+    // This isolated SQLx database simulates an unavailable assignment table while
+    // the initial worker hint is handled; restoring it models database recovery.
+    sqlx::query("RENAME TABLE gift_assignments TO gift_assignments_unavailable")
+        .execute(&pool)
+        .await
+        .unwrap();
+    worker.draw_result(d.g);
+    worker.wait_idle().await;
+    assert_eq!(d.transport.attempts_total(), 0);
+    sqlx::query("RENAME TABLE gift_assignments_unavailable TO gift_assignments")
+        .execute(&pool)
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if delivery(&pool, d.g).await.iter().any(|row| row.1) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("periodic recovery did not retry after the database returned");
+    worker.wait_idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn separate_workers_claim_one_assignment_only_once(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    d.transport.block();
+    let other = DrawWorker::new(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        d.transport.clone(),
+        vec![Duration::ZERO],
+    );
+    d.worker.draw_result(d.g);
+    other.draw_result(d.g);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("neither worker claimed the assignment");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        d.transport.attempts_total(),
+        1,
+        "the second worker must respect the claim"
+    );
+    d.transport.unblock();
+    d.worker.wait_idle().await;
+    other.wait_idle().await;
+    assert_eq!(d.draw_mails(d.alice, GROUP_NAME).await.len(), 1);
+    assert!(delivery(&pool, d.g).await[0].1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn separate_workers_send_at_most_one_result_per_group_at_a_time(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    ts::add_assignment(&pool, d.g, d.bob, d.carol).await;
+    d.transport.block();
+    let other = DrawWorker::new(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        d.transport.clone(),
+        vec![Duration::ZERO],
+    );
+    d.worker.draw_result(d.g);
+    other.draw_result(d.g);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("neither worker sent the first assignment");
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(
+        d.transport.attempts_total(),
+        1,
+        "both rows of the same group must not be in flight at once"
+    );
+    d.transport.unblock();
+    d.worker.wait_idle().await;
+    other.wait_idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+    assert_eq!(d.transport.attempts_to(&d.emails[1]), 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn one_blocked_group_does_not_hold_up_another_group(pool: MySqlPool) {
+    use app::server::draw_worker::{MailTransport, SendFuture};
+    use app::server::mail::{MailError, Message};
+    use std::sync::Mutex;
+    use tokio::sync::Notify;
+
+    struct SlowOne {
+        blocked: String,
+        started: Mutex<Vec<String>>,
+        release: Notify,
+    }
+    impl MailTransport for SlowOne {
+        fn send(&self, message: Message) -> SendFuture<'_> {
+            Box::pin(async move {
+                let released = self.release.notified();
+                self.started.lock().unwrap().push(message.to.clone());
+                if message.to == self.blocked {
+                    released.await;
+                }
+                Ok::<(), MailError>(())
+            })
+        }
+    }
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    let g2 = ts::create_group(&pool, d.carol, "Another group").await;
+    ts::set_drawn(&pool, g2).await;
+    ts::add_assignment(&pool, g2, d.carol, d.bob).await;
+    let transport = Arc::new(SlowOne {
+        blocked: d.emails[0].clone(),
+        started: Mutex::new(Vec::new()),
+        release: Notify::new(),
+    });
+    let worker = DrawWorker::new(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        transport.clone(),
+        vec![Duration::ZERO],
+    );
+    worker.draw_result(d.g);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !transport.started.lock().unwrap().contains(&d.emails[0]) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("first group did not reach its transport");
+    worker.draw_result(g2);
+    let other_started = tokio::time::timeout(Duration::from_secs(5), async {
+        while !transport.started.lock().unwrap().contains(&d.emails[2]) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .is_ok();
+    transport.release.notify_one();
+    worker.wait_idle().await;
+    assert!(
+        other_started,
+        "another group's mail must progress while the first is blocked"
+    );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn recovery_waits_for_a_live_claim_and_reclaims_an_expired_one(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    sqlx::query("UPDATE gift_assignments SET notification_claim = ?, notification_claim_until = CURRENT_TIMESTAMP(6) + INTERVAL 1 HOUR WHERE group_id = ?")
+        .bind("x".repeat(43)).bind(d.g).execute(&pool).await.unwrap();
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    assert_eq!(d.transport.attempts_total(), 0);
+    sqlx::query("UPDATE gift_assignments SET notification_claim_until = CURRENT_TIMESTAMP(6) - INTERVAL 1 SECOND WHERE group_id = ?")
+        .bind(d.g).execute(&pool).await.unwrap();
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn reset_notifications_are_committed_and_rediscovered_after_a_missed_wakeup(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    // A committed outbox row after a reset, as after a process died before enqueueing.
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+        .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
+    let worker = DrawWorker::with_reconcile_interval(
+        pool.clone(),
+        Arc::new(crate::common::config_with(&[])),
+        d.transport.clone(),
+        vec![Duration::ZERO],
+        Duration::from_millis(50),
+    );
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let remaining: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?",
+            )
+            .bind(d.g)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if remaining == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("periodic recovery did not send reset notice");
+    worker.wait_idle().await;
+    assert_eq!(d.reset_mails(d.bob, GROUP_NAME).await.len(), 1);
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn reset_notice_for_a_former_member_is_not_sent_and_is_removed(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+        .bind(d.g).bind(d.bob).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM group_members WHERE group_id = ? AND user_id = ?")
+        .bind(d.g)
+        .bind(d.bob)
+        .execute(&pool)
+        .await
+        .unwrap();
+    d.worker.draw_reset(d.g);
+    d.idle().await;
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?")
+            .bind(d.g)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(remaining, 0);
+    assert_eq!(d.transport.attempts_to(&d.emails[1]), 0);
+}
+
+/// D7 (amended 2026-11-16, review of #84): a quick redraw keeps the unsent reset notices;
+/// every former giver still learns of the re-roll, and before the new result.
+#[sqlx::test(migrations = "../migrations")]
+async fn a_quick_redraw_keeps_the_reset_notices_and_sends_them_before_the_new_result(
+    pool: MySqlPool,
+) {
+    let d = draw_world(&pool).await;
+    d.draw_and_deliver(d.g).await;
+    let old_attempts = d.transport.attempts_total();
+    d.transport.block();
+    let mut alice = d.alice().await;
+    reset(&mut alice, d.g).await.dr_ok();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == old_attempts {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("reset notice did not start");
+    perform(&mut alice, d.g).await.dr_ok();
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?")
+            .bind(d.g)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending, 2, "the redraw keeps both reset notices");
+    d.transport.unblock();
+    d.idle().await;
+
+    let draw = en_with("email.drawResult.subject", &[("group", GROUP_NAME)]);
+    let reset_subject = en_with("email.drawReset.subject", &[("group", GROUP_NAME)]);
+    for user in [d.bob, d.carol] {
+        assert_eq!(d.reset_mails(user, GROUP_NAME).await.len(), 1);
+        assert_eq!(d.draw_mails(user, GROUP_NAME).await.len(), 2);
+        assert_eq!(
+            d.transport.subjects_to(d.email_of(user)),
+            vec![draw.clone(), reset_subject.clone(), draw.clone()],
+            "old result, reset notice, new result"
+        );
+    }
+    // The admin who reset gets no reset mail, only both results.
+    assert_eq!(d.reset_mails(d.alice, GROUP_NAME).await.len(), 0);
+    assert_eq!(d.draw_mails(d.alice, GROUP_NAME).await.len(), 2);
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM draw_reset_notifications WHERE group_id = ?")
+            .bind(d.g)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending, 0);
+    assert!(delivery(&pool, d.g).await.iter().all(|row| row.1));
+}
+
+/// Group archive (#61): an archive is read-only for the members, not for the mail
+/// worker; notices committed before the archive are still delivered.
+#[sqlx::test(migrations = "../migrations")]
+async fn pending_notices_of_an_archived_group_are_still_delivered(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    sqlx::query("INSERT INTO draw_reset_notifications (group_id, recipient_id, group_name, admin_name) VALUES (?, ?, ?, ?)")
+        .bind(d.g).bind(d.carol).bind(GROUP_NAME).bind("Alice").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE `groups` SET archived_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(d.g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    d.worker.recover().await.unwrap();
+    d.idle().await;
+    assert_eq!(d.draw_mails(d.alice, GROUP_NAME).await.len(), 1);
+    assert_eq!(d.reset_mails(d.carol, GROUP_NAME).await.len(), 1);
+}
+
+/// Review of #84: a wake-up that arrives while the group's job runs is not lost; the job
+/// runs once more after it finishes (no periodic recovery in this test).
+#[sqlx::test(migrations = "../migrations")]
+async fn a_wakeup_during_a_running_job_is_not_lost(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    ts::set_drawn(&pool, d.g).await;
+    ts::add_assignment(&pool, d.g, d.alice, d.bob).await;
+    d.transport.block();
+    d.worker.draw_result(d.g);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the first row did not reach the transport");
+    // Committed while the job is past its row read, then woken (like perform_draw).
+    ts::add_assignment(&pool, d.g, d.bob, d.carol).await;
+    d.worker.draw_result(d.g);
+    d.transport.unblock();
+    d.idle().await;
+    assert_eq!(d.transport.attempts_to(&d.emails[0]), 1);
+    assert_eq!(
+        d.transport.attempts_to(&d.emails[1]),
+        1,
+        "the second wake-up must not be swallowed by the running job"
+    );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn an_already_inflight_result_can_arrive_after_reset_and_redraw(pool: MySqlPool) {
+    let d = draw_world(&pool).await;
+    d.transport.block();
+    let mut alice = d.alice().await;
+    perform(&mut alice, d.g).await.dr_ok();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while d.transport.attempts_total() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("first result mail did not reach the blocked transport");
+    let pairs = assignments(&pool, d.g).await;
+    let giver = [d.alice, d.bob, d.carol]
+        .into_iter()
+        .find(|&id| {
+            let email = if id == d.alice {
+                &d.emails[0]
+            } else if id == d.bob {
+                &d.emails[1]
+            } else {
+                &d.emails[2]
+            };
+            d.transport.attempts_to(email) == 1
+        })
+        .expect("one result was in flight");
+    let old_receiver = pairs.iter().find(|(id, _)| *id == giver).unwrap().1;
+    reset(&mut alice, d.g).await.dr_ok();
+    perform(&mut alice, d.g).await.dr_ok();
+    d.transport.unblock();
+    d.idle().await;
+    let mails = d.draw_mails(giver, GROUP_NAME).await;
+    assert!(
+        mails
+            .iter()
+            .any(|mail| everything(mail).contains(d.name_of(old_receiver))),
+        "an SMTP send already in flight cannot be revoked by reset or redraw"
+    );
+}
+
 // ------------------------------------------------------------------------ AC34
 
 #[sqlx::test(migrations = "../migrations")]
@@ -111,6 +598,10 @@ async fn ac35_resend_sends_only_the_failed_mail(pool: MySqlPool) {
     perform(&mut alice, d.g).await.dr_ok();
     d.idle().await;
     d.transport.heal(&d.emails[1]);
+
+    // Manual resend takes effect immediately, regardless of any old retry deadline.
+    sqlx::query("UPDATE gift_assignments SET notification_next_attempt_at = CURRENT_TIMESTAMP(6) + INTERVAL 1 HOUR WHERE group_id = ? AND giver_id = ?")
+        .bind(d.g).bind(d.bob).execute(&pool).await.unwrap();
 
     let reply = resend(&mut alice, d.g).await;
     assert_eq!(reply.dr_value::<u32>(), 1);

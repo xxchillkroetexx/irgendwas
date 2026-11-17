@@ -155,6 +155,20 @@ impl fmt::Debug for Mailer {
 }
 
 impl Mailer {
+    /// Deliver inside the caller's task. Unlike `send`, cancellation also cancels
+    /// this future, so a leased outbox worker can bound its SMTP attempt.
+    pub(crate) async fn send_direct(&self, message: Message) -> Result<(), MailError> {
+        let domain = recipient_domain(&message.to).to_string();
+        let result = self.inner.deliver(message).await;
+        match &result {
+            Ok(()) => tracing::debug!(to_domain = %domain, "mail sent"),
+            Err(err) => {
+                tracing::warn!(to_domain = %domain, kind = err.kind(), error = %err, "mail failed")
+            }
+        }
+        result
+    }
+
     /// Builds the transport from the configuration. Does not connect yet (the first send
     /// does), so it never fails at startup because the SMTP server is down. Create (and
     /// drop) it inside a Tokio runtime: the connection pool needs one.

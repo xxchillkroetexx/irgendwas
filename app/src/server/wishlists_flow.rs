@@ -291,11 +291,14 @@ fn normalize_link(raw: &str) -> Result<Option<String>, WishlistFieldError> {
     Ok(Some(normalized.to_string()))
 }
 
-/// The host shown next to a stored link.
-fn link_host(link: &str) -> Option<String> {
-    url::Url::parse(link)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_string))
+/// Imported data can predate validation: a stored link is made clickable only through the
+/// same rules as a new one (W9, [`normalize_link`]). A PHP-era link without a scheme
+/// (`www.shop.de/x`) gets `https://`; credentials and other schemes give no target. Returns
+/// the target and its host.
+fn safe_link(link: &str) -> Option<(String, String)> {
+    let target = normalize_link(link).ok().flatten()?;
+    let host = url::Url::parse(&target).ok()?.host_str()?.to_string();
+    Some((target, host))
 }
 
 /// Checks every field (W8, W9) and returns all problems together.
@@ -436,12 +439,16 @@ async fn load_view(
         },
         items: items
             .into_iter()
-            .map(|row| ItemView {
-                link_host: row.link.as_deref().and_then(link_host),
-                id: row.id,
-                title: row.title,
-                description: row.description,
-                link: row.link,
+            .map(|row| {
+                let target = row.link.as_deref().and_then(safe_link);
+                ItemView {
+                    link_target: target.as_ref().map(|(target, _)| target.clone()),
+                    link_host: target.map(|(_, host)| host),
+                    id: row.id,
+                    title: row.title,
+                    description: row.description,
+                    link: row.link,
+                }
             })
             .collect(),
         updated_at,
@@ -739,6 +746,38 @@ pub async fn add_item(
     description: String,
     link: String,
 ) -> Result<i32, WishlistError> {
+    add_item_with_claim(group_id, title, description, link, None)
+        .await?
+        .ok_or(WishlistError::Internal)
+}
+
+/// The caller has already verified that this draft belongs to the session.
+/// A successful claim and the wishlist item commit in the same transaction.
+/// `None` means another request already consumed the same draft.
+pub async fn add_shared_item(
+    group_id: i32,
+    title: String,
+    description: String,
+    link: String,
+    draft_id: &str,
+) -> Result<Option<i32>, WishlistError> {
+    add_item_with_claim(
+        group_id,
+        title,
+        description,
+        link,
+        Some(crate::server::token::hash(draft_id)),
+    )
+    .await
+}
+
+async fn add_item_with_claim(
+    group_id: i32,
+    title: String,
+    description: String,
+    link: String,
+    draft_hash: Option<String>,
+) -> Result<Option<i32>, WishlistError> {
     let user_id = user_id().await?;
     let state = state()?;
     let _turn = writer_turn(user_id).await;
@@ -749,8 +788,11 @@ pub async fn add_item(
     writable(access)?;
     let values = validate(&title, &description, &link)?;
 
-    let item_id = retrying(|| add_item_tx(&state, group_id, user_id, &values)).await?;
-    tracing::info!(user_id, group_id, item_id, "wishlist item added");
+    let item_id =
+        retrying(|| add_item_tx(&state, group_id, user_id, &values, draft_hash.as_deref())).await?;
+    if let Some(item_id) = item_id {
+        tracing::info!(user_id, group_id, item_id, "wishlist item added");
+    }
     Ok(item_id)
 }
 
@@ -775,10 +817,27 @@ async fn add_item_tx(
     group_id: i32,
     user_id: i32,
     values: &ItemValues,
-) -> Result<i32, Fail> {
+    draft_hash: Option<&str>,
+) -> Result<Option<i32>, Fail> {
     let mut conn = connection(state).await?;
     let mut tx = begin(&mut conn).await?;
     lock_writable_group(&mut tx, group_id, user_id).await?;
+    if let Some(draft_hash) = draft_hash {
+        // Claim after authorization and in the same transaction as the item.
+        // A concurrent request waits for the winner, then receives no claim;
+        // if the winner rolls back, the waiting request may proceed.
+        let claim =
+            sqlx::query("INSERT INTO consumed_share_drafts (draft_hash, user_id) VALUES (?, ?)")
+                .bind(draft_hash)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await;
+        match claim {
+            Ok(_) => (),
+            Err(sqlx::Error::Database(err)) if err.is_unique_violation() => return Ok(None),
+            Err(err) => return Err(tx_error("claim share draft")(err)),
+        }
+    }
     // W5: the list row is created by the first item.
     sqlx::query(
         "INSERT INTO wishlists (user_id, group_id) VALUES (?, ?) \
@@ -828,7 +887,7 @@ async fn add_item_tx(
     })?;
     touch_list(&mut tx, list_id).await?;
     commit(tx).await?;
-    Ok(item_id)
+    Ok(Some(item_id))
 }
 
 /// `(group of the item, when the caller may know it; result)`.
@@ -1049,7 +1108,11 @@ pub async fn get_copy_sources(group_id: i32) -> Result<CopySources, WishlistErro
         let item = CopyItem {
             on_target: on_target.contains(&title_key(&row.title)),
             copyable: copyable(&row.title, row.description.as_deref(), row.link.as_deref()),
-            link_host: row.link.as_deref().and_then(link_host),
+            link_host: row
+                .link
+                .as_deref()
+                .and_then(safe_link)
+                .map(|(_, host)| host),
             id: row.id,
             title: row.title,
             description: row.description,

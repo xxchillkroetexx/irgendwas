@@ -267,7 +267,7 @@ fn ArchivedView(wishlist: WishlistView) -> impl IntoView {
                         .map(|text| {
                             view! { <div class="small text-muted" style="white-space: pre-line">{text}</div> }
                         })}
-                    {item.link.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
+                    {item.link_target.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
                 </li>
             }
         })
@@ -534,7 +534,7 @@ fn ItemRow(
                         .map(|text| {
                             view! { <div class="small text-muted" style="white-space: pre-line">{text}</div> }
                         })}
-                    {item.link.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
+                    {item.link_target.map(|link| view! { <div class="mt-1"><ItemLink link host/></div> })}
                 </div>
                 <div class="d-flex flex-wrap gap-1">
                     {(!first)

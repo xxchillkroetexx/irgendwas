@@ -422,6 +422,26 @@ fn ac11_too_many_members_is_reported_before_feasibility() {
     );
 }
 
+#[test]
+fn oversized_input_is_rejected_after_deduplication() {
+    let mut members = ids(20_000);
+    members.extend(ids(20_000));
+    assert_eq!(
+        run(&members, &[], 0),
+        Err(DrawError::TooManyMembers {
+            count: 20_000,
+            max: 200
+        })
+    );
+    assert_eq!(
+        app::server::draw::precheck(&members, &[]),
+        Err(DrawError::TooManyMembers {
+            count: 20_000,
+            max: 200
+        })
+    );
+}
+
 // ------------------------------------------------------------------------ AC12
 
 #[test]

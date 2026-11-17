@@ -28,6 +28,7 @@ use crate::exclusions_api::{
 use crate::flash::FlashMessage;
 use crate::paths::{exclusions_path, login_url};
 use crate::server::db::{self, IsolationLevel};
+use crate::server::draw::MAX_DRAW_MEMBERS;
 use crate::server::{AppState, auth, authz, flash, respond};
 
 /// Where a plain post goes when the caller may not see the group.
@@ -251,7 +252,8 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
     .await
     .map_err(|e| db_error("get_exclusions: members", e))?;
     // The whole group's rules feed the one-bit notice only; they never leave this fn.
-    let rules = if locked {
+    let too_large = members.len() > MAX_DRAW_MEMBERS;
+    let rules = if locked || too_large {
         Vec::new()
     } else {
         load_rules(&mut tx, group_id).await.map_err(from_app)?
@@ -280,6 +282,10 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
     };
     let notice = if locked {
         None
+    } else if too_large {
+        Some(FeasibilityNotice::GroupTooLarge {
+            max: MAX_DRAW_MEMBERS as u32,
+        })
     } else {
         let ids: Vec<i32> = members.iter().map(|row| row.user_id).collect();
         match check_feasibility(&ids, &rules) {
@@ -292,7 +298,8 @@ pub async fn get_exclusions(group_id: i32) -> Result<ExclusionsPage, ExclusionEr
         }
     };
     let max_rules = MAX_EXCLUSIONS_PER_MEMBER;
-    let can_add = !locked && my_rules.len() < usize::from(max_rules) && !candidates.is_empty();
+    let can_add =
+        !locked && !too_large && my_rules.len() < usize::from(max_rules) && !candidates.is_empty();
     Ok(ExclusionsPage {
         group_id,
         group_name: group.name,
@@ -330,6 +337,19 @@ pub async fn add_exclusion(group_id: i32, excluded_user_id: i32) -> Result<(), E
     let members = member_ids(&mut tx, group_id).await?;
     if !members.contains(&excluded_user_id) {
         return Err(ExclusionError::TargetNotMember);
+    }
+    if members.len() > MAX_DRAW_MEMBERS {
+        // Preserve idempotence and allow deleting existing rules in oversized groups.
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM exclusion_rules WHERE group_id = ? AND user_id = ? AND excluded_user_id = ?)")
+            .bind(group_id).bind(me).bind(excluded_user_id)
+            .fetch_one(&mut *tx).await.map_err(|e| db_error("add_exclusion: existing", e))?;
+        return if exists {
+            Ok(())
+        } else {
+            Err(ExclusionError::GroupTooLarge {
+                max: MAX_DRAW_MEMBERS as u32,
+            })
+        };
     }
     let rules = load_rules(&mut tx, group_id).await.map_err(from_app)?;
     if rules.contains(&(me, excluded_user_id)) {

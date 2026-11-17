@@ -208,3 +208,85 @@ async fn health_layout_404_and_locale(pool: MySqlPool) {
         "German nav expected"
     );
 }
+
+#[sqlx::test(migrations = "../migrations")]
+async fn dynamic_responses_are_not_stored_across_sessions_or_locales(pool: MySqlPool) {
+    use axum::http::header::CACHE_CONTROL;
+
+    let app = app(&pool, &[]);
+    let alice = create_user(&pool, "Alice", "cache-alice@example.com").await;
+    let bob = create_user(&pool, "Bob", "cache-bob@example.com").await;
+    let alice_cookie =
+        session_cookie(&send(&app, get(&format!("/test/login/{alice}"), None)).await).unwrap();
+    let bob_cookie =
+        session_cookie(&send(&app, get(&format!("/test/login/{bob}"), None)).await).unwrap();
+
+    for (path, cookie, marker, other_user) in [
+        ("/", None, Some("<html lang=\"en\""), None),
+        ("/", Some("locale=de"), Some("<html lang=\"de\""), None),
+        (
+            "/groups",
+            Some(alice_cookie.as_str()),
+            Some("Alice"),
+            Some("Bob"),
+        ),
+        (
+            "/groups",
+            Some(bob_cookie.as_str()),
+            Some("Bob"),
+            Some("Alice"),
+        ),
+        ("/groups", None, None, None),
+        ("/does-not-exist", Some(alice_cookie.as_str()), None, None),
+    ] {
+        let response = send(&app, get(path, cookie)).await;
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).unwrap(),
+            "no-store",
+            "{path}"
+        );
+        let body = body_string(response).await;
+        if let Some(marker) = marker {
+            assert!(body.contains(marker), "{path}: missing {marker}");
+        }
+        if let Some(other_user) = other_user {
+            assert!(
+                !body.contains(other_user),
+                "{path}: contains another user's name"
+            );
+        }
+    }
+    for cookie in [&alice_cookie, &bob_cookie] {
+        let response = send(&app, post("/api/session_info", Some(cookie), "")).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get(CACHE_CONTROL).unwrap(), "no-store");
+    }
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn ordinary_static_assets_remain_cacheable(pool: MySqlPool) {
+    use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+
+    let root = std::env::temp_dir().join(format!("irgendwas-cache-{}", rand::random::<u64>()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("fixture.css"), "body { color: red; }").unwrap();
+    let options = leptos::config::LeptosOptions::builder()
+        .output_name("irgendwas")
+        .site_root(root.to_str().unwrap().to_string())
+        .build();
+    let app = server::router(server::app_state(options, pool, config_with(&[])).unwrap());
+    let response = send(&app, get("/fixture.css", None)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("text/css")
+    );
+    assert!(response.headers().get(CACHE_CONTROL).is_none());
+    assert_eq!(body_string(response).await, "body { color: red; }");
+    std::fs::remove_dir_all(root).unwrap();
+}

@@ -65,11 +65,17 @@ struct Normalised {
 }
 
 impl Normalised {
-    fn new(members: &[UserId], exclusions: &[(UserId, UserId)]) -> Self {
+    fn new(members: &[UserId], exclusions: &[(UserId, UserId)]) -> Result<Self, DrawError> {
         let mut ids = members.to_vec();
         ids.sort_unstable();
         ids.dedup();
         let n = ids.len();
+        if n > MAX_DRAW_MEMBERS {
+            return Err(DrawError::TooManyMembers {
+                count: n,
+                max: MAX_DRAW_MEMBERS,
+            });
+        }
         let mut forbidden = vec![false; n * n];
         for i in 0..n {
             forbidden[i * n + i] = true;
@@ -87,11 +93,11 @@ impl Normalised {
             }
         }
         kept.sort_unstable();
-        Normalised {
+        Ok(Normalised {
             members: ids,
             forbidden,
             exclusions: kept,
-        }
+        })
     }
 
     fn n(&self) -> usize {
@@ -115,7 +121,7 @@ impl Normalised {
 /// Steps 0–2 without drawing: whether a draw of these members under these rules can
 /// happen, and if not, why. The admin status uses it for the blocker; [`draw`] runs it too.
 pub fn precheck(members: &[UserId], exclusions: &[(UserId, UserId)]) -> Result<(), DrawError> {
-    let norm = Normalised::new(members, exclusions);
+    let norm = Normalised::new(members, exclusions)?;
     precheck_normalised(&norm)
 }
 
@@ -127,12 +133,7 @@ fn precheck_normalised(norm: &Normalised) -> Result<(), DrawError> {
             min: MIN_DRAW_MEMBERS,
         });
     }
-    if n > MAX_DRAW_MEMBERS {
-        return Err(DrawError::TooManyMembers {
-            count: n,
-            max: MAX_DRAW_MEMBERS,
-        });
-    }
+    // `Normalised::new` already refused more than MAX_DRAW_MEMBERS.
     match check_feasibility(&norm.members, &norm.exclusions) {
         Feasibility::Feasible => Ok(()),
         Feasibility::Infeasible(reason) => Err(DrawError::Infeasible(reason)),
@@ -150,7 +151,7 @@ pub fn draw<R: Rng + ?Sized>(
     cfg: &DrawConfig,
     rng: &mut R,
 ) -> Result<Vec<(UserId, UserId)>, DrawError> {
-    let norm = Normalised::new(members, exclusions);
+    let norm = Normalised::new(members, exclusions)?;
     precheck_normalised(&norm)?;
     let n = norm.n();
     let receiver_of = if n <= cfg.exact_max_members && n <= EXACT_BITS {

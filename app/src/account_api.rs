@@ -49,6 +49,8 @@ pub enum AccountError {
     EmailTaken,
     #[error("too many password attempts, retry in {minutes} min")]
     TooManyAttempts { minutes: u32 },
+    #[error("password verification temporarily unavailable")]
+    Busy,
     #[error("internal server error")]
     Internal,
 }
@@ -72,6 +74,7 @@ impl AccountError {
             AccountError::InvalidOrExpiredToken => "flash.error.email_verification_failed",
             AccountError::EmailTaken => "flash.error.email_already_in_use",
             AccountError::TooManyAttempts { .. } => "flash.error.too_many_password_attempts",
+            AccountError::Busy => "flash.error.too_many_requests",
             AccountError::Internal => "error.generic.message",
         }
     }
@@ -123,7 +126,7 @@ impl AccountError {
             AccountError::EmailChangeTooSoon | AccountError::TooManyAttempts { .. } => 429,
             AccountError::InvalidOrExpiredToken => 400,
             AccountError::EmailTaken => 409,
-            AccountError::MailSendFailed => 503,
+            AccountError::MailSendFailed | AccountError::Busy => 503,
             AccountError::Internal => 500,
         }
     }

@@ -39,6 +39,13 @@ fn internal(context: &'static str, err: impl std::fmt::Display) -> AccountError 
     AccountError::Internal
 }
 
+fn password_error(context: &'static str, err: password::PasswordError) -> AccountError {
+    match err {
+        password::PasswordError::Busy => AccountError::Busy,
+        other => internal(context, other),
+    }
+}
+
 fn state() -> Result<AppState, AccountError> {
     crate::server::state().map_err(|_| AccountError::Internal)
 }
@@ -71,7 +78,15 @@ async fn check_current_password(
             minutes: rate_limit::minutes_rounded_up(wait),
         });
     }
-    if password::verify_async(password, Some(stored_hash)).await {
+    let verified = match password::verify_async(password, Some(stored_hash)).await {
+        Ok(verified) => verified,
+        Err(err) => {
+            // Overload is not an incorrect password and must not use an attempt.
+            state.rate_limiter.release(&key);
+            return Err(password_error("verify_password", err));
+        }
+    };
+    if verified {
         state.rate_limiter.clear(&key);
         Ok(())
     } else {
@@ -220,7 +235,7 @@ pub async fn change_password(
     check_current_password(&state, user_id, current_password, stored.clone()).await?;
     let hash = password::hash_async(new_password)
         .await
-        .map_err(|e| internal("change_password: hash", e))?;
+        .map_err(|e| password_error("change_password: hash", e))?;
 
     // One statement for the credentials, the epoch, the reset token and a pending email
     // change (started with the old credentials, maybe by whoever this change locks out).

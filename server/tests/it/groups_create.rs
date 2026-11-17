@@ -345,6 +345,40 @@ async fn ac7_an_unparseable_date_is_reported_on_its_field_and_nothing_is_saved(p
 }
 
 #[sqlx::test(migrations = "../migrations")]
+async fn group_dates_are_checked_against_timestamp_bounds_in_utc(pool: MySqlPool) {
+    let w = world_with(
+        &pool,
+        &[("APP_TIMEZONE", "Pacific/Kiritimati")],
+        Opts::default(),
+    )
+    .await;
+    let mut alice = w.alice().await;
+    let before = groups_snapshot(&pool).await;
+    for (deadline, draw, field) in [
+        ("1969-12-30", "", GroupField::RegistrationDeadline),
+        ("", "1969-12-30", GroupField::DrawDate),
+        ("2106-02-07", "", GroupField::RegistrationDeadline),
+        ("", "2106-02-08", GroupField::DrawDate),
+        ("2500-01-01", "", GroupField::RegistrationDeadline),
+    ] {
+        let response = create_group(&mut alice, "outside", "", deadline, draw).await;
+        assert_eq!(response.status, 422, "{deadline} {draw}");
+        validation(&response.group_err(), field, GroupFieldError::InvalidDate);
+    }
+    assert_eq!(groups_snapshot(&pool).await, before);
+
+    // On the same local date the noon draw is valid, but the 23:59:59
+    // deadline exceeds the limit after conversion from UTC+14.
+    let id: i32 = create_group(&mut alice, "boundary", "", "", "2106-02-07")
+        .await
+        .value();
+    assert_eq!(
+        ts::group_row(&pool, id).await.draw_date,
+        Some(Utc.with_ymd_and_hms(2106, 2, 6, 22, 0, 0).unwrap())
+    );
+}
+
+#[sqlx::test(migrations = "../migrations")]
 async fn ac7_all_problems_are_returned_together(pool: MySqlPool) {
     let w = world(&pool).await;
     let mut alice = w.alice().await;

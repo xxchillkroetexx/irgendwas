@@ -7,11 +7,42 @@ use app::server::AppState;
 use app::server::config::normalize_origin;
 use app::server::i18n::{cookie_locale, session_locale};
 use axum::extract::{Request, State};
-use axum::http::header::{ACCEPT_LANGUAGE, COOKIE, ORIGIN};
-use axum::http::{HeaderMap, Method, StatusCode};
+use axum::http::header::{ACCEPT_LANGUAGE, CACHE_CONTROL, CONTENT_TYPE, COOKIE, ORIGIN};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use tower_sessions::Session;
+
+/// All registered application routes may depend on the session or locale.
+pub async fn dynamic_no_store(req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+/// The static-file fallback can itself render a personalized HTML 404. Protect HTML
+/// returned from it too, while leaving ordinary CSS, JS, WASM and images cacheable.
+pub async fn html_no_store(req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    let is_html = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|s| s.trim().eq_ignore_ascii_case("text/html"))
+        });
+    if is_html {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
+}
 
 /// Resolves the request locale (session → `locale` cookie → `Accept-Language` (all headers
 /// joined with `,`) → `APP_LOCALE`) and stores it as

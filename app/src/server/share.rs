@@ -7,8 +7,8 @@ use crate::AppError;
 use crate::share_api::{ShareDraft, ShareInput, prepare_share};
 use crate::wishlists_api::{WishlistError, WishlistField, WishlistFieldError};
 
-const DRAFTS_KEY: &str = "shared_link_drafts";
-const MAX_PENDING: usize = 5;
+pub const DRAFTS_KEY: &str = "shared_link_drafts";
+pub const MAX_PENDING: usize = 5;
 pub const MAX_SHARE_BYTES: usize = 16_384;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -49,6 +49,16 @@ pub async fn receive(session: &Session, input: ShareInput) -> Result<String, App
 pub async fn get_draft(id: String) -> Result<ShareDraft, AppError> {
     auth::require_user().await?;
     let session = auth::session().await?;
+    let state = super::state()?;
+    let claimed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM consumed_share_drafts WHERE draft_hash = ?)",
+    )
+    .bind(super::token::hash(&id))
+    .fetch_one(&state.pool)
+    .await?;
+    if claimed {
+        return Err(AppError::NotFound);
+    }
     drafts(&session)
         .await?
         .into_iter()
@@ -62,6 +72,20 @@ fn mutation_error(error: AppError) -> WishlistError {
         AppError::Unauthorized => WishlistError::Unauthorized,
         AppError::NotFound => WishlistError::NotFound,
         _ => WishlistError::Internal,
+    }
+}
+
+/// A failed submit: a plain form gets the error as a flash and goes back to the review
+/// page of `id`; the server fn client gets the error.
+async fn failed(session: &Session, id: &str, error: WishlistError) -> Result<(), WishlistError> {
+    if respond::is_plain_form_post() {
+        super::flash::push(session, error.flash())
+            .await
+            .map_err(mutation_error)?;
+        respond::redirect_document(&review_path(id));
+        Ok(())
+    } else {
+        Err(error)
     }
 }
 
@@ -82,7 +106,8 @@ pub async fn add_wish(
             .iter()
             .any(|p| p.id == id)
     {
-        return Err(WishlistError::NotFound);
+        // Consumed (a double submit after the first one finished) or never staged here.
+        return failed(&session, &id, WishlistError::NotFound).await;
     }
     if title.len() + description.len() + link.len() > MAX_SHARE_BYTES {
         return Err(WishlistError::Validation(vec![(
@@ -90,24 +115,25 @@ pub async fn add_wish(
             WishlistFieldError::DescriptionTooLong,
         )]));
     }
-    let id = if id.is_empty() || user.is_none() {
-        super::token::generate().map_err(mutation_error)?
-    } else {
+    // A staged draft (checked above) is claimed with its item. Without one (a wish typed
+    // on the review page, or an anonymous post) the id only names the draft kept for a
+    // correction or the login, and there is nothing to claim.
+    let staged = user.is_some() && !id.is_empty();
+    let id = if staged {
         id
+    } else {
+        super::token::generate().map_err(mutation_error)?
     };
-    // Keep corrections across login and a no-JS validation/authorization failure.
-    store(
-        &session,
-        id.clone(),
-        ShareDraft {
-            title: title.clone(),
-            description: description.clone(),
-            link: link.clone(),
-        },
-    )
-    .await
-    .map_err(mutation_error)?;
+    let draft = ShareDraft {
+        title: title.clone(),
+        description: description.clone(),
+        link: link.clone(),
+    };
     if user.is_none() {
+        // Keep corrections across login.
+        store(&session, id.clone(), draft)
+            .await
+            .map_err(mutation_error)?;
         respond::redirect_document(&crate::paths::login_url(&review_path(&id)));
         return if respond::is_plain_form_post() {
             Ok(())
@@ -115,7 +141,18 @@ pub async fn add_wish(
             Err(WishlistError::Unauthorized)
         };
     }
-    let result = super::wishlists_flow::add_item(group_id, title, description, link).await;
+    let result = if staged {
+        match super::wishlists_flow::add_shared_item(group_id, title, description, link, &id).await
+        {
+            Ok(Some(item_id)) => Ok(item_id),
+            // Another request consumed this draft first (a double submit): handled like
+            // every other failure, so a plain form gets a flash and a redirect, not a 404.
+            Ok(None) => Err(WishlistError::NotFound),
+            Err(error) => Err(error),
+        }
+    } else {
+        super::wishlists_flow::add_item(group_id, title, description, link).await
+    };
     match result {
         Ok(_) => {
             let mut pending = drafts(&session).await.map_err(mutation_error)?;
@@ -140,15 +177,23 @@ pub async fn add_wish(
             Ok(())
         }
         Err(error) => {
-            if respond::is_plain_form_post() {
-                super::flash::push(&session, error.flash())
+            // Preserve corrections on validation/authorization failures, but
+            // never re-stage a draft that another request already consumed.
+            let state = super::state().map_err(mutation_error)?;
+            let claimed: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM consumed_share_drafts WHERE draft_hash = ?)",
+            )
+            .bind(super::token::hash(&id))
+            .fetch_one(&state.pool)
+            .await
+            .map_err(AppError::from)
+            .map_err(mutation_error)?;
+            if !claimed {
+                store(&session, id.clone(), draft)
                     .await
                     .map_err(mutation_error)?;
-                respond::redirect_document(&review_path(&id));
-                Ok(())
-            } else {
-                Err(error)
             }
+            failed(&session, &id, error).await
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Process wiring: configuration, DB, migrations, sessions, middleware, router.
 //!
-//! Layer order (outermost first): Origin/CSRF check → session → locale → routes.
+//! Layer order (outermost first): Origin/CSRF check → session → locale → app routes.
+//! The health route bypasses session and locale while retaining the common outer layers.
 
 pub mod health;
 pub mod healthcheck;
@@ -8,6 +9,7 @@ pub mod middleware;
 pub mod session_store;
 mod share;
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -18,7 +20,10 @@ use app::server::mail::{MailError, Mailer};
 use app::server::{AppState, Config, db};
 use app::{App, shell};
 use axum::Router;
+use axum::extract::Query;
 use axum::handler::Handler;
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use leptos::config::LeptosOptions;
 use leptos_axum::{AxumRouteListing, LeptosRoutes, generate_route_list};
@@ -58,10 +63,34 @@ fn route_list() -> Vec<AxumRouteListing> {
     ROUTES.get_or_init(|| generate_route_list(App)).clone()
 }
 
-/// The complete application router (pages, server fns, static files, `/health`), behind
-/// the Origin check ([`middleware::origin_check`]) and the session and locale layers.
+/// The complete application router (pages, server fns, static files, `/health`). The
+/// Origin check ([`middleware::origin_check`]) covers every route; session and locale
+/// layers apply only to the application routes and static-file fallback.
 pub fn router(state: AppState) -> Router {
     router_with(state, Router::new())
+}
+
+/// Links shared by the PHP application use a query parameter. Convert only the
+/// legacy eight-character code to the current preview URL, never join on GET.
+async fn legacy_join(Query(query): Query<HashMap<String, String>>) -> Response {
+    let code = query
+        .get("code")
+        .filter(|code| code.len() <= 128)
+        .map(|code| app::groups_api::normalize_invitation_code(code))
+        .filter(|code| code.len() == 8 && code.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    let target = code
+        .as_deref()
+        .and_then(app::groups_api::join_path)
+        .unwrap_or_else(|| "/join".to_string());
+    let mut response = Redirect::temporary(&target).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("same-origin"),
+    );
+    response
 }
 
 /// [`router`] plus `extra` routes, which run inside the session and locale layers.
@@ -86,22 +115,34 @@ pub fn router_with(state: AppState, extra: Router<AppState>) -> Router {
         .precompressed_br()
         .fallback(not_found);
 
-    Router::new()
-        .route("/health", get(health::health))
+    let app = Router::new()
         .route("/share-target", get(share::receive))
+        .route("/groups/join", get(legacy_join))
         .merge(extra)
         .leptos_routes(&state, routes, move || shell(leptos_options.clone()))
+        // Matched application routes include SSR, server functions and redirects.
+        .route_layer(axum::middleware::from_fn(middleware::dynamic_no_store))
         .fallback_service(files)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::locale,
         ))
-        .layer(session_layer)
+        .layer(session_layer);
+
+    // The health probe only needs the database pool. A browser's session cookie must
+    // not cause a session lookup or extend its inactivity timeout on this route.
+    let health = Router::new()
+        .route("/health", get(health::health))
+        .route_layer(axum::middleware::from_fn(middleware::dynamic_no_store));
+
+    app.merge(health)
         // Outermost: cross-origin writes are rejected before they touch the session.
         .layer(axum::middleware::from_fn_with_state(
             app_origin,
             middleware::origin_check,
         ))
+        // The file fallback can render a localized, personalized HTML 404.
+        .layer(axum::middleware::from_fn(middleware::html_no_store))
         .with_state(state)
 }
 

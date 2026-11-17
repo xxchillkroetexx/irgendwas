@@ -36,6 +36,8 @@ pub enum ExclusionError {
     TooManyExclusions { max: u8 },
     #[error("would make the draw impossible")]
     WouldMakeDrawImpossible,
+    #[error("group exceeds draw size limit")]
+    GroupTooLarge { max: u32 },
     /// The group is archived and read-only (spec: group-archive).
     #[error("group archived")]
     Archived,
@@ -54,6 +56,7 @@ impl ExclusionError {
             ExclusionError::TargetNotMember => "flash.error.user_not_in_group",
             ExclusionError::TooManyExclusions { .. } => "flash.error.exclusion_limit_reached",
             ExclusionError::WouldMakeDrawImpossible => "flash.error.exclusion_would_block_draw",
+            ExclusionError::GroupTooLarge { .. } => "exclusion.warning.groupTooLarge",
             ExclusionError::Archived => "flash.error.group_archived",
             ExclusionError::Internal => "error.generic.message",
         }
@@ -64,6 +67,7 @@ impl ExclusionError {
         let message = FlashMessage::error(self.message_key());
         match self {
             ExclusionError::TooManyExclusions { max } => message.with_number("max", (*max).into()),
+            ExclusionError::GroupTooLarge { max } => message.with_number("max", (*max).into()),
             _ => message,
         }
     }
@@ -75,6 +79,7 @@ impl ExclusionError {
             ExclusionError::NotFound => 404,
             ExclusionError::AlreadyDrawn
             | ExclusionError::WouldMakeDrawImpossible
+            | ExclusionError::GroupTooLarge { .. }
             | ExclusionError::Archived => 409,
             ExclusionError::CannotExcludeSelf
             | ExclusionError::TargetNotMember
@@ -118,6 +123,9 @@ pub struct MemberRef {
 /// The only aggregate a member may see (spec D7): one bit, no names, no rules.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FeasibilityNotice {
+    GroupTooLarge {
+        max: u32,
+    },
     DrawImpossible {
         /// The caller's own rules leave them nobody to draw. Serialised as `me`: the page
         /// embeds this data for hydration, and no internal wording belongs in the HTML.

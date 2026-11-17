@@ -25,6 +25,13 @@ pub fn internal(err: impl std::fmt::Display) -> AuthError {
     AuthError::Internal
 }
 
+fn password_error(err: password::PasswordError) -> AuthError {
+    match err {
+        password::PasswordError::Busy => AuthError::TooManyRequests,
+        other => internal(other),
+    }
+}
+
 /// Logs a database error without its message (it can quote values such as an email) and
 /// returns `Internal`.
 pub fn db_error(err: sqlx::Error) -> AuthError {
@@ -34,6 +41,17 @@ pub fn db_error(err: sqlx::Error) -> AuthError {
 
 fn state() -> Result<AppState, AuthError> {
     crate::server::state().map_err(|_| AuthError::Internal)
+}
+
+// Scope admissions by database so isolated app instances do not share a token budget.
+fn token_work_key(state: &AppState, token_hash: &str) -> String {
+    let options = state.pool.connect_options();
+    format!(
+        "{}:{}:{}:{token_hash}",
+        options.get_host(),
+        options.get_port(),
+        options.get_database().unwrap_or_default()
+    )
 }
 
 async fn session() -> Result<tower_sessions::Session, AuthError> {
@@ -107,7 +125,15 @@ pub async fn login(email: String, password: String, next: Option<String>) -> Res
     };
 
     let stored_hash = row.as_ref().map(|r| r.password.clone());
-    let verified = password::verify_async(password.clone(), stored_hash).await;
+    let verified = match password::verify_async(password.clone(), stored_hash).await {
+        Ok(verified) => verified,
+        Err(err) => {
+            // Capacity errors are not failed credentials and must not lock a user out.
+            limiter.release(&email_key);
+            limiter.release(&ip_key);
+            return Err(password_error(err));
+        }
+    };
     let user = match row {
         Some(user) if verified => user,
         // The reserved attempt stays counted as the failure.
@@ -315,7 +341,9 @@ pub async fn complete_registration(
     // Cheap check first: no argon2 work for unknown tokens. Hash outside the transaction
     // (no row lock or pool connection held during argon2), then re-check under the lock.
     get_pending_registration(token).await?;
-    let hash = password::hash_async(password).await.map_err(internal)?;
+    let hash = password::hash_for_token_async(password, token_work_key(&state, &token_hash))
+        .await
+        .map_err(password_error)?;
 
     let mut tx = state.pool.begin().await.map_err(db_error)?;
     let pending = sqlx::query_as::<_, (i32, String, Option<String>)>(
@@ -463,7 +491,10 @@ pub async fn reset_password(
     let state = state()?;
     // Cheap check first: no argon2 work for unknown tokens.
     let (user_id, email) = reset_token_owner(&state, &token).await?;
-    let hash = password::hash_async(password).await.map_err(internal)?;
+    let hash =
+        password::hash_for_token_async(password, token_work_key(&state, &token::hash(&token)))
+            .await
+            .map_err(password_error)?;
     // The token condition again in the UPDATE: exactly one of concurrent submits wins.
     // A pending email change dies with the old credentials: whoever started it with them
     // (e.g. the attacker the reset locks out) must not be able to confirm it afterwards.
