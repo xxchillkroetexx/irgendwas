@@ -308,7 +308,24 @@ fn EditHead(wishlist: WishlistView, actions: Actions, add_form: AddForm) -> impl
             <a href=group_path(group_id)>{wishlist.group.name}</a>
         </p>
         <p class="text-muted">{i18n.t("wishlist.edit.description")}</p>
-        <p><a href="/wishes/shared">{i18n.t("share.title")}</a></p>
+        // The help offers this list's add form as the alternative, which a full list
+        // disables; the link stays, its page can still save to another list.
+        <p>
+            <a
+                href="/wishes/shared"
+                aria-describedby=(!full).then_some("shared-link-help")
+            >
+                {i18n.t("share.title")}
+            </a>
+            {(!full)
+                .then(|| {
+                    view! {
+                        <span id="shared-link-help" class="d-block small text-muted">
+                            {i18n.t("share.wishlist_help")}
+                        </span>
+                    }
+                })}
+        </p>
         <p>
             <a href=wishlist_view_path(group_id, wishlist.owner.id)>
                 {i18n.t("group.show.viewYourWishlist")}

@@ -37,7 +37,7 @@ test("a long shared product link survives login and registration without automat
   await page.locator("main form button[type=submit]").click();
   await expect(page).toHaveURL(new RegExp("/wishes/shared\\?id="));
   await waitForHydration(page);
-  await expect(page.getByRole("heading", { name: "Add a shared link", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Use a product link from another app", exact: true })).toBeVisible();
   await expect(page.getByText("No wishlist is available yet.", { exact: false })).toBeVisible();
   const id = new URL(page.url()).searchParams.get("id")!;
   const draft = await page.evaluate(async (id) => {
@@ -76,8 +76,11 @@ test("iPhone fallback guidance is public and works without JavaScript", async ({
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.goto("/install");
-  await expect(page.getByText("Copy the product link", { exact: false })).toBeVisible();
-  await page.getByRole("link", { name: "Add a shared link", exact: true }).click();
+  // The help names the link below it (the review page's heading, see the test above).
+  await expect(
+    page.getByText("choose “Use a product link from another app”, paste the link, add a title", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Use a product link from another app", exact: true }).click();
   await expect(page).toHaveURL(/\/auth\/login\?next=%2Fwishes%2Fshared/);
   await context.close();
 });

@@ -445,7 +445,8 @@
     "app.install.desktop.title": "Desktop",
     "app.install.desktop.steps": "In Chrome or Edge, use the install icon in the address bar or Install this site as an app in the browser menu. In Safari on Mac, use File → Add to Dock. Available commands depend on your browser.",
     "app.install.help": "If installation is unavailable, open the site in a supported browser. You can also keep using it in your browser.",
-    "share.title": "Add a shared link",
+    "share.title": "Use a product link from another app",
+    "share.wishlist_help": "Paste a copied link, add a title and choose a wishlist. Or enter the link directly in the new wish below.",
     "share.intro": "Choose a wishlist and review the product details before saving. You can also paste a copied link here.",
     "share.list": "Wishlist",
     "share.item_title": "Wish title",
@@ -456,7 +457,7 @@
     "share.no_lists": "No wishlist is available yet. Join a group first, then return to add your wish.",
     "share.start_again": "Start with a new link",
     "share.iphone.title": "Sharing on iPhone and iPad",
-    "share.iphone.help": "Safari on iPhone and iPad cannot offer this PWA as a destination in the system share menu. Copy the product link, open this app, choose “Add a shared link”, paste the link, select a wishlist and confirm.",
+    "share.iphone.help": "Safari on iPhone and iPad cannot offer this PWA as a destination in the system share menu. Copy the product link, open this app, choose “{link}”, paste the link, add a title, select a wishlist and confirm.",
     "share.install.title": "Receive product links",
     "share.install.support": "After installing with a supported Chromium browser on Android or desktop, choose Secret Santa in another app’s share menu. Availability depends on the browser and operating system. If the app is absent, copy the link and use the form below.",
     "share.too_large": "The shared content is too long. Paste a shorter product link instead."

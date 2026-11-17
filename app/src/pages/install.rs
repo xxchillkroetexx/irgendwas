@@ -3,6 +3,7 @@
 use leptos::prelude::*;
 
 use crate::i18n::use_i18n;
+use crate::t;
 
 #[component]
 pub fn InstallPage() -> impl IntoView {
@@ -19,7 +20,7 @@ pub fn InstallPage() -> impl IntoView {
         <p>{i18n.t("app.install.help")}</p>
         <h2>{i18n.t("share.install.title")}</h2>
         <p>{i18n.t("share.install.support")}</p>
-        <p>{i18n.t("share.iphone.help")}</p>
+        <p>{t!(i18n, "share.iphone.help", link = i18n.t("share.title"))}</p>
         <a href="/wishes/shared">{i18n.t("share.title")}</a>
     }
 }

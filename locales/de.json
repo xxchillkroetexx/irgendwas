@@ -445,7 +445,8 @@
     "app.install.desktop.title": "Desktop",
     "app.install.desktop.steps": "Nutzen Sie in Chrome oder Edge das Installationssymbol in der Adressleiste oder Diese Seite als App installieren im Browsermenü. In Safari auf dem Mac wählen Sie Ablage → Zum Dock hinzufügen. Die verfügbaren Befehle hängen vom Browser ab.",
     "app.install.help": "Falls die Installation nicht angeboten wird, öffnen Sie die Seite in einem unterstützten Browser. Sie können sie auch weiterhin im Browser nutzen.",
-    "share.title": "Geteilten Link hinzufügen",
+    "share.title": "Produktlink aus einer anderen App übernehmen",
+    "share.wishlist_help": "Fügen Sie einen kopierten Link ein, geben Sie einen Titel ein und wählen Sie eine Wunschliste. Alternativ können Sie den Link unten direkt bei einem neuen Wunsch eintragen.",
     "share.intro": "Wählen Sie eine Wunschliste und prüfen Sie die Produktdetails vor dem Speichern. Hier können Sie auch einen kopierten Link einfügen.",
     "share.list": "Wunschliste",
     "share.item_title": "Titel des Wunsches",
@@ -456,7 +457,7 @@
     "share.no_lists": "Es ist noch keine Wunschliste verfügbar. Treten Sie zuerst einer Gruppe bei und kehren Sie anschließend zurück, um Ihren Wunsch hinzuzufügen.",
     "share.start_again": "Mit einem neuen Link beginnen",
     "share.iphone.title": "Teilen auf iPhone und iPad",
-    "share.iphone.help": "Safari auf iPhone und iPad kann diese PWA nicht als Ziel im systemweiten Teilen-Menü anbieten. Kopieren Sie den Produktlink, öffnen Sie diese App, wählen Sie „Geteilten Link hinzufügen“, fügen Sie den Link ein, wählen Sie eine Wunschliste und bestätigen Sie.",
+    "share.iphone.help": "Safari auf iPhone und iPad kann diese PWA nicht als Ziel im systemweiten Teilen-Menü anbieten. Kopieren Sie den Produktlink, öffnen Sie diese App, wählen Sie „{link}“, fügen Sie den Link ein, geben Sie einen Titel ein, wählen Sie eine Wunschliste und bestätigen Sie.",
     "share.install.title": "Produktlinks empfangen",
     "share.install.support": "Nach der Installation mit einem unterstützten Chromium-Browser auf Android oder Desktop können Sie Wichteln im Teilen-Menü einer anderen App auswählen. Die Verfügbarkeit hängt von Browser und Betriebssystem ab. Fehlt die App, kopieren Sie den Link und nutzen Sie das Formular unten.",
     "share.too_large": "Der geteilte Inhalt ist zu lang. Fügen Sie stattdessen einen kürzeren Produktlink ein."

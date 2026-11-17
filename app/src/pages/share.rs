@@ -7,6 +7,7 @@ use crate::components::{LoginRedirect, RequireUser, TextArea};
 use crate::groups_api::{GroupError, list_my_groups};
 use crate::i18n::use_i18n;
 use crate::share_api::{ShareDraft, get_shared_draft};
+use crate::t;
 
 #[component]
 pub fn SharedWishPage() -> impl IntoView {
@@ -73,7 +74,7 @@ pub fn SharedWishPage() -> impl IntoView {
                 })}
             </Suspense>
             <h2 class="h4">{i18n.t("share.iphone.title")}</h2>
-            <p>{i18n.t("share.iphone.help")}</p>
+            <p>{t!(i18n, "share.iphone.help", link = i18n.t("share.title"))}</p>
             <a href="/install" class="install-link">{i18n.t("app.install.title")}</a>
         </RequireUser>
     }

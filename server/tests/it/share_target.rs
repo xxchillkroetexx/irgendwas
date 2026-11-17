@@ -1,9 +1,15 @@
 //! Issue #58: receiving is read-only for wishlists and drafts survive login safely.
+//! Issue #75: the editor's entry point is named like the page it opens and explains itself.
 use crate::common;
 
-use crate::common::auth::{Client, Opts, has_flash_key, router, urlencode};
+use crate::common::auth::{Client, Opts, has_flash_key, html_contains, router, urlencode};
+use crate::common::groups::{de, en, en_with, world};
+use crate::common::wishlists::edit_path;
 use app::share_api::{ShareDraft, ShareInput, prepare_share};
-use app::test_support::{ALICE_PASSWORD, create_alice, create_group};
+use app::test_support::{
+    ALICE_PASSWORD, BOB_PASSWORD, create_alice, create_group, create_wishlist,
+};
+use app::wishlists_api::MAX_ITEMS;
 use sqlx::MySqlPool;
 
 #[test]
@@ -460,6 +466,151 @@ async fn shared_description_cannot_escape_the_review_textarea(pool: MySqlPool) {
             .contains("&lt;/textarea&gt;&lt;script id=share-injected&gt;")
     );
     assert!(!page.body.contains("<script id=share-injected>"));
+}
+
+// ------------------------------------------------- the entry point and its help (#75)
+
+const EN_LINK: &str = "Use a product link from another app";
+const DE_LINK: &str = "Produktlink aus einer anderen App übernehmen";
+const EN_HELP: &str = "Paste a copied link, add a title and choose a wishlist. \
+                       Or enter the link directly in the new wish below.";
+const DE_HELP: &str = "Fügen Sie einen kopierten Link ein, geben Sie einen Titel ein und \
+                       wählen Sie eine Wunschliste. Alternativ können Sie den Link unten direkt \
+                       bei einem neuen Wunsch eintragen.";
+
+/// Text of `html` without tags and comments (hydration markers).
+fn text_of(html: &str) -> String {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+    text.trim().to_string()
+}
+
+/// The texts of every `<a>` pointing at `/wishes/shared`.
+fn shared_links(body: &str) -> Vec<String> {
+    body.match_indices("<a ")
+        .filter_map(|(start, _)| {
+            let rest = &body[start..];
+            let tag = &rest[..rest.find('>')?];
+            if !tag.contains("href=\"/wishes/shared\"") {
+                return None;
+            }
+            Some(text_of(&rest[..rest.find("</a>")?]))
+        })
+        .collect()
+}
+
+/// The text of the page's `<h1>`.
+fn h1(body: &str) -> String {
+    let start = body.find("<h1").expect("an h1");
+    let end = start + body[start..].find("</h1>").expect("a closed h1");
+    text_of(&body[start..end])
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn the_editor_link_names_the_page_it_opens_and_explains_the_fallback(pool: MySqlPool) {
+    let w = world(&pool).await;
+    let english = w.bob().await;
+    let german = w.german(&w.emails[1], BOB_PASSWORD).await;
+    // The catalogs hold exactly these texts.
+    assert_eq!(en("share.title"), EN_LINK);
+    assert_eq!(de("share.title"), DE_LINK);
+    assert_eq!(en("share.wishlist_help"), EN_HELP);
+    assert_eq!(de("share.wishlist_help"), DE_HELP);
+    for (mut client, link, help, iphone) in [
+        (english, EN_LINK, EN_HELP, en("share.iphone.help")),
+        (german, DE_LINK, DE_HELP, de("share.iphone.help")),
+    ] {
+        let edit = client.get(&edit_path(w.g)).await;
+        assert_eq!(edit.status, 200);
+        assert_eq!(shared_links(&edit.body), [link]);
+        assert!(
+            edit.body
+                .contains("href=\"/wishes/shared\" aria-describedby=\"shared-link-help\""),
+            "the help describes the link"
+        );
+        assert!(edit.body.contains("id=\"shared-link-help\""));
+        assert!(html_contains(&edit.body, help));
+
+        // The link text is the heading of the page it opens ...
+        let page = client.get("/wishes/shared").await;
+        assert_eq!(page.status, 200);
+        assert_eq!(h1(&page.body), link);
+        // ... and the text of the link on the installation page.
+        let install = client.get("/install").await;
+        assert_eq!(install.status, 200);
+        assert_eq!(shared_links(&install.body), [link]);
+        // The iPhone help on both pages tells to choose exactly that.
+        let iphone = iphone.replace("{link}", link);
+        for body in [&page.body, &install.body] {
+            assert!(html_contains(body, &iphone), "{iphone}");
+            assert!(!body.contains("{link}"));
+        }
+    }
+    // Rendered with the entry point's name in the language's quotation marks.
+    let en_iphone = en("share.iphone.help").replace("{link}", EN_LINK);
+    let de_iphone = de("share.iphone.help").replace("{link}", DE_LINK);
+    assert!(en_iphone.contains(&format!("choose “{EN_LINK}”, paste the link, add a title")));
+    assert!(de_iphone.contains(&format!(
+        "wählen Sie „{DE_LINK}“, fügen Sie den Link ein, geben Sie einen Titel ein"
+    )));
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn a_full_list_keeps_the_link_but_not_the_help(pool: MySqlPool) {
+    let w = world(&pool).await;
+    let titles: Vec<String> = (1..MAX_ITEMS).map(|i| format!("Wish {i}")).collect();
+    let titles: Vec<&str> = titles.iter().map(String::as_str).collect();
+    let list = create_wishlist(&pool, w.g, w.bob, &titles).await;
+    let mut bob = w.bob().await;
+
+    // One below the limit the add form works, so the help is shown.
+    let page = bob.get(&edit_path(w.g)).await;
+    assert_eq!(page.status, 200);
+    assert!(html_contains(&page.body, EN_HELP));
+
+    sqlx::query("INSERT INTO wishlist_items (wishlist_id, title) VALUES (?, 'The last one')")
+        .bind(list)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let page = bob.get(&edit_path(w.g)).await;
+    assert_eq!(page.status, 200);
+    assert!(html_contains(
+        &page.body,
+        &en_with(
+            "validation.wishlist.too_many_items",
+            &[("max", &MAX_ITEMS.to_string())]
+        )
+    ));
+    assert_eq!(shared_links(&page.body), [EN_LINK]);
+    assert!(!html_contains(&page.body, EN_HELP));
+    assert!(!page.body.contains("shared-link-help"));
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn an_archived_list_has_neither_link_nor_help(pool: MySqlPool) {
+    let w = world(&pool).await;
+    create_wishlist(&pool, w.g, w.bob, &["Kept"]).await;
+    sqlx::query("UPDATE `groups` SET archived_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(w.g)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut bob = w.bob().await;
+    let page = bob.get(&edit_path(w.g)).await;
+    assert_eq!(page.status, 200);
+    assert!(html_contains(&page.body, &en("flash.error.group_archived")));
+    assert!(html_contains(&page.body, "Kept"));
+    assert!(shared_links(&page.body).is_empty());
+    assert!(!html_contains(&page.body, EN_HELP));
 }
 
 /// Review of #84: without JavaScript a double submit of the review form (the draft is

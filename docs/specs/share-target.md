@@ -4,6 +4,8 @@ status: approved (implementation authorized by the issue and 2026-11-03 user req
 
 Revised 2026-11-16 (group-archive, #61; see `docs/specs/group-archive.md`): the group picker lists active groups only (`list_my_groups`), and saving into an archived group answers `WishlistError::Archived`.
 
+Revised 2026-11-17 (#75, PR #89): the entry point **Add a shared link** is now called **Use a product link from another app** (German „Produktlink aus einer anderen App übernehmen“), as link text and page heading alike; the wishlist editor explains it below the link (not on a full list), and the iPhone steps name it and ask for a title. The fallback below keeps its original wording.
+
 ## Platform feasibility
 
 The installed PWA registers a GET `share_target` for title, text and URL. Android Chromium and supported Chromium desktop installations can offer it in the system share picker. Availability depends on browser, OS, installation and app updates; do not promise every desktop combination. iPhone/iPad Safari does **not** support receiving shares through this manifest member. `navigator.share()` is an outgoing API and does not solve this.
