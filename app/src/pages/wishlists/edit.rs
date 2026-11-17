@@ -28,11 +28,14 @@ use leptos_router::hooks::{use_navigate, use_query_map};
 
 use super::{ItemLink, WishlistErrorView, route_id, row_label, when_logged_in};
 use crate::auth::use_session_resource;
-use crate::components::{RequireUser, TextArea};
+use crate::components::{
+    FieldFeedback, RequireUser, SafeConfirmSubmit, TextArea, control_class, field_invalid,
+    invalid_attr,
+};
 use crate::flash::use_toasts;
 use crate::format::LocalDate;
 use crate::i18n::{I18n, use_i18n};
-use crate::pages::groups::{ConfirmSubmit, parse_group_id};
+use crate::pages::groups::parse_group_id;
 use crate::paths::{
     group_path, login_url, wishlist_copy_open_path, wishlist_edit_path, wishlist_item_anchor,
     wishlist_item_edit_path, wishlist_item_path, wishlist_view_path,
@@ -418,31 +421,6 @@ fn FormAlert(error: Signal<Option<WishlistError>>) -> impl IntoView {
     }
 }
 
-/// The `invalid-feedback` of `field`.
-#[component]
-fn FieldFeedback(field: WishlistField, error: Signal<Option<WishlistError>>) -> impl IntoView {
-    let i18n = use_i18n();
-    move || {
-        error
-            .get()
-            .and_then(|e| e.field_error(field))
-            .map(|problem| view! { <div class="invalid-feedback">{problem.text(&i18n)}</div> })
-    }
-}
-
-fn control_class(
-    error: Signal<Option<WishlistError>>,
-    field: WishlistField,
-) -> impl Fn() -> &'static str + Send + Sync + Copy + 'static {
-    move || {
-        if error.get().and_then(|e| e.field_error(field)).is_some() {
-            "form-control is-invalid"
-        } else {
-            "form-control"
-        }
-    }
-}
-
 /// Title, description and link of an item. `prefix` keeps the element ids of the add form
 /// and of an inline form apart. `title_ref` gives the caller the title input.
 #[component]
@@ -454,10 +432,13 @@ fn ItemFields(
 ) -> impl IntoView {
     let i18n = use_i18n();
     let title_id = format!("{prefix}-title");
+    let title_error = format!("{prefix}-title-error");
     let description_id = format!("{prefix}-description");
     let description_help = format!("{prefix}-description-help");
+    let description_error = format!("{prefix}-description-error");
     let link_id = format!("{prefix}-link");
     let link_help = format!("{prefix}-link-help");
+    let link_error = format!("{prefix}-link-error");
     view! {
         <div class="mb-3">
             <label for=title_id.clone() class="form-label">{i18n.t("wishlist.edit.itemTitle")}</label>
@@ -467,12 +448,14 @@ fn ItemFields(
                 name="title"
                 node_ref=title_ref
                 class=control_class(error, WishlistField::Title)
+                aria-describedby=title_error.clone()
+                aria-invalid=invalid_attr(error, WishlistField::Title)
                 maxlength=TITLE_MAX.to_string()
                 required
                 placeholder=i18n.t("wishlist.edit.itemTitlePlaceholder")
                 value=values.title
             />
-            <FieldFeedback field=WishlistField::Title error/>
+            <FieldFeedback field=WishlistField::Title error id=title_error/>
         </div>
         <div class="mb-3">
             <label for=description_id.clone() class="form-label">
@@ -485,10 +468,11 @@ fn ItemFields(
                 class=Signal::derive(control_class(error, WishlistField::Description))
                 maxlength=DESCRIPTION_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.descriptionPlaceholder")
-                aria_describedby=description_help.clone()
+                aria_describedby=format!("{description_help} {description_error}")
+                aria_invalid=Signal::derive(move || field_invalid(error, WishlistField::Description))
                 value=values.description
             />
-            <FieldFeedback field=WishlistField::Description error/>
+            <FieldFeedback field=WishlistField::Description error id=description_error/>
             <div id=description_help class="form-text">{i18n.t("wishlist.edit.descriptionHelp")}</div>
         </div>
         <div class="mb-3">
@@ -501,10 +485,11 @@ fn ItemFields(
                 class=control_class(error, WishlistField::Link)
                 maxlength=LINK_MAX.to_string()
                 placeholder=i18n.t("wishlist.edit.linkPlaceholder")
-                aria-describedby=link_help.clone()
+                aria-describedby=format!("{link_help} {link_error}")
+                aria-invalid=invalid_attr(error, WishlistField::Link)
                 value=values.link
             />
-            <FieldFeedback field=WishlistField::Link error/>
+            <FieldFeedback field=WishlistField::Link error id=link_error/>
             <div id=link_help class="form-text">{i18n.t("wishlist.edit.linkHelp")}</div>
         </div>
     }
@@ -559,7 +544,7 @@ fn ItemRow(
                     </a>
                     <ActionForm action=actions.delete>
                         <input type="hidden" name="item_id" value=id/>
-                        <ConfirmSubmit
+                        <SafeConfirmSubmit
                             label=i18n.t("wishlist.edit.removeItem")
                             confirm=i18n.t("wishlist.edit.removeItemConfirm")
                             class="btn btn-sm btn-outline-danger"

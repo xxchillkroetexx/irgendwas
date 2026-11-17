@@ -9,6 +9,8 @@
 
 use leptos::prelude::*;
 
+use super::invalid_value;
+
 /// The initial content as it must be written into the element.
 fn initial_content(value: String) -> String {
     #[cfg(feature = "ssr")]
@@ -36,6 +38,9 @@ pub fn TextArea(
     #[prop(optional, into)] maxlength: Option<String>,
     #[prop(optional, into)] placeholder: Option<String>,
     #[prop(optional, into)] aria_describedby: Option<String>,
+    /// `aria-invalid="true"` while this is `true`; no attribute otherwise.
+    #[prop(optional, into)]
+    aria_invalid: MaybeProp<bool>,
     /// The initial text (shown as text, never as markup).
     #[prop(into)]
     value: String,
@@ -50,6 +55,7 @@ pub fn TextArea(
             maxlength=maxlength
             placeholder=placeholder
             aria-describedby=aria_describedby
+            aria-invalid=move || invalid_value(aria_invalid.get().unwrap_or(false))
         >
             {content}
         </textarea>

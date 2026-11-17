@@ -74,8 +74,9 @@ async function candidates(page: Page): Promise<string[]> {
 
 /** The row of the "Current" list that shows `name` (the one with a remove control). */
 function currentRow(page: Page, name: string) {
+  // The Remove control is a button once hydrated, a disclosure's summary without JS (#71).
   return page.locator("main li, main tr").filter({ hasText: name }).filter({
-    has: page.getByRole("button", { name: t("exclusion.current.remove") }),
+    has: page.locator("button, summary", { hasText: t("exclusion.current.remove") }),
   });
 }
 
@@ -224,8 +225,21 @@ test.describe("exclusions", () => {
     await expect(p.getByText(t("flash.error.exclusion_would_block_draw"))).toBeVisible();
     await expect(currentRow(p, "Bob Member")).toHaveCount(0);
 
-    // Remove (no confirm without JS).
-    await currentRow(p, "Alice Admin").getByRole("button", { name: t("exclusion.current.remove") }).click();
+    // #71: Remove asks first without JS too (a disclosure). Closing it cancels: nothing
+    // was sent, the rule is still there after a reload.
+    const removeLabel = t("wishlist.edit.itemAction", { action: t("exclusion.current.remove"), title: "Alice Admin" });
+    let remove = currentRow(p, "Alice Admin").locator("details");
+    await expect(remove.locator("summary")).toHaveAttribute("aria-label", removeLabel);
+    await remove.locator("summary").click();
+    await expect(remove.getByText(t("exclusion.current.removeConfirm"))).toBeVisible();
+    await remove.locator("summary").click();
+    await expect(remove.getByText(t("exclusion.current.removeConfirm"))).toBeHidden();
+    await p.reload();
+    await expect(currentRow(p, "Alice Admin")).toHaveCount(1);
+    // Confirming removes it.
+    remove = currentRow(p, "Alice Admin").locator("details");
+    await remove.locator("summary").click();
+    await remove.getByRole("button", { name: t("common.confirmAction", { action: removeLabel }), exact: true }).click();
     await expect(p).toHaveURL(new RegExp(`${pageUrl}$`));
     await expect(p.getByText(t("flash.success.exclusion_removed"))).toBeVisible();
     await expect(p.getByText(t("exclusion.current.empty"))).toBeVisible();

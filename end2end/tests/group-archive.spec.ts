@@ -280,12 +280,21 @@ test.describe("group archive", () => {
     await loginPlain(p, users.alice.email);
     await p.goto(groupUrl);
 
-    await p.getByRole("button", { name: t("group.show.archiveGroup") }).click();
+    // #71: without JS both ask first in a disclosure; its own submit button sends the form.
+    const confirmation = (label: string) =>
+      p.locator("details").filter({ has: p.locator("summary", { hasText: label }) });
+    const archive = confirmation(t("group.show.archiveGroup"));
+    await archive.locator("summary").click();
+    await expect(archive.getByText(t("group.show.archiveGroupConfirm"))).toBeVisible();
+    await archive.getByRole("button", { name: t("common.confirmAction", { action: t("group.show.archiveGroup") }), exact: true }).click();
     await expect(p).toHaveURL(new RegExp(`${groupUrl}$`));
     await expect(p.getByText(t("flash.success.group_archived"))).toBeVisible();
     await expect(p.getByTestId("archived-notice")).toBeVisible();
 
-    await p.getByRole("button", { name: t("group.show.restoreGroup") }).click();
+    const restore = confirmation(t("group.show.restoreGroup"));
+    await restore.locator("summary").click();
+    await expect(restore.getByText(t("group.show.restoreGroupConfirm"))).toBeVisible();
+    await restore.getByRole("button", { name: t("common.confirmAction", { action: t("group.show.restoreGroup") }), exact: true }).click();
     await expect(p).toHaveURL(new RegExp(`${groupUrl}$`));
     await expect(p.getByText(t("flash.success.group_restored"))).toBeVisible();
     await expect(p.getByTestId("archived-notice")).toHaveCount(0);

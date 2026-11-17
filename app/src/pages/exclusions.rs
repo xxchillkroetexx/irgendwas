@@ -12,14 +12,14 @@ use leptos::prelude::*;
 
 use crate::AppError;
 use crate::auth::{get_current_user, use_session_resource};
-use crate::components::{LoginRedirect, RequireUser};
+use crate::components::{LoginRedirect, RequireUser, SafeConfirmSubmit};
 use crate::exclusions_api::{
     AddExclusion, ExclusionError, ExclusionsPage, FeasibilityNotice, MemberRef, RemoveExclusion,
     get_exclusions,
 };
 use crate::flash::use_toasts;
 use crate::i18n::use_i18n;
-use crate::pages::groups::{ConfirmSubmit, parse_group_id};
+use crate::pages::groups::parse_group_id;
 use crate::pages::{NotFound, ServerError};
 use crate::paths::{exclusions_path, group_path};
 use crate::t;
@@ -307,7 +307,7 @@ fn CurrentCard(
                         <ActionForm action>
                             <input type="hidden" name="group_id" value=group_id/>
                             <input type="hidden" name="excluded_user_id" value=rule.user_id/>
-                            <ConfirmSubmit
+                            <SafeConfirmSubmit
                                 label=i18n.t("exclusion.current.remove")
                                 confirm=i18n.t("exclusion.current.removeConfirm")
                                 class="btn btn-sm btn-outline-danger"

@@ -1,10 +1,16 @@
 //! Reusable UI components.
 
+mod confirm;
+mod field;
 mod flash;
 pub mod guard;
 mod layout;
 mod text_area;
 
+pub use confirm::{SafeConfirmSubmit, provide_hydrated};
+pub use field::{
+    FieldErrors, FieldFeedback, control_class, field_invalid, invalid_attr, invalid_value,
+};
 pub use flash::{FlashAlert, FlashMessages};
 pub use guard::{ClientRedirect, LoginRedirect, PageLoading, RedirectIfLoggedIn, RequireUser};
 pub use layout::{Footer, Layout, NavBar};

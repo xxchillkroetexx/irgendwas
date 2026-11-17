@@ -5,7 +5,7 @@ use leptos_meta::{MetaTags, Title, provide_meta_context};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::{SsrMode, path};
 
-use crate::components::Layout;
+use crate::components::{Layout, provide_hydrated};
 use crate::i18n::{provide_i18n, request_locale};
 use crate::pages::SharedWishPage;
 use crate::pages::auth::{
@@ -60,6 +60,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <script inner_html=STANDALONE_JS></script>
                 <link rel="stylesheet" href=BOOTSTRAP_CSS integrity=BOOTSTRAP_CSS_SRI crossorigin="anonymous"/>
                 <link rel="stylesheet" href="/assets/css/styles.css"/>
+                <noscript><link rel="stylesheet" href="/assets/css/no-js.css"/></noscript>
                 <script defer src=BOOTSTRAP_JS integrity=BOOTSTRAP_JS_SRI crossorigin="anonymous"></script>
                 <AutoReload options=options.clone()/>
                 <HydrationScripts options/>
@@ -76,6 +77,7 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
 pub fn App() -> impl IntoView {
     provide_meta_context();
     let i18n = provide_i18n(request_locale(), use_timezone());
+    provide_hydrated();
 
     view! {
         <Title text=i18n.t("app.name")/>

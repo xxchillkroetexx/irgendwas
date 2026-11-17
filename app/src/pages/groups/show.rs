@@ -9,9 +9,9 @@
 
 use leptos::prelude::*;
 
-use super::{ConfirmSubmit, GroupErrorView, route_group_id, when_logged_in};
+use super::{GroupErrorView, route_group_id, when_logged_in};
 use crate::auth::use_session_resource;
-use crate::components::{PageLoading, RequireUser};
+use crate::components::{PageLoading, RequireUser, SafeConfirmSubmit};
 use crate::flash::{Toasts, use_toasts};
 use crate::format::LocalDate;
 use crate::groups_api::{
@@ -199,7 +199,7 @@ fn GroupDetailView(
         view! {
             <ActionForm action=actions.leave>
                 <input type="hidden" name="group_id" value=id/>
-                <ConfirmSubmit
+                <SafeConfirmSubmit
                     label=i18n.t("group.show.leaveGroup")
                     confirm=i18n.t("group.show.leaveGroupConfirm")
                     class="btn btn-outline-danger"
@@ -294,7 +294,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus, archived: bool) 
             <div class="d-flex flex-wrap gap-2">
                 <ActionForm action=actions.restore>
                     <input type="hidden" name="group_id" value=id/>
-                    <ConfirmSubmit
+                    <SafeConfirmSubmit
                         label=i18n.t("group.show.restoreGroup")
                         confirm=i18n.t("group.show.restoreGroupConfirm")
                         class="btn btn-outline-primary"
@@ -313,7 +313,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus, archived: bool) 
             {(status == GroupStatus::Open).then(|| view! {
                 <ActionForm action=actions.regenerate>
                     <input type="hidden" name="group_id" value=id/>
-                    <ConfirmSubmit
+                    <SafeConfirmSubmit
                         label=i18n.t("group.show.regenerateCode")
                         confirm=i18n.t("group.show.regenerateCodeConfirm")
                         class="btn btn-outline-secondary"
@@ -322,7 +322,7 @@ fn AdminActions(id: i32, actions: Actions, status: GroupStatus, archived: bool) 
             })}
             <ActionForm action=actions.archive>
                 <input type="hidden" name="group_id" value=id/>
-                <ConfirmSubmit
+                <SafeConfirmSubmit
                     label=i18n.t("group.show.archiveGroup")
                     confirm=i18n.t("group.show.archiveGroupConfirm")
                     class="btn btn-outline-secondary"
@@ -340,7 +340,7 @@ fn DeleteForm(id: i32, action: ServerAction<DeleteGroup>) -> impl IntoView {
     view! {
         <ActionForm action>
             <input type="hidden" name="group_id" value=id/>
-            <ConfirmSubmit
+            <SafeConfirmSubmit
                 label=i18n.t("group.show.deleteGroup")
                 confirm=i18n.t("group.show.deleteGroupConfirm")
                 class="btn btn-outline-danger"
@@ -481,25 +481,30 @@ fn MembersCard(
         .map(|member| {
             let manage = (manage && !member.is_me).then(|| {
                 let user_id = member.user_id;
+                let transfer_aria = t!(i18n, "group.show.makeAdminFor", name = member.name.as_str());
                 view! {
                     <div class="d-flex flex-wrap gap-2">
                         <ActionForm action=actions.transfer>
                             <input type="hidden" name="group_id" value=group_id/>
                             <input type="hidden" name="user_id" value=user_id/>
-                            <ConfirmSubmit
+                            <SafeConfirmSubmit
                                 label=i18n.t("group.show.makeAdmin")
+                                aria_label=transfer_aria
                                 confirm=i18n.t("group.show.makeAdminConfirm")
                                 class="btn btn-sm btn-outline-primary"
                             />
                         </ActionForm>
                         {(!is_drawn)
                             .then(|| {
+                                let remove_aria =
+                                    t!(i18n, "group.show.removeMemberFor", name = member.name.as_str());
                                 view! {
                                     <ActionForm action=actions.remove>
                                         <input type="hidden" name="group_id" value=group_id/>
                                         <input type="hidden" name="user_id" value=user_id/>
-                                        <ConfirmSubmit
+                                        <SafeConfirmSubmit
                                             label=i18n.t("group.show.removeMember")
+                                            aria_label=remove_aria
                                             confirm=i18n.t("group.show.removeMemberConfirm")
                                             class="btn btn-sm btn-outline-danger"
                                         />

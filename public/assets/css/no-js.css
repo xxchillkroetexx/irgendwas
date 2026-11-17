@@ -1,0 +1,64 @@
+/* Loaded inside <noscript> only (#71): Bootstrap's collapse and dropdown scripts never run,
+   so the navigation and the account actions must be usable without them. */
+
+/* Collapsed layout (below Bootstrap's lg breakpoint): the toggler cannot open the menu,
+   so it is hidden and the menu is always expanded. From lg Bootstrap already shows the
+   menu as a row (`.navbar-expand-lg .navbar-collapse { display: flex !important }`). */
+@media (max-width: 991.98px) {
+    .navbar .navbar-toggler {
+        display: none;
+    }
+
+    .navbar .navbar-collapse.collapse {
+        display: block !important;
+        flex-basis: 100%;
+    }
+}
+
+/* Every width: the account toggle cannot open its menu, so the name is shown as text and
+   Profile / Logout as plain items. */
+.navbar #userDropdown {
+    display: none;
+}
+
+.navbar .no-js-account-name {
+    display: block;
+}
+
+/* (0,3,0) to beat Bootstrap's `.navbar-expand-lg .navbar-nav .dropdown-menu
+   { position: absolute }` from lg, which would lay the items over the page. */
+.navbar-expand-lg .navbar-nav .dropdown-menu {
+    display: block;
+    position: static;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.navbar-expand-lg .navbar-nav .dropdown-menu .dropdown-item {
+    color: #fff;
+}
+
+.navbar-expand-lg .navbar-nav .dropdown-menu .dropdown-item:hover,
+.navbar-expand-lg .navbar-nav .dropdown-menu .dropdown-item:focus {
+    color: #212529;
+}
+
+/* From lg: name, Profile and Logout in the navbar's row. */
+@media (min-width: 992px) {
+    .navbar-expand-lg .navbar-nav .nav-item.dropdown,
+    .navbar-expand-lg .navbar-nav .dropdown-menu {
+        display: flex;
+        align-items: center;
+    }
+
+    .navbar-expand-lg .navbar-nav .dropdown-menu .dropdown-divider {
+        display: none;
+    }
+
+    .navbar-expand-lg .navbar-nav .dropdown-menu .dropdown-item {
+        padding: var(--bs-navbar-nav-link-padding-y) var(--bs-navbar-nav-link-padding-x);
+        white-space: nowrap;
+    }
+}

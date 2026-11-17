@@ -69,38 +69,3 @@ fn GroupErrorView(error: GroupError) -> impl IntoView {
         _ => view! { <ServerError/> }.into_any(),
     }
 }
-
-/// Asks the browser's confirm dialog; `true` without JavaScript (never runs on the server).
-pub(crate) fn confirmed(message: &str) -> bool {
-    #[cfg(feature = "hydrate")]
-    {
-        window().confirm_with_message(message).unwrap_or(false)
-    }
-    #[cfg(not(feature = "hydrate"))]
-    {
-        let _ = message;
-        true
-    }
-}
-
-/// A submit button that asks `confirm` first; a dismissed dialog cancels the submission.
-/// Without JavaScript the form posts directly. `aria_label` names the button for assistive
-/// technology when the visible label alone is ambiguous (e.g. one per list row).
-#[component]
-pub(crate) fn ConfirmSubmit(
-    #[prop(into)] label: String,
-    #[prop(into)] confirm: String,
-    class: &'static str,
-    #[prop(optional, into)] aria_label: Option<String>,
-) -> impl IntoView {
-    let on_click = move |ev: leptos::ev::MouseEvent| {
-        if !confirmed(&confirm) {
-            ev.prevent_default();
-        }
-    };
-    view! {
-        <button type="submit" class=class aria-label=aria_label on:click=on_click>
-            {label}
-        </button>
-    }
-}

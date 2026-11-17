@@ -40,6 +40,10 @@ main {
 }
 
 /* Header Styles */
+.no-js-account-name {
+  display: none;
+}
+
 .navbar-brand {
   font-weight: 700;
   font-size: 1.5rem;

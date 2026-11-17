@@ -149,6 +149,8 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.title_required"))).toBeVisible();
+      await expect(title).toHaveAttribute("aria-invalid", "true");
+      await expect(title).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.title_required")));
     });
     // AC12: a script link is refused inline.
     await title.fill("Item A");
@@ -156,6 +158,8 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await add.click();
       await expect(page.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
+      await expect(link).toHaveAttribute("aria-invalid", "true");
+      await expect(link).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.link_invalid")));
     });
     // #69: a failed add keeps the typed values for correction.
     await expect(title).toHaveValue("Item A");
@@ -228,6 +232,10 @@ test.describe("wishlists", () => {
     await expectingFailedRequest(errors, async () => {
       await inline.getByRole("button", { name: t("wishlist.edit.save") }).click();
       await expect(inline.getByText(t("validation.wishlist.link_invalid"))).toBeVisible();
+      const editLink = inline.getByLabel(t("wishlist.edit.link"), { exact: true });
+      await expect(editLink).toHaveAttribute("aria-invalid", "true");
+      await expect(editLink).toHaveAccessibleDescription(new RegExp(t("validation.wishlist.link_invalid")));
+      await expect(addForm.getByLabel(t("wishlist.edit.link"), { exact: true })).not.toHaveAttribute("aria-invalid");
     });
     await expect(addForm.getByText(t("validation.wishlist.link_invalid"))).toHaveCount(0);
     await inline.getByLabel(t("wishlist.edit.itemTitle"), { exact: true }).fill("Item C2");
@@ -323,8 +331,19 @@ test.describe("wishlists", () => {
     await expect(p.getByText(t("flash.success.item_updated"))).toBeVisible();
     await expect(p.getByText("Plain B2", { exact: true }).first()).toBeVisible();
 
-    // Remove (no confirm without JS).
-    await control(p, "button", "wishlist.edit.removeItem", "Plain B2").click();
+    // #71: Remove asks first without JS too (a disclosure in the row). Closing it cancels:
+    // nothing was sent, the item is still there after a reload.
+    const removeLabel = t("wishlist.edit.itemAction", { action: t("wishlist.edit.removeItem"), title: "Plain B2" });
+    const removal = () => p.locator("details").filter({ has: p.locator(`summary[aria-label="${removeLabel}"]`) });
+    await removal().locator("summary").click();
+    await expect(removal().getByText(t("wishlist.edit.removeItemConfirm"))).toBeVisible();
+    await removal().locator("summary").click();
+    await expect(removal().getByText(t("wishlist.edit.removeItemConfirm"))).toBeHidden();
+    await p.reload();
+    await expect(p.getByText("Plain B2", { exact: true }).first()).toBeVisible();
+    // Confirming removes it.
+    await removal().locator("summary").click();
+    await removal().getByRole("button", { name: t("common.confirmAction", { action: removeLabel }), exact: true }).click();
     await expect(p.getByText(t("flash.success.item_deleted"))).toBeVisible();
     await expect(p.getByText("Plain B2")).toHaveCount(0);
 
