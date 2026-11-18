@@ -35,6 +35,35 @@ fn ac7_safe_next_rejects_open_redirects_and_auth_loops() {
     }
 }
 
+/// Amended 2026-11-18 (#87 review): dot segments normalize in the browser after the
+/// check (`/x/../auth/login` lands on the login page again), and a query or fragment
+/// does not hide `/auth` or `/api`.
+#[test]
+fn ac7_safe_next_rejects_paths_that_normalize_into_auth_or_api() {
+    let rejected = [
+        "/x/../auth/login",
+        "/x/../auth",
+        "/x/..",
+        "/x/../api/login",
+        "/x/./../auth/login",
+        "/x/%2e%2e/auth/login",
+        "/x/%2E%2E/auth/login",
+        "/x/.%2e/auth/login",
+        "/x/%2e./auth/login",
+        "/x/.%2E/api/login",
+        "/./auth/login",
+        "/%2e/auth/login",
+        "/groups/../auth/login?next=%2Fgroups",
+        "/auth?x=1",
+        "/auth#x",
+        "/api?x=1",
+        "/api#x",
+    ];
+    for raw in rejected {
+        assert_eq!(safe_next(raw), None, "{raw:?} must be rejected");
+    }
+}
+
 #[test]
 fn ac7_safe_next_returns_exactly_the_validated_string() {
     let accepted = [
@@ -46,6 +75,10 @@ fn ac7_safe_next_returns_exactly_the_validated_string() {
         "/authors",
         "/apiary",
         "/a%2Fb",
+        "/authors?next=/auth/login",
+        "/groups?next=/x/../auth/login",
+        "/groups#/../auth",
+        "/x/..y/z",
     ];
     for raw in accepted {
         assert_eq!(safe_next(raw).as_deref(), Some(raw), "{raw:?}");

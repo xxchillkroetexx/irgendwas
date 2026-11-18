@@ -16,6 +16,8 @@ Amended 2026-11-09 (#71, credential races): login refuses credentials that chang
 
 Amended 2026-11-15 (#71, stale specifications): the fresh start above no longer holds. The PHP data was migrated after all (decision log 2026-11-03, deploy), and production has run on it since the cutover on 2026-11-04. Every migration must now apply to the populated database and preserve its rows (AGENTS.md). The "fresh start" remarks further down record the state when this spec was approved. Migrated users do not register again: their accounts keep the PHP bcrypt hash (`$2y$`), which never verifies (argon2id only), so they set a new password through "forgot password"; `password::verify` spends the same argon2id work on such hashes, so login timing does not single them out (decision log 2026-11-03, auth). The import lowercased and trimmed every email (none changed) and dropped the plaintext reset and verification tokens, so the outcome of Resolved 5 still holds for the migrated rows.
 
+Amended 2026-11-18 (#87 review, dot segments): `next=/x/../auth/login` passed `safe_next`, and the browser resolved it to the login page again (the loop `safe_next` prevents); `/x/../api/<fn>` passed the `/api` rule the same way. `safe_return_path` now rejects dot segments in the path part (i18n-foundation amendment of the same day), and the `/auth` rule of `safe_next` applies to the path part (everything before the first `?` or `#`), so `/auth?x` is rejected too. AC7 keeps its wording; `server/tests/it/auth_unit.rs` adds the new cases.
+
 ## Current PHP behaviour
 
 ### Routes
@@ -131,7 +133,7 @@ Token pages (`/auth/register/confirm/*`, `/auth/reset-password/*`) send `Referre
 - A protected **server fn** called anonymously returns `AuthError::Unauthorized` (HTTP 401). The client then navigates to `/auth/login?next=<current location path+query>`.
 
 #### `safe_next(raw: &str) -> Option<String>`
-`safe_next(raw)` = i18n-foundation's `safe_return_path(raw)` (length 1..=512 bytes; starts with `/` and the second character is neither `/` nor `\`; no `\`, no ASCII control characters (incl. CR, LF, TAB), no spaces; not `/api` and not under `/api/`) **plus**: not `/auth` and not under `/auth/`, so no redirect loops into auth pages or server fn endpoints. `None` → the caller falls back to the dashboard. It lives next to `safe_return_path` in `app/src/paths.rs`.
+`safe_next(raw)` = i18n-foundation's `safe_return_path(raw)` (length 1..=512 bytes; starts with `/` and the second character is neither `/` nor `\`; no `\`, no ASCII control characters (incl. CR, LF, TAB), no spaces; not `/api` and not under `/api/`) **plus**: not `/auth` and not under `/auth/`, so no redirect loops into auth pages or server fn endpoints (amended 2026-11-18, #87 review: no dot segments, and both rules apply to the path part before the first `?` or `#`). `None` → the caller falls back to the dashboard. It lives next to `safe_return_path` in `app/src/paths.rs`.
 
 The redirect target is exactly the validated string. Never prefix it with a host.
 

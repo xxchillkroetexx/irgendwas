@@ -18,10 +18,13 @@
 # Above $TARGET_CACHE_MAX_MB the job wipes its directory under that lock before the phase
 # starts (every job using a v2 path holds it). Never remove a lock file while any job
 # might use it. `docker exec <dind container> docker volume rm irgendwas-ci-cache` starts
-# over after the runner is idle.
+# over after the runner is idle. fuzz.yml keeps only its cargo-fuzz binary in the volume
+# (/ci-cache/tools, a few MB).
 name: ci
 
-# Documentation-only changes skip the pipeline.
+# Documentation-only changes skip the pipeline, and so do changes to the fuzz pilot alone
+# (fuzz/, its smoke script and workflow; fuzz.yml runs for those). A change that also
+# touches anything else, e.g. app/src/paths.rs, runs it as usual.
 on:
   push:
     paths-ignore:
@@ -30,6 +33,9 @@ on:
       - ".claude/**"
       - ".agents/**"
       - "LICENSE"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
   pull_request:
     paths-ignore:
       - "**.md"
@@ -37,6 +43,9 @@ on:
       - ".claude/**"
       - ".agents/**"
       - "LICENSE"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
 
 env:
   CARGO_LEPTOS_VERSION: "0.3.11"

@@ -23,7 +23,9 @@ locales/            en.json, de.json (flat keys, `{name}` placeholders)
 public/             static assets, served at / (e.g. /assets/css/styles.css)
 end2end/            Playwright tests (run in the Playwright container image, see "E2E")
 scripts/            install-cargo-leptos.sh (Dockerfile + CI), ci-target-dir.sh and
-                    install-cargo-audit.sh (CI)
+                    install-cargo-audit.sh (CI), fuzz-smoke.sh (bounded fuzz run)
+fuzz/               cargo-fuzz target for app/src/paths.rs (redirect paths) and its
+                    synthetic seed corpus, own Cargo.lock; see fuzz/README.md
 .cargo/audit.toml   exceptions to the CI advisory check, each with its reason
 compose.dev.yml     MariaDB (dev + RAM test DB) and Mailpit for development and tests
 Dockerfile          production image (cargo-leptos release build → distroless, non-root)
@@ -41,7 +43,8 @@ hold back the image; on pushes to `dev` and `main` the image is built and pushed
 or `:latest`, plus `:sha-<12>`). Documentation-only
 changes skip it. check and e2e keep `target/` in a named volume of the runner's engine; the
 runner setup (Docker-in-Docker, `valid_volumes`, seccomp for buildah) is in the workflow's
-header comment.
+header comment. `.forgejo/workflows/fuzz.yml` runs the fuzz smoke (below) when
+`app/src/paths.rs` or the fuzz pilot changes; changes to the fuzz pilot alone skip `ci.yml`.
 
 ## Setup
 
@@ -84,6 +87,15 @@ up from `server/`). The URL needs a user that may `CREATE DATABASE`; in dev that
 
 ```
 DATABASE_URL=mysql://root:devrootpassword@127.0.0.1:3308/irgendwas_db
+```
+
+The redirect-path validator (`app/src/paths.rs`) also has a bounded libFuzzer smoke run
+(20 s by default, `FUZZ_SECONDS` to change it). It needs a C/C++ toolchain, the nightly
+`nightly-2026-11-01` and `cargo-fuzz` 0.13.2; setup, replaying a crash and triage are in
+`fuzz/README.md`:
+
+```bash
+sh scripts/fuzz-smoke.sh
 ```
 
 Test-only HTTP routes can be mounted inside the session/locale layers with

@@ -18,6 +18,8 @@ PHP reference: `src/Core/I18n.php`, `src/Localization/functions.php`, `src/Local
 
 Split out of the former `i18n-polish` draft on 2026-10-31 (user). The approved specs auth, account, groups, wishlists and draw were revised the same day to build on this spec (see "Ownership of the cross-slice parts").
 
+Amended 2026-11-18 (#87 review, dot segments): `safe_return_path` also rejects dot segments in the path part (everything before the first `?` or `#`): `.`, `..` and their percent-encoded forms `%2e`, `.%2e`, `%2e.`, `%2e%2e` in any case. A browser resolves them after the check, so `/x/../api/f` landed on `/api/f`. The `/api` rule now also applies to the path part, so `/api?x` and `/api#x` are rejected as well. Query and fragment are not normalized by browsers and stay unchecked for dots. AC15 keeps its wording; `server/tests/it/paths.rs` adds the new cases.
+
 ## Current PHP behaviour
 
 ### I18n (`I18n.php`, `functions.php`)
@@ -125,7 +127,8 @@ The groups slice's conversion of a date to `23:59:59` / `12:00:00` local stays i
 - length 1..=512 bytes;
 - starts with `/`, and the second character is neither `/` nor `\`;
 - contains no `\`, no ASCII control characters (incl. CR, LF, TAB) and no spaces;
-- is not `/api` and does not start with `/api/`.
+- is not `/api` and does not start with `/api/`;
+- (amended 2026-11-18, #87 review) its path part, everything before the first `?` or `#`, contains no dot segment (`.`, `..`, `%2e`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitive), and the `/api` rule above applies to that path part.
 
 The redirect target is exactly the returned string, never prefixed with a host. Auth's `safe_next` = `safe_return_path` plus "not `/auth` and not under `/auth/`" (auth spec). Slice 7's `set_locale` uses `safe_return_path` directly.
 

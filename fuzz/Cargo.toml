@@ -1,0 +1,22 @@
+[package]
+name = "irgendwas-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+url = "=2.5.8"
+
+[[bin]]
+name = "redirect_paths"
+path = "fuzz_targets/redirect_paths.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

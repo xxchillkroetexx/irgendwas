@@ -3,9 +3,38 @@
 /// Longest accepted return path, in bytes.
 const MAX_LEN: usize = 512;
 
+/// The segments a browser removes or resolves while parsing a URL path (WHATWG URL
+/// standard: single-dot and double-dot path segments, `%2e` in any case).
+const DOT_SEGMENTS: [&str; 6] = [".", "..", "%2e", ".%2e", "%2e.", "%2e%2e"];
+
+fn is_dot_segment(segment: &str) -> bool {
+    DOT_SEGMENTS
+        .iter()
+        .any(|dot| segment.eq_ignore_ascii_case(dot))
+}
+
+/// The path part of a relative URL: everything before the first `?` or `#`. Browsers
+/// normalize only this part; query and fragment stay as they are.
+fn path_part(raw: &str) -> &str {
+    raw.split(['?', '#']).next().unwrap_or(raw)
+}
+
+/// Whether the path part of `raw` is `prefix` or lies under `prefix/`.
+fn path_is_under(raw: &str, prefix: &str) -> bool {
+    let path = path_part(raw);
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
 /// `Some(raw)` only for a safe, relative, same-site path: 1..=512 bytes, starts with `/`
 /// whose next character is neither `/` nor `\`, no `\`, ASCII control characters or
-/// spaces anywhere, and not `/api` or under `/api/`.
+/// spaces anywhere, no dot segment in the path part (`.`, `..` or a percent-encoded form
+/// such as `%2e` or `.%2E`), and a path part that is not `/api` or under `/api/`. The
+/// path part is everything before the first `?` or `#`.
+///
+/// Dot segments are rejected because the browser resolves them after this check:
+/// `/x/../api/f` would land on `/api/f` (#87 review). Without them, the path a browser
+/// requests is the path part checked here.
 ///
 /// The caller redirects to exactly the returned string, never prefixed with a host.
 pub fn safe_return_path(raw: &str) -> Option<String> {
@@ -21,7 +50,10 @@ pub fn safe_return_path(raw: &str) -> Option<String> {
     {
         return None;
     }
-    if raw == "/api" || raw.starts_with("/api/") {
+    if path_part(raw).split('/').any(is_dot_segment) {
+        return None;
+    }
+    if path_is_under(raw, "/api") {
         return None;
     }
     Some(raw.to_string())
@@ -90,11 +122,11 @@ pub fn exclusions_path(group_id: i32) -> String {
     format!("/groups/{group_id}/exclusions")
 }
 
-/// [`safe_return_path`] plus: not `/auth` and not under `/auth/`, so a redirect never loops
-/// into an auth page or a server fn endpoint (spec: auth, `safe_next`). `None` means the
-/// caller falls back to [`DASHBOARD_PATH`].
+/// [`safe_return_path`] plus: the path part is not `/auth` and not under `/auth/`, so a
+/// redirect never loops into an auth page or a server fn endpoint (spec: auth,
+/// `safe_next`). `None` means the caller falls back to [`DASHBOARD_PATH`].
 pub fn safe_next(raw: &str) -> Option<String> {
-    safe_return_path(raw).filter(|path| path != "/auth" && !path.starts_with("/auth/"))
+    safe_return_path(raw).filter(|path| !path_is_under(path, "/auth"))
 }
 
 /// Where to go after a login or registration: `safe_next(next)`, else the dashboard.

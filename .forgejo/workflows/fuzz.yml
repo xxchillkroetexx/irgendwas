@@ -1,0 +1,75 @@
+# Bounded redirect-path fuzzing pilot (fuzz/README.md). Independent of the application
+# build and the database services; the path filter limits the extra toolchain/build cost
+# to changes relevant to this target. ci.yml ignores changes that touch only the fuzz
+# pilot, and runs as usual when app/src/paths.rs changes.
+#
+# Only the cargo-fuzz binary (a few MB) is kept between runs, in the named volume
+# irgendwas-ci-cache (see ci.yml's header for the runner setup) under /ci-cache/tools.
+# The nightly toolchain and the fuzz target dir stay in the job container and are
+# discarded with it: the runner's disk is small, and they are rebuilt in a few minutes.
+name: fuzz
+
+on:
+  push:
+    paths:
+      - "app/src/paths.rs"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - "app/src/paths.rs"
+      - "fuzz/**"
+      - "scripts/fuzz-smoke.sh"
+      - ".forgejo/workflows/fuzz.yml"
+
+jobs:
+  redirect-paths:
+    runs-on: docker
+    timeout-minutes: 20
+    container:
+      image: docker.io/library/rust:1.99.1-slim-trixie
+      volumes:
+        - irgendwas-ci-cache:/ci-cache
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_FUZZ_VERSION: "0.13.2"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install checkout and C++ build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential ca-certificates curl git nodejs util-linux
+      - uses: actions/checkout@v4
+      - name: Install pinned fuzzing tools
+        env:
+          # The image's stable toolchain builds cargo-fuzz; skips installing
+          # rust-toolchain.toml's wasm target, which the fuzz job does not need.
+          RUSTUP_TOOLCHAIN: "1.99.1"
+        run: |
+          rustup toolchain install nightly-2026-11-01 --profile minimal
+          # One install per version, shared by later runs. The lock serializes concurrent
+          # jobs; a binary that does not run (missing or from another image) is rebuilt.
+          root="/ci-cache/tools/cargo-fuzz-${CARGO_FUZZ_VERSION}"
+          mkdir -p /ci-cache/tools
+          flock "$root.lock" sh -ec '
+            root="$1"
+            if "$root/bin/cargo-fuzz" --version >/dev/null 2>&1; then
+              echo "cargo-fuzz ${CARGO_FUZZ_VERSION} already installed"
+            else
+              cargo install --locked cargo-fuzz --version "${CARGO_FUZZ_VERSION}" --root "$root" --force
+            fi
+          ' sh "$root"
+          echo "$root/bin" >> "$GITHUB_PATH"
+      - name: Replay seeds and explore
+        run: |
+          cargo +nightly-2026-11-01 fuzz --version
+          sh scripts/fuzz-smoke.sh
+      - name: Upload a reproducer on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: fuzz-redirect-paths-artifacts
+          path: fuzz/artifacts/
