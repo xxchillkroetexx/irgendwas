@@ -2,7 +2,7 @@
 # Run an entire CI build/test phase under a lock outside its shared target dir.
 # Usage: sh scripts/ci-target-dir.sh /ci-cache/target-check command [args...]
 # If the volume is absent, execute the command against the checkout's own target.
-#   TARGET_CACHE_MAX_MB  wipe the directory above this size (default 20000), under the
+#   TARGET_CACHE_MAX_MB  wipe the directory above this size (default 6000), under the
 #                        lock and before the phase starts; it grows with every dependency
 #                        or toolchain update
 set -eu
@@ -22,7 +22,7 @@ fi
 shift
 dir="$1"
 shift
-max="${TARGET_CACHE_MAX_MB:-20000}"
+max="${TARGET_CACHE_MAX_MB:-6000}"
 mkdir -p "$dir"
 size="$(du -sm "$dir" | cut -f1)"
 echo "persistent target dir $dir: ${size} MB"
