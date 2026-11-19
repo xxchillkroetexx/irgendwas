@@ -265,7 +265,9 @@ fn assert_one_serialized_assignment(body: &str, own_receiver: &str, others: &[St
 }
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac27_the_group_page_and_the_dashboard_show_only_the_callers_receiver(pool: MySqlPool) {
+async fn ac27_the_group_page_shows_only_the_callers_receiver_and_the_dashboard_none(
+    pool: MySqlPool,
+) {
     let d = marked(&pool).await;
     d.draw_and_deliver(d.g).await;
     let rows = assignments(&pool, d.g).await;
@@ -304,22 +306,30 @@ async fn ac27_the_group_page_and_the_dashboard_show_only_the_callers_receiver(po
         }
         assert_one_serialized_assignment(&page.body, &own, &others, &format!("{who} group page"));
 
+        // The dashboard (HTML and hydration data) carries no assignment at all: neither the
+        // caller's receiver nor any other member's name (#47). The caller's own name is in
+        // the welcome line.
         let dash = c.get("/user/dashboard").await;
         assert_eq!(dash.status, 200);
-        assert_eq!(testid_count(&dash.body, "dashboard-assignment"), 1, "{who}");
-        let row = text_of(block(&dash.body, "dashboard-assignment").unwrap());
-        assert!(row.contains(&own), "{who}: {row}");
-        for other in &others {
+        assert_eq!(testid_count(&dash.body, "dashboard-group"), 1, "{who}");
+        assert!(
+            !dash.body.contains(&own),
+            "{who}'s dashboard names the receiver {own}"
+        );
+        for other in others.iter().filter(|o| **o != marker(&d, user)) {
             assert!(
-                !row.contains(other.as_str()),
-                "{who}'s dashboard row shows {other}"
-            );
-            assert!(
-                !text_of(block(&dash.body, "dashboard-assignments").unwrap())
-                    .contains(other.as_str())
+                !dash.body.contains(other.as_str()),
+                "{who}'s dashboard names {other}"
             );
         }
-        assert_one_serialized_assignment(&dash.body, &own, &others, &format!("{who} dashboard"));
+        assert_eq!(count(&dash.body, "receiver_name"), 0, "{who}");
+        assert_eq!(count(&dash.body, "receiver_id"), 0, "{who}");
+        assert!(
+            !dash
+                .body
+                .contains(&format!("/groups/{}/wishlist/{receiver}", d.g)),
+            "{who}"
+        );
     }
 }
 
@@ -331,7 +341,6 @@ async fn ac27_an_undrawn_group_page_carries_no_assignment(pool: MySqlPool) {
         assert_eq!(testid_count(&page.body, "my-assignment"), 0);
         assert_eq!(count(&page.body, "receiver_name"), 0);
         let dash = c.get("/user/dashboard").await;
-        assert_eq!(testid_count(&dash.body, "dashboard-assignment"), 0);
         assert_eq!(count(&dash.body, "receiver_name"), 0);
     }
 }

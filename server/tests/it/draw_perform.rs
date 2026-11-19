@@ -41,6 +41,24 @@ async fn ac14_the_admin_draws_and_every_member_gets_exactly_their_own_mail(pool:
     assert_eq!(page.status, 200);
     assert_eq!(testid_count(&page.body, "my-assignment"), 1);
     let card = block(&page.body, "my-assignment").expect("assignment card");
+    let disclosure = open_tag(card, "assignment-disclosure").expect("disclosure");
+    assert!(
+        !has_flag(disclosure, "open"),
+        "initially concealed: {disclosure}"
+    );
+    // The receiver, the date and the wishlist button are all inside the closed disclosure;
+    // its summary carries both labels (CSS shows "Reveal" while closed, "Hide" while open).
+    let inside = block(card, "assignment-disclosure").expect("disclosure element");
+    for id in [
+        "assignment-receiver",
+        "assignment-drawn-on",
+        "assignment-wishlist",
+    ] {
+        assert_eq!(testid_count(inside, id), 1, "{id} inside the disclosure");
+    }
+    let summary = &inside[inside.find("<summary").unwrap()..inside.find("</summary>").unwrap()];
+    assert!(text_of(summary).contains(&en("group.draw.revealAssignment")));
+    assert!(text_of(summary).contains(&en("group.draw.hideAssignment")));
     let link = open_tag(card, "assignment-wishlist").expect("wishlist button");
     assert_eq!(
         attr(link, "href"),

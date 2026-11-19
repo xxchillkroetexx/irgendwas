@@ -21,7 +21,8 @@ use leptos_router::hooks::use_params_map;
 use crate::AppError;
 use crate::auth::get_current_user;
 use crate::components::LoginRedirect;
-use crate::groups_api::GroupError;
+use crate::groups_api::{GroupError, GroupStatus};
+use crate::i18n::use_i18n;
 use crate::pages::{Forbidden, NotFound, ServerError};
 use crate::paths::group_path;
 
@@ -47,7 +48,7 @@ fn route_group_id() -> Memo<Option<i32>> {
 
 /// Runs `fetch` only for a logged-in visitor: the guard redirects everyone else, and the
 /// protected fn's error status must not end up in that redirect response.
-async fn when_logged_in<T>(
+pub(super) async fn when_logged_in<T>(
     fetch: impl Future<Output = Result<T, GroupError>>,
 ) -> Result<T, GroupError> {
     match get_current_user().await {
@@ -67,5 +68,21 @@ fn GroupErrorView(error: GroupError) -> impl IntoView {
         GroupError::Forbidden => view! { <Forbidden/> }.into_any(),
         GroupError::Unauthorized => view! { <LoginRedirect/> }.into_any(),
         _ => view! { <ServerError/> }.into_any(),
+    }
+}
+
+/// The badges of a group card: "Admin" when the caller is the group's admin, then the
+/// status. Shared by `/groups`, `/groups/archive` and the dashboard cards. The status badge
+/// carries `data-testid="group-status"`.
+#[component]
+pub(crate) fn GroupBadges(is_admin: bool, status: GroupStatus) -> impl IntoView {
+    let i18n = use_i18n();
+    view! {
+        <div class="d-flex flex-wrap gap-1">
+            {is_admin.then(|| view! { <span class="badge bg-primary">{i18n.t("group.admin")}</span> })}
+            <span class=status.badge_class() data-testid="group-status">
+                {i18n.t(status.label_key())}
+            </span>
+        </div>
     }
 }

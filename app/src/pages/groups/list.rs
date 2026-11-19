@@ -3,7 +3,7 @@
 
 use leptos::prelude::*;
 
-use super::{GroupErrorView, group_path, when_logged_in};
+use super::{GroupBadges, GroupErrorView, group_path, when_logged_in};
 use crate::components::RequireUser;
 use crate::groups_api::{GroupError, GroupSummary, list_my_groups};
 use crate::i18n::use_i18n;
@@ -85,12 +85,7 @@ fn GroupCard(group: GroupSummary) -> impl IntoView {
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                         <h2 class="h5 card-title mb-0">{group.name}</h2>
-                        <div class="d-flex flex-wrap gap-1">
-                            {group
-                                .is_admin
-                                .then(|| view! { <span class="badge bg-primary">{i18n.t("group.admin")}</span> })}
-                            <span class=group.status.badge_class()>{i18n.t(group.status.label_key())}</span>
-                        </div>
+                        <GroupBadges is_admin=group.is_admin status=group.status/>
                     </div>
                     {description}
                     <p class="card-text small mb-1">

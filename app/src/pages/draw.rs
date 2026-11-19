@@ -1,8 +1,7 @@
-//! The draw UI (spec: draw, "UI notes"): the [`DrawPanel`] on the group page and the
-//! assignments card on the dashboard ([`AssignmentsCard`]).
+//! The draw UI (spec: draw, "UI notes"): the [`DrawPanel`] on the group page.
 //!
 //! Secrecy (S1–S4): the only receiver data on any page is the caller's own, fetched through
-//! `get_my_assignment` / `list_my_assignments` inside the caller's own request. The admin's
+//! `get_my_assignment` inside the caller's own request. The admin's
 //! part shows counts and the names of members whose mail failed, never a pairing.
 //!
 //! Perform, reset and resend are `ActionForm`s (plain form posts without JavaScript, which
@@ -12,37 +11,21 @@
 //!
 //! Test markers (`data-testid`) are the contract in `server/tests/it/common/draw.rs`.
 
-use std::future::Future;
-
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::AppError;
-use crate::auth::get_current_user;
 use crate::components::SafeConfirmSubmit;
 use crate::draw_api::{
-    DrawAdminStatus, DrawApiError, DrawBlocker, MyAssignment, MyAssignmentSummary, PerformDraw,
-    ResendDrawNotifications, ResetDraw,
+    DrawAdminStatus, DrawApiError, DrawBlocker, MyAssignment, PerformDraw, ResendDrawNotifications,
+    ResetDraw,
 };
 #[cfg(not(feature = "ssr"))]
-use crate::draw_api::{get_draw_admin_status, get_my_assignment, list_my_assignments};
+use crate::draw_api::{get_draw_admin_status, get_my_assignment};
 use crate::format::LocalDate;
 use crate::groups_api::{GroupDetail, GroupError};
-use crate::i18n::{I18n, use_i18n};
-use crate::paths::{group_path, wishlist_view_path};
+use crate::i18n::use_i18n;
+use crate::paths::wishlist_view_path;
 use crate::{t, t_plural};
-
-/// Runs `fetch` only for a logged-in visitor: the guard redirects everyone else, and the
-/// protected fn's error status must not end up in that redirect response.
-async fn when_logged_in<T>(
-    fetch: impl Future<Output = Result<T, DrawApiError>>,
-) -> Result<T, DrawApiError> {
-    match get_current_user().await {
-        Ok(Some(_)) => fetch.await,
-        Ok(None) | Err(AppError::Unauthorized) => Err(DrawApiError::Unauthorized),
-        Err(_) => Err(DrawApiError::Internal),
-    }
-}
 
 // --------------------------------------------------------------- group page
 
@@ -110,12 +93,16 @@ async fn fetch_admin_status(group_id: i32) -> Result<DrawAdminStatus, DrawApiErr
     get_draw_admin_status(group_id).await
 }
 
-/// The panel's server actions, created at page level (a re-read keeps them).
+/// The panel's server actions and the assignment disclosure's state, created at page level
+/// (a re-read of the panel rebuilds its cards and keeps these).
 #[derive(Clone, Copy)]
 pub struct DrawActions {
     pub perform: ServerAction<PerformDraw>,
     pub reset: ServerAction<ResetDraw>,
     pub resend: ServerAction<ResendDrawNotifications>,
+    /// Whether the caller opened the assignment disclosure (dashboard spec). Starts closed,
+    /// as the server renders it; perform and reset close it (another assignment).
+    pub assignment_open: RwSignal<bool>,
 }
 
 impl DrawActions {
@@ -124,6 +111,7 @@ impl DrawActions {
             perform: ServerAction::new(),
             reset: ServerAction::new(),
             resend: ServerAction::new(),
+            assignment_open: RwSignal::new(false),
         }
     }
 }
@@ -158,7 +146,7 @@ pub fn DrawPanel(
                     <div class="card mb-4" data-testid="draw-panel">
                         <div class="card-body">
                             <h2 class="h5 card-title">{i18n.t("group.draw.title")}</h2>
-                            <AssignmentCard group_id mine/>
+                            <AssignmentCard group_id mine open=actions.assignment_open/>
                         </div>
                     </div>
                 }
@@ -175,7 +163,8 @@ pub fn DrawPanel(
             .into_any(),
         }
     } else {
-        let card = mine.map(|mine| view! { <AssignmentCard group_id mine/> });
+        let open = actions.assignment_open;
+        let card = mine.map(|mine| view! { <AssignmentCard group_id mine open/> });
         let admin_part = admin
             .filter(|_| is_admin)
             .and_then(|status| status.notifications)
@@ -269,30 +258,58 @@ fn BlockerText(blocker: DrawBlocker) -> impl IntoView {
     }
 }
 
-/// The caller's own assignment (the only one any page shows).
+/// The caller's own assignment (the only one any page shows), behind a native disclosure
+/// that starts closed (dashboard spec): it works without JavaScript and before hydration.
+/// The summary's label says what a click does ("Reveal" / "Hide"); CSS on `details[open]`
+/// picks one of the two spans, so no script is needed for that either. `open` (page level)
+/// keeps the disclosure open when a re-read of the panel rebuilds the card.
 #[component]
-fn AssignmentCard(group_id: i32, mine: MyAssignment) -> impl IntoView {
+fn AssignmentCard(group_id: i32, mine: MyAssignment, open: RwSignal<bool>) -> impl IntoView {
     let i18n = use_i18n();
+    let details = NodeRef::<leptos::html::Details>::new();
+    // Opened before hydration (the server renders it closed): take the state over.
+    Effect::new(move |_| {
+        if details.get().is_some_and(|el| el.open()) {
+            open.set(true);
+        }
+    });
+    let on_toggle = move |_| {
+        if let Some(el) = details.get_untracked() {
+            open.set(el.open());
+        }
+    };
     view! {
         <div class="card border-success mb-3" data-testid="my-assignment">
             <div class="card-body">
                 <h3 class="h5 card-title">{i18n.t("group.show.assignment")}</h3>
                 <p class="mb-1">{i18n.t("group.show.assignmentDescription")}</p>
-                <p class="fs-3 fw-semibold mb-1" data-testid="assignment-receiver">
-                    {mine.receiver_name}
-                </p>
-                <p class="small text-muted" data-testid="assignment-drawn-on">
-                    {t!(i18n, "group.draw.drawnOn", date = LocalDate(mine.drawn_at))}
-                </p>
-                // A document load (not a client-side route change), like the wishlist panel.
-                <a
-                    href=wishlist_view_path(group_id, mine.receiver_id)
-                    rel="external"
-                    class="btn btn-success"
-                    data-testid="assignment-wishlist"
+                <details
+                    class="assignment-disclosure"
+                    data-testid="assignment-disclosure"
+                    node_ref=details
+                    open=move || open.get()
+                    on:toggle=on_toggle
                 >
-                    {i18n.t("group.show.viewWishlist")}
-                </a>
+                    <summary class="btn btn-outline-success">
+                        <span class="when-closed">{i18n.t("group.draw.revealAssignment")}</span>
+                        <span class="when-open">{i18n.t("group.draw.hideAssignment")}</span>
+                    </summary>
+                    <p class="fs-3 fw-semibold mb-1 mt-3" data-testid="assignment-receiver">
+                        {mine.receiver_name}
+                    </p>
+                    <p class="small text-muted" data-testid="assignment-drawn-on">
+                        {t!(i18n, "group.draw.drawnOn", date = LocalDate(mine.drawn_at))}
+                    </p>
+                    // A document load (not a client-side route change), like the wishlist panel.
+                    <a
+                        href=wishlist_view_path(group_id, mine.receiver_id)
+                        rel="external"
+                        class="btn btn-success"
+                        data-testid="assignment-wishlist"
+                    >
+                        {i18n.t("group.show.viewWishlist")}
+                    </a>
+                </details>
             </div>
         </div>
     }
@@ -353,84 +370,5 @@ fn DrawnAdminSection(
                 testid="draw-reset"
             />
         </ActionForm>
-    }
-}
-
-// ---------------------------------------------------------------- dashboard
-
-pub type AssignmentsResource = Resource<Result<Vec<MyAssignmentSummary>, DrawApiError>>;
-
-/// The dashboard card's data (create at page level).
-pub fn assignments_resource() -> AssignmentsResource {
-    Resource::new(
-        || (),
-        |()| async move { when_logged_in(fetch_my_assignments()).await },
-    )
-}
-
-/// Like the panel: during SSR a failure leaves the card out, the page keeps its status.
-#[cfg(feature = "ssr")]
-async fn fetch_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiError> {
-    crate::server::draw_flow::list_my_assignments().await
-}
-
-#[cfg(not(feature = "ssr"))]
-async fn fetch_my_assignments() -> Result<Vec<MyAssignmentSummary>, DrawApiError> {
-    list_my_assignments().await
-}
-
-/// The dashboard's assignments card: one row per drawn group the caller is in, newest draw
-/// first; each with the caller's own receiver only.
-#[component]
-pub fn AssignmentsCard(list: Vec<MyAssignmentSummary>) -> impl IntoView {
-    let i18n = use_i18n();
-    let content = if list.is_empty() {
-        view! {
-            <div data-testid="dashboard-assignments-empty">
-                <p class="mb-1">{i18n.t("user.dashboard.assignments.empty")}</p>
-                <p class="text-muted mb-0">{i18n.t("user.dashboard.assignments.emptyDescription")}</p>
-            </div>
-        }
-        .into_any()
-    } else {
-        let rows = list
-            .into_iter()
-            .map(|row| view! { <AssignmentRow row i18n/> })
-            .collect_view();
-        view! { <ul class="list-group list-group-flush">{rows}</ul> }.into_any()
-    };
-    view! {
-        <div class="card h-100" data-testid="dashboard-assignments">
-            <div class="card-body">
-                <h2 class="h5 card-title">{i18n.t("user.dashboard.assignments.title")}</h2>
-                {content}
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn AssignmentRow(row: MyAssignmentSummary, i18n: I18n) -> impl IntoView {
-    view! {
-        <li
-            class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
-            data-testid="dashboard-assignment"
-        >
-            <div>
-                <div class="small text-muted">{i18n.t("user.dashboard.assignments.group")}</div>
-                <a href=group_path(row.group_id)>{row.group_name}</a>
-                <div class="small text-muted mt-1">
-                    {i18n.t("user.dashboard.assignments.recipient")}
-                </div>
-                <span class="fw-semibold">{row.receiver_name}</span>
-            </div>
-            <a
-                href=wishlist_view_path(row.group_id, row.receiver_id)
-                rel="external"
-                class="btn btn-sm btn-outline-primary"
-            >
-                {i18n.t("user.dashboard.assignments.viewWishlist")}
-            </a>
-        </li>
     }
 }

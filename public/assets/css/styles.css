@@ -267,3 +267,9 @@ html[data-standalone] .install-link {
   line-clamp: 2;
   overflow: hidden;
 }
+/* The assignment disclosure on the group page (dashboard spec): the summary's label says
+   what a click does, without JavaScript too. */
+.assignment-disclosure[open] .when-closed,
+.assignment-disclosure:not([open]) .when-open {
+  display: none;
+}

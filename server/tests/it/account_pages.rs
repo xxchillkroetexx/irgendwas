@@ -67,13 +67,11 @@ fn ac6_the_invite_tip_describes_the_real_feature() {
 }
 
 #[sqlx::test(migrations = "../migrations")]
-async fn ac6_dashboard_has_no_placeholder_for_the_later_slices(pool: MySqlPool) {
+async fn ac6_dashboard_shows_group_empty_state(pool: MySqlPool) {
     let mut w = alice_world_with(&pool, &[], Opts::default()).await;
     let page = w.c.get(DASHBOARD).await;
     assert_eq!(page.status, 200);
-    // Until the groups and draw slices land, their columns are not rendered at all.
-    let text = "You aren't a member of any Secret Santa groups yet.";
-    assert!(!html_contains(&page.body, text), "no placeholder: {text}");
+    assert!(html_contains(&page.body, &en("group.emptyMessage")));
     assert!(!page.body.contains("user.dashboard."), "no raw keys");
 }
 

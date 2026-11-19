@@ -107,11 +107,13 @@ fn GroupShow(group: GroupResource, panel: PanelResource, draw: DrawResource) -> 
     };
     Effect::new(move |_| {
         if let Some(result) = actions.draw.perform.value().get() {
+            actions.draw.assignment_open.set(false);
             after_draw(result);
         }
     });
     Effect::new(move |_| {
         if let Some(result) = actions.draw.reset.value().get() {
+            actions.draw.assignment_open.set(false);
             after_draw(result);
         }
     });

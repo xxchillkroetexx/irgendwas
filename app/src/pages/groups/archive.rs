@@ -5,7 +5,7 @@
 
 use leptos::prelude::*;
 
-use super::{GroupErrorView, group_path, when_logged_in};
+use super::{GroupBadges, GroupErrorView, group_path, when_logged_in};
 use crate::components::RequireUser;
 use crate::format::LocalDate;
 use crate::groups_api::{ArchivedGroupSummary, GroupError, GroupStatus, list_archived_groups};
@@ -74,19 +74,13 @@ fn ArchiveList(groups: ArchiveResource) -> impl IntoView {
 fn ArchivedCard(group: ArchivedGroupSummary) -> impl IntoView {
     let i18n = use_i18n();
     let count = group.member_count;
-    let status = GroupStatus::Archived;
     view! {
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100" data-testid="archived-group">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                         <h2 class="h5 card-title mb-0">{group.name}</h2>
-                        <div class="d-flex flex-wrap gap-1">
-                            {group
-                                .is_admin
-                                .then(|| view! { <span class="badge bg-primary">{i18n.t("group.admin")}</span> })}
-                            <span class=status.badge_class()>{i18n.t(status.label_key())}</span>
-                        </div>
+                        <GroupBadges is_admin=group.is_admin status=GroupStatus::Archived/>
                     </div>
                     <p class="card-text small mb-1">
                         <span>{t_plural!(i18n, "group.memberCount", i64::from(count), count = count)}</span>

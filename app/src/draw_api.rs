@@ -124,7 +124,8 @@ pub struct MyAssignment {
     pub drawn_at: DateTime<Utc>,
 }
 
-/// One row of the dashboard card.
+/// One row of [`list_my_assignments`] (no page shows these since #47: the dashboard has
+/// group cards, the assignment is on the group page).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MyAssignmentSummary {
     pub group_id: i32,

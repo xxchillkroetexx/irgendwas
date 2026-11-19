@@ -140,22 +140,22 @@ async fn ac47_the_panel_and_the_dashboard_come_from_the_german_catalog(pool: MyS
         )
     );
 
-    // The dashboard card, empty and with an assignment.
+    // The dashboard's group section and the card's status badge are German.
     let dash = bob.get("/user/dashboard").await;
-    let card = text_of(block(&dash.body, "dashboard-assignments").unwrap());
-    assert!(
-        card.contains(&de("user.dashboard.assignments.title")),
-        "{card}"
-    );
-    assert!(
-        card.contains(&de("user.dashboard.assignments.empty")),
-        "{card}"
-    );
+    let cards = text_of(block(&dash.body, "dashboard-groups").unwrap());
+    assert!(cards.contains(&de("group.title")), "{cards}");
+    let status = text_of(block(&dash.body, "group-status").unwrap());
+    assert_eq!(status, de("group.status.open"));
 
     d.draw_and_deliver(d.g).await;
+    let dash = bob.get("/user/dashboard").await;
+    let status = text_of(block(&dash.body, "group-status").unwrap());
+    assert_eq!(status, de("group.status.drawn"));
     let page = bob.get(&group_path(d.g)).await;
     let card = text_of(block(&page.body, "my-assignment").unwrap());
     assert!(card.contains(&de("group.show.assignment")), "{card}");
+    assert!(card.contains(&de("group.draw.revealAssignment")), "{card}");
+    assert!(card.contains(&de("group.draw.hideAssignment")), "{card}");
     let admin = alice.get(&group_path(d.g)).await;
     let section = text_of(block(&admin.body, "draw-notifications").unwrap());
     assert!(
@@ -181,6 +181,8 @@ fn ac47_every_new_key_exists_in_both_catalogs_with_the_same_placeholders() {
         "group.draw.blocked.tooManyMembers",
         "group.draw.impossible.hint",
         "group.draw.drawnOn",
+        "group.draw.revealAssignment",
+        "group.draw.hideAssignment",
         "group.draw.notifications.title",
         "group.draw.notifications.failed",
         "group.draw.notifications.resend",

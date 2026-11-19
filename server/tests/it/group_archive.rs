@@ -2039,6 +2039,10 @@ async fn ac30_a_member_sees_the_archived_group_read_only(pool: MySqlPool) {
         text_of(block(body, "assignment-receiver").unwrap()),
         "Carol"
     );
+    // Behind the same closed disclosure as on an active group (#47).
+    let disclosure = block(body, "assignment-disclosure").expect("disclosure");
+    assert!(!disclosure[..disclosure.find('>').unwrap()].contains(" open"));
+    assert_eq!(testid_count(disclosure, "assignment-receiver"), 1);
     // Wishlist card: view links, no edit button.
     let wishlist = block(body, "group-wishlist").expect("wishlist card");
     assert!(wishlist.contains(&format!("href=\"/groups/{}/wishlist/{}\"", d.g, d.alice)));
@@ -2235,7 +2239,8 @@ async fn ac33_the_archive_page_lists_my_archived_groups_newest_archive_first(poo
     let mine = list_groups(&mut bob).await;
     assert_eq!(mine.iter().map(|s| s.id).collect::<Vec<_>>(), vec![k]);
 
-    // Assignments: K's only (the dashboard card, U8).
+    // Assignments: K's only (`list_my_assignments`, U8). The dashboard (#47) has one card
+    // per active group, from `list_my_groups`: K only.
     let assignments = list_mine(&mut bob).await;
     assert_eq!(
         assignments.iter().map(|a| a.group_id).collect::<Vec<_>>(),
@@ -2243,6 +2248,10 @@ async fn ac33_the_archive_page_lists_my_archived_groups_newest_archive_first(poo
     );
     let dashboard = bob.get("/user/dashboard").await.body;
     assert!(!dashboard.contains(GROUP_NAME) && !dashboard.contains("Hobby Club"));
+    assert_eq!(testid_count(&dashboard, "dashboard-group"), 1);
+    let card = text_of(block(&dashboard, "dashboard-group").unwrap());
+    assert!(card.contains("Active Club"), "{card}");
+    assert!(dashboard.contains(&format!("href=\"/groups/{k}\"")));
 
     // The share-target picker offers only K.
     let shared = format!(

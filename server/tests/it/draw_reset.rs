@@ -10,6 +10,16 @@ use sqlx::MySqlPool;
 
 // ------------------------------------------------------------------------ AC40
 
+/// The status badge text of group `g`'s dashboard card.
+fn dashboard_status(body: &str, g: i32) -> String {
+    let href = format!("href=\"/groups/{g}\"");
+    let card = blocks(body, "dashboard-group")
+        .into_iter()
+        .find(|card| card.contains(&href))
+        .expect("the group's dashboard card");
+    text_of(block(card, "group-status").expect("status badge"))
+}
+
 #[sqlx::test(migrations = "../migrations")]
 async fn ac40_a_reset_deletes_the_assignments_and_tells_the_givers(pool: MySqlPool) {
     let d = draw_world(&pool).await;
@@ -18,6 +28,8 @@ async fn ac40_a_reset_deletes_the_assignments_and_tells_the_givers(pool: MySqlPo
     rename(&pool, d.carol, "CarolRs").await;
     d.draw_and_deliver(d.g).await;
     let mut alice = d.alice().await;
+    let dash = d.bob().await.get("/user/dashboard").await;
+    assert_eq!(dashboard_status(&dash.body, d.g), en("group.status.drawn"));
 
     reset(&mut alice, d.g).await.dr_ok();
     d.idle().await;
@@ -52,8 +64,12 @@ async fn ac40_a_reset_deletes_the_assignments_and_tells_the_givers(pool: MySqlPo
         assert_eq!(my_assignment(&mut c, d.g).await, None);
         assert!(list_mine(&mut c).await.is_empty());
     }
+    // The dashboard card of G no longer says "Drawn" (and never named a receiver).
     let dash = d.bob().await.get("/user/dashboard").await;
-    assert_eq!(testid_count(&dash.body, "dashboard-assignment"), 0);
+    assert_eq!(dashboard_status(&dash.body, d.g), en("group.status.open"));
+    for name in ["AliceRs", "CarolRs"] {
+        assert!(!dash.body.contains(name), "dashboard names {name}");
+    }
     let page = d.bob().await.get(&format!("/groups/{}", d.g)).await;
     assert_eq!(testid_count(&page.body, "my-assignment"), 0);
 }

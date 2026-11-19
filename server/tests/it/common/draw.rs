@@ -19,10 +19,12 @@
 //!   the reset button.
 //! - `draw-ready`, `draw-small-hint`: the "{count} members will take part" line and the
 //!   small-group hint.
-//! - Dashboard: `dashboard-assignments` (the card), one `dashboard-assignment` per row
-//!   (containing a link to `/groups/{id}` with the group name, the receiver's name, and an
-//!   `<a>` to `/groups/{id}/wishlist/{receiver}`), `dashboard-assignments-empty` (the empty
-//!   texts).
+//! - `assignment-disclosure`: the native `<details>` inside `my-assignment` around the
+//!   receiver, the drawn-on line and the wishlist button; rendered closed (no `open`).
+//! - Dashboard (dashboard spec): `dashboard-groups` is the "My groups" section (left out
+//!   when the groups cannot be read), `dashboard-group` each group card, `group-status` the
+//!   status badge inside a card (also on `/groups` and `/groups/archive`),
+//!   `dashboard-groups-empty` the empty state. No assignment data on the dashboard.
 //! - The no-JS forms are `<form method="post" action="/api/perform_draw">` etc. with a
 //!   hidden `group_id`; a plain post answers 302 back to `/groups/{id}` with a flash.
 #![allow(dead_code)]
@@ -634,6 +636,21 @@ pub fn block<'a>(html: &'a str, id: &str) -> Option<&'a str> {
             }
         }
     }
+}
+
+/// Every element with `data-testid="id"` (as [`block`]), in document order. For elements
+/// that do not nest (cards).
+pub fn blocks<'a>(html: &'a str, id: &str) -> Vec<&'a str> {
+    let needle = format!("data-testid=\"{id}\"");
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(at) = html[from..].find(&needle) {
+        let start = html[..from + at].rfind('<').expect("opening tag");
+        let element = block(&html[start..], id).expect("closed element");
+        out.push(element);
+        from = start + element.len();
+    }
+    out
 }
 
 /// The visible text of an HTML fragment: tags removed, whitespace collapsed.
