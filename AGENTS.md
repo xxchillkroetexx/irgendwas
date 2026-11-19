@@ -46,9 +46,9 @@ verifies.
   shared authorization helper (`app::server::authz`); never trust IDs from the client.
 - **Secret-keeping:** never expose another user's gift assignment. Not to admins either.
 - **Transactions** that rely on REPEATABLE READ (gap locks, a repeatable snapshot) set
-  their isolation level explicitly: wishlist writes use READ COMMITTED, and a pooled
-  connection can carry a pending level if a request is dropped between `SET TRANSACTION`
-  and `BEGIN`.
+  their isolation level explicitly through `db::begin_with` (wishlist writes use READ
+  COMMITTED). Build pools with `db::pool_options`: it rolls back a transaction a dropped
+  request left open on a connection before it goes back to the pool.
 - **`<textarea>`:** never put user text as its children directly: tachys renders textarea
   children unescaped during SSR (like `<script>`), so `</textarea><script>` breaks out. Use
   the shared `TextArea` component.

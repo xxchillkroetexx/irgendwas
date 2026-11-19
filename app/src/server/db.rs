@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use sqlx::migrate::{MigrateError, Migrator};
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlPoolOptions};
 use sqlx::pool::PoolConnection;
 use sqlx::{MySql, MySqlPool, Transaction};
 
@@ -36,11 +36,7 @@ pub async fn connect(db: &DbConfig, wait: Duration) -> Result<MySqlPool, sqlx::E
     let deadline = tokio::time::Instant::now() + wait;
     let mut delay = Duration::from_millis(250);
     loop {
-        let result = MySqlPoolOptions::new()
-            .max_connections(10)
-            .acquire_timeout(Duration::from_secs(5))
-            .connect_with(connect_options(db))
-            .await;
+        let result = pool_options().connect_with(connect_options(db)).await;
         match result {
             Ok(pool) => return Ok(pool),
             Err(err) if tokio::time::Instant::now() + delay < deadline => {
@@ -51,6 +47,35 @@ pub async fn connect(db: &DbConfig, wait: Duration) -> Result<MySqlPool, sqlx::E
             Err(err) => return Err(err),
         }
     }
+}
+
+/// The pool settings [`connect`] uses: 10 connections, 5 s acquire timeout, and
+/// [`roll_back_leftover_transaction`] on every connection that comes back to the pool.
+pub fn pool_options() -> MySqlPoolOptions {
+    MySqlPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(Duration::from_secs(5))
+        .after_release(|conn, _meta| Box::pin(roll_back_leftover_transaction(conn)))
+}
+
+/// Ends a transaction the server still has open on a connection that is going back to
+/// the pool (#99). A request dropped while its `BEGIN` was in flight leaves the server
+/// inside a transaction that sqlx never recorded, so sqlx neither rolls it back nor
+/// knows about it; the next request on that connection then failed with 1568 at its own
+/// `SET TRANSACTION`, or read from the stale snapshot (1020). Transactions sqlx does know
+/// about are already rolled back by the time this runs: their `ROLLBACK` is queued on
+/// drop and sent before this query.
+pub async fn roll_back_leftover_transaction(
+    conn: &mut MySqlConnection,
+) -> Result<bool, sqlx::Error> {
+    let open: i64 = sqlx::query_scalar("SELECT CAST(@@in_transaction AS SIGNED)")
+        .fetch_one(&mut *conn)
+        .await?;
+    if open != 0 {
+        tracing::warn!("pooled connection came back inside a transaction; rolling it back");
+        sqlx::raw_sql("ROLLBACK").execute(&mut *conn).await?;
+    }
+    Ok(true)
 }
 
 /// Applies all pending migrations.
@@ -76,26 +101,31 @@ pub enum IsolationLevel {
 }
 
 impl IsolationLevel {
-    fn statement(self) -> &'static str {
+    /// `SET TRANSACTION` and `START TRANSACTION` in one statement batch (see [`begin_with`]).
+    fn begin_statement(self) -> &'static str {
         match self {
-            IsolationLevel::ReadCommitted => "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
-            IsolationLevel::RepeatableRead => "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+            IsolationLevel::ReadCommitted => {
+                "SET TRANSACTION ISOLATION LEVEL READ COMMITTED; START TRANSACTION"
+            }
+            IsolationLevel::RepeatableRead => {
+                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; START TRANSACTION"
+            }
         }
     }
 }
 
 /// Starts a transaction with an explicit isolation level on `conn`. `SET TRANSACTION`
-/// (without `SESSION`) only applies to the next transaction, which `BEGIN` starts right
-/// away on the same connection, so the pooled connection keeps its default level
-/// afterwards. (`BEGIN` only fails when the connection itself is broken; the pool's ping
-/// then discards it. A request dropped between the two statements can leave the pending
-/// level on the connection for its next transaction.)
+/// (without `SESSION`) only applies to the next transaction, so the pooled connection
+/// keeps its default level afterwards. Both statements go to the server in one packet:
+/// a request dropped in between can no longer leave the pending level on the connection
+/// for its next transaction. A request dropped after the packet was sent can still leave
+/// the server inside a transaction sqlx never recorded; the pool's
+/// [`roll_back_leftover_transaction`] ends it when the connection is released (#99).
 pub async fn begin_with(
     conn: &mut PoolConnection<MySql>,
     level: IsolationLevel,
 ) -> Result<Transaction<'_, MySql>, sqlx::Error> {
-    sqlx::query(level.statement()).execute(&mut **conn).await?;
-    sqlx::Connection::begin(&mut **conn).await
+    sqlx::Connection::begin_with(&mut **conn, level.begin_statement()).await
 }
 
 /// A description of `err` that is safe to log: the error kind and, for database errors,
