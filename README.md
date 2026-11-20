@@ -39,8 +39,12 @@ docs/               decisions.md (decision log), specs/ (one spec per feature)
 CI: `.forgejo/workflows/ci.yml` (fmt, clippy, `cargo leptos test` with MariaDB and Mailpit
 services; e2e in a separate job in the Playwright image; `lockfile` checks that Cargo.lock
 matches the manifests; `audit` runs cargo-audit against the RustSec advisories and does not
-hold back the image; on pushes to `dev` and `main` the image is built and pushed as `:dev`
-or `:latest`, plus `:sha-<12>`). Documentation-only
+hold back the image; on pushes to `dev` and `main` the image is built, started against
+MariaDB and smoke-tested, then pushed as `:dev` or `:latest`, plus `:sha-<12>` and
+`:tree-<12>` of the git tree; `main` re-tags the image `dev` built from the same tree
+instead of rebuilding it). `.forgejo/workflows/image-pr.yml` builds and smoke-tests the
+image on pull requests that touch the Dockerfile, dependencies, `public/`, migrations or the
+CI files (`scripts/ci-image.sh` holds the steps). Documentation-only
 changes skip it. check and e2e keep `target/` in a named volume of the runner's engine; the
 runner setup (Docker-in-Docker, `valid_volumes`, seccomp for buildah) is in the workflow's
 header comment. `.forgejo/workflows/fuzz.yml` runs the fuzz smoke (below) when
@@ -170,7 +174,7 @@ client ──https──▶ Traefik (existing container, Docker network proxynet
 
 `compose.yml` is the production stack (a Portainer stack named `irgendwas`; its variables
 are listed in `compose.env.example`). It pulls the CI image (`APP_TAG`: `latest` = main,
-`dev`, or `sha-<12>`); to build locally, `podman build --format docker -t <image> .`
+`dev`, or `sha-<12>`; `:latest` carries the same bytes that ran as `:dev`); to build locally, `podman build --format docker -t <image> .`
 (`--build-arg CARGO_BUILD_JOBS=4` limits the build's CPU use; `--format docker` keeps the
 HEALTHCHECK). The image is distroless (non-root, no shell); its healthcheck is
 `/app/server --healthcheck`, which GETs `/health`. Migrations are embedded and run at
