@@ -10,6 +10,10 @@ use crate::wishlists_api::{WishlistError, WishlistField, WishlistFieldError};
 pub const DRAFTS_KEY: &str = "shared_link_drafts";
 pub const MAX_PENDING: usize = 5;
 pub const MAX_SHARE_BYTES: usize = 16_384;
+/// Lifetime of a session that stages a share without a logged-in user (#104), instead of
+/// `INACTIVITY_LIMIT`. Its next request (the review page, the login) saves it with the
+/// normal lifetime again; only sessions that never come back expire this early.
+pub const ANONYMOUS_SHARE_LIFETIME_SECS: i64 = 24 * 60 * 60;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Pending {

@@ -708,3 +708,94 @@ async fn a_submit_without_a_staged_draft_stores_no_claim(pool: MySqlPool) {
         .unwrap();
     assert_eq!(claims, 0);
 }
+
+// ------------------------------------------------------------------ #104: bounded intake
+
+/// Hours from now until the earliest and the latest session expiry.
+async fn expiry_hours(pool: &MySqlPool) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT MIN(TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP, expiry_date)), \
+                MAX(TIMESTAMPDIFF(HOUR, CURRENT_TIMESTAMP, expiry_date)) FROM sessions",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn sessions(pool: &MySqlPool) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+const NINETY_DAYS_IN_HOURS: i64 = 90 * 24;
+
+#[sqlx::test(migrations = "../migrations")]
+async fn an_anonymous_share_session_expires_after_a_day_until_login(pool: MySqlPool) {
+    create_alice(&pool, "alice@example.test").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+
+    receive(&mut client, "Shared", "https://shop.example/item").await;
+    assert_eq!(sessions(&pool).await, 1);
+    let (_, latest) = expiry_hours(&pool).await;
+    assert!(
+        (23..=24).contains(&latest),
+        "anonymous draft session: {latest} h"
+    );
+
+    // Logging in restores the normal lifetime, and the draft is still there.
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+    let (earliest, _) = expiry_hours(&pool).await;
+    assert!(
+        earliest >= NINETY_DAYS_IN_HOURS - 1,
+        "after login: {earliest} h"
+    );
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn a_logged_in_share_keeps_the_normal_lifetime(pool: MySqlPool) {
+    create_alice(&pool, "alice@example.test").await;
+    let app = router(&pool, &[], Opts::default());
+    let mut client = Client::new(&app);
+    client
+        .login("alice@example.test", ALICE_PASSWORD)
+        .await
+        .ok();
+
+    receive(&mut client, "Shared", "https://shop.example/item").await;
+    let (earliest, _) = expiry_hours(&pool).await;
+    assert!(earliest >= NINETY_DAYS_IN_HOURS - 1, "{earliest} h");
+}
+
+#[sqlx::test(migrations = "../migrations")]
+async fn over_the_per_ip_limit_a_share_gets_429_and_leaves_no_session(pool: MySqlPool) {
+    let app = router(&pool, &[], Opts::default());
+    let url = format!(
+        "/share-target?title=Shared&text={}",
+        urlencode("https://shop.example/item")
+    );
+    // Cookie-less requests, as a script would send them: one session row each.
+    for _ in 0..30 {
+        let reply = Client::new(&app).peer("198.51.100.7").get(&url).await;
+        assert_eq!(reply.status.as_u16(), 303);
+    }
+    assert_eq!(sessions(&pool).await, 30);
+
+    let over = Client::new(&app).peer("198.51.100.7").get(&url).await;
+    assert_eq!(over.status.as_u16(), 429);
+    assert_eq!(over.header("cache-control").as_deref(), Some("no-store"));
+    assert!(
+        over.set_cookie(server::SESSION_COOKIE).is_none(),
+        "no session cookie"
+    );
+    assert_eq!(sessions(&pool).await, 30, "no session row");
+
+    // Another client is not affected.
+    let other = Client::new(&app).peer("198.51.100.8").get(&url).await;
+    assert_eq!(other.status.as_u16(), 303);
+}

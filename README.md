@@ -198,6 +198,13 @@ What the setup relies on:
   front): then it replaces a client's `X-Forwarded-For` with the address it sees. The rate
   limits (50 failed logins per 15 minutes, `RATE_LIMIT_MAIL_PER_IP` registrations/resets
   per hour) are keyed by that address.
+- **Share target and access logs:** the operating system opens
+  `GET /share-target?title=…&text=…&url=…`, so the shared text and link are in the query
+  string. The app logs no query strings. If Traefik writes access logs, drop the fields
+  that carry it (`accessLog.fields.names`: `RequestPath: drop`, `RequestLine: drop`;
+  Traefik can't do that per route), or keep access logs off. `/share-target` allows 30 shares per
+  client IP per 10 minutes; a session that only stages a share without a login expires
+  after a day unless it comes back (#104).
 - **HTTPS** detection uses `APP_URL` only (Secure cookies, Origin check), never
   `X-Forwarded-Proto`.
 - **MariaDB** stays on 11.8 (LTS): never `latest`, a datadir cannot be downgraded.

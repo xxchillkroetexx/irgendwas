@@ -56,6 +56,13 @@ pub const MAIL_PER_IP: Limit = Limit {
     window: TimeDelta::minutes(60),
 };
 
+/// Share-target navigations per client IP (`share:ip:<ip>`): 30 per 10 minutes (#104).
+/// They need no login and each stages a draft of up to 16 KB in a session.
+pub const SHARE_PER_IP: Limit = Limit {
+    max: 30,
+    window: TimeDelta::minutes(10),
+};
+
 /// [`MAIL_PER_IP`] with the configured count (`RATE_LIMIT_MAIL_PER_IP`).
 pub fn mail_per_ip(config: &super::Config) -> Limit {
     Limit {
@@ -229,6 +236,11 @@ pub fn login_ip_key(ip: &str) -> String {
 /// `mail:email:<sha256(email)>` (email already normalised).
 pub fn mail_email_key(email: &str) -> String {
     key("mail:email:", email)
+}
+
+/// `share:ip:<sha256(ip)>`.
+pub fn share_ip_key(ip: &str) -> String {
+    key("share:ip:", ip)
 }
 
 /// `mail:ip:<sha256(ip)>`.
