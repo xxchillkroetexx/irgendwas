@@ -44,7 +44,8 @@ pub const LOGIN_PER_IP: Limit = Limit {
     max: 50,
     window: TimeDelta::minutes(15),
 };
-/// Mails per address from register + forgot-password (`mail:email:<email>`): 3 per hour.
+/// Mails per address, 3 per hour on each of two keys: `mail:email:<email>` for register
+/// and the email change, `mail:reset:<email>` for forgot-password (#102).
 pub const MAIL_PER_EMAIL: Limit = Limit {
     max: 3,
     window: TimeDelta::minutes(60),
@@ -233,9 +234,15 @@ pub fn login_ip_key(ip: &str) -> String {
     key("login:ip:", ip)
 }
 
-/// `mail:email:<sha256(email)>` (email already normalised).
+/// `mail:email:<sha256(email)>` (email already normalised): register mails (registration
+/// link or existing-account notice) and email-change verification mails (account AC43).
 pub fn mail_email_key(email: &str) -> String {
     key("mail:email:", email)
+}
+
+/// `mail:reset:<sha256(email)>` (email already normalised): password-reset mails.
+pub fn mail_reset_key(email: &str) -> String {
+    key("mail:reset:", email)
 }
 
 /// `share:ip:<sha256(ip)>`.

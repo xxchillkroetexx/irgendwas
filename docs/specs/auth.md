@@ -182,7 +182,7 @@ Idempotent, works anonymously. Deletes the session record and all its data (`flu
 2. Per-IP limiter `mail:ip:<ip>` blocked → `TooManyRequests` (this depends only on the caller's IP, never on whether the account exists).
 3. `DELETE FROM pending_registrations WHERE expires_at < CURRENT_TIMESTAMP`.
 4. If `users` has the email: queue the **existing-account mail**. Else: generate a token (below), upsert `pending_registrations` by email (`token_hash`, `expires_at = now + 24h`, `next_path = safe_next(next)`, `created_at = now`), and queue the **registration mail** with link `APP_URL/auth/register/confirm/<token>` to the address re-read by the new token hash; if no row has that hash any more (a concurrent request for the same address replaced it), no mail and the same `Ok(())` (amended 2026-11-09, #71). An upsert replaces an earlier pending token (and its `next_path`) for the same email, so the earlier link stops working.
-5. Mail queueing is subject to `mail:email:<email>`. When that limit is exceeded, the mail is silently not sent. No DB row is written in that case either (so the last delivered link stays valid).
+5. Mail queueing is subject to `mail:email:<email>`. When that limit is exceeded, the mail is silently not sent (logged at `info` without the address). No DB row is written in that case either (so the last delivered link stays valid).
 6. Return `Ok(())`. The UI shows `flash.success.registration_instructions` and stays on a "check your inbox" state. Same response in every branch of step 4/5.
 
 `next_path` is stored server-side, so it survives the mail link even when the link is opened in another browser or on another device. The link itself carries only the token.
@@ -200,7 +200,7 @@ No welcome mail (the registration mail replaces it).
 #### `request_password_reset(email) -> Result<(), AuthError>`
 1. Empty → `Validation(email_required)`. Malformed → `Validation(email_invalid)`. These are format checks only, the same for any address.
 2. Per-IP limiter `mail:ip:<ip>` blocked → `TooManyRequests`.
-3. If the user exists and `mail:email:<email>` allows: generate token, `UPDATE users SET reset_token = sha256hex(token), reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ? AND email = <the address read in this request>` (a newer request replaces an older token; 0 rows = the address changed meanwhile → no mail, same response; amended 2026-11-09, #71), queue the **password-reset mail** with link `APP_URL/auth/reset-password/<token>`.
+3. If the user exists and `mail:reset:<email>` allows (`mail:email:<email>` until 2026-11-19, #102; when it doesn't: logged at `info` with the user id): generate token, `UPDATE users SET reset_token = sha256hex(token), reset_token_expires = CURRENT_TIMESTAMP + INTERVAL 1 HOUR WHERE id = ? AND email = <the address read in this request>` (a newer request replaces an older token; 0 rows = the address changed meanwhile → no mail, same response; amended 2026-11-09, #71), queue the **password-reset mail** with link `APP_URL/auth/reset-password/<token>`.
 4. Always `Ok(())`. The UI shows `flash.success.reset_instructions` and redirects to `/auth/login`.
 
 #### `check_reset_token(token) -> Result<(), AuthError>`
@@ -217,6 +217,7 @@ Read-only validity check used by the reset page. Invalid/expired → `InvalidRes
 
 #### Mail sending
 - Mails are queued to a background task (`tokio::spawn`) *after* the DB work. The server fn returns without awaiting SMTP. SMTP failures are logged at `warn` with the mail kind and, where known, the user id. The email address, token and link are never logged. Responses never reveal a failure.
+- Amended 2026-11-19 (#102): a failure that may pass (connection error, timeout, 4xx reply) is retried in the background after 15 s and again after another 60 s (`MailConfig::auth_retry_delays`); a 5xx reply, a bad address or message is not retried. When the mail is finally not delivered, the link it replaced is put back: the previous `reset_token`/`reset_token_expires` (NULL if there was none), or the previous `pending_registrations` row (deleted if the request inserted it). The undo matches the new token's hash, so it never touches a newer token or a used link. The attempts live in the process: a restart during the waits ends them without the undo. The request still never waits for SMTP (AC35), so known and unknown addresses keep the same timing.
 - Language (i18n-foundation F4): mails to an existing account (existing-account notice, password reset) use that account's `users.locale` via `mail_i18n` (NULL or unknown → `APP_LOCALE`), whatever the requester's page shows. The registration mail goes to an address without an account and uses the request locale (`I18n::new(request_locale(), config.app_timezone)`). The mail's HTML root has `lang="<mail locale>"`. HTML with a plain-text alternative. All interpolated values are HTML-escaped. Links are built from `APP_URL`. No placeholder support address.
 - Dev/test: delivered to Mailpit (foundation).
 - Mails:
@@ -231,7 +232,10 @@ In-memory, per process: a map of key → (count, window start) behind a mutex, w
 |---|---|---|---|
 | `login:email:<normalised email>` | failed logins (unknown email counts too) | 10 / 15 min | `TooManyAttempts { minutes until window end, rounded up }`; cleared on successful login or password reset |
 | `login:ip:<ip>` | failed logins | 50 / 15 min (generous: families share one NAT IP) | `TooManyAttempts` |
-| `mail:email:<normalised email>` | mails triggered by register + forgot-password for that address | 3 / 60 min | mail silently skipped, response unchanged |
+| `mail:email:<normalised email>` | register mails for that address (registration link or existing-account notice); also the email change's verification mails (account AC43) | 3 / 60 min | mail silently skipped, response unchanged |
+| `mail:reset:<normalised email>` | forgot-password mails for that address | 3 / 60 min | mail silently skipped, response unchanged |
+
+Amended 2026-11-19 (#102): forgot-password used `mail:email:<email>` too, so three register calls for someone's address blocked their reset mails for an hour. The reset mail is the only way into a migrated account. Reset requests by others for the same address mail the account owner working links; the newest stays valid for an hour.
 | `mail:ip:<ip>` | register + forgot-password calls | 20 / 60 min | `TooManyRequests` |
 
 The token submissions (`complete_registration`, `reset_password`) are not limited: 256-bit tokens can't be guessed.
@@ -366,15 +370,8 @@ Account language (added 2026-10-31, i18n-foundation)
 - AC50: Given Alice's `users.locale = 'de'`, when a reset for Alice is requested from an English page, then the reset mail is German. Given Bob's `users.locale` is NULL and `APP_LOCALE=en`, when a reset for Bob is requested from a German page, then the reset mail is English. Given a stored `locale = 'fr'` (written directly), the mail uses `APP_LOCALE`.
 - AC51: Given the lockout of AC11 with 1 minute left, then the English message reads "… Please try again in 1 minute." and with 2 or more minutes "… in {n} minutes."; in German "… in 1 Minute erneut." / "… in {n} Minuten erneut."
 
-## Open questions
-
-None.
-
-## Resolved (2026-10-31, user)
-
-1. **Registration flow** (two-step vs. single-step with immediate login): two-step. A `next=` path supplied at registration start survives the registration mail link and is applied after completion (stored in `pending_registrations.next_path`; AC29, AC30). The groups invite flow depends on it.
-2. **"Remember me"**: separate control dropped. Revised by #60 (2026-11-03): every login now has a persistent, rolling 90-day default lifetime for everyday and PWA use; no short-lived mode.
-3. **Link lifetimes**: reset link 1 hour, registration link 24 hours.
-4. **Rate limiter**: in-memory, with the proposed limits (10 failed logins per email / 50 per IP per 15 min; 3 mails per address and 20 register/forgot calls per IP per hour).
-5. **Production `users` table shape** (collation, `failed_login_attempts`, case-duplicate emails): moot, there is no production DB to migrate. Emails are normalised to lowercase on write and compared lowercased. (2026-11-15: production does hold the migrated PHP users now; the import normalised their emails the same way, see the amendment at the top.)
-6. **Proxy topology for client IP**: Caddy is the edge proxy in front of the app and may itself sit behind Traefik or nginx. The app reads the client IP by walking `X-Forwarded-For` from the right and skipping hops in `TRUSTED_PROXIES_CIDR` (AC16). The PHP env-name mismatch (`TRUSTED_PROXY_CIDR` in the Caddyfile vs. `TRUSTED_PROXIES_CIDR` in `.env.template`) is fixed in the deploy config (PLAN.md risks).
+Mail delivery (added 2026-11-19, #102)
+- AC52: Given the SMTP server answers the first attempt at Alice's reset mail with a 4xx reply, then the mail is sent again in the background and delivered, and the new link is the stored one.
+- AC53: Given Alice holds a valid reset link and the SMTP server fails every attempt at her new reset mail (a 4xx reply three times, or one 5xx reply, which is not retried), then the response is AC33's and afterwards the earlier link works again; with no earlier link, `reset_token` is NULL again. A token stored meanwhile by a newer request is not changed.
+- AC54: Given a pending registration for `carol@example.com` and the SMTP server rejects the new registration mail, then afterwards the earlier row (token hash, `next_path`) is back and its link works; for an address without an earlier row, no row is left.
+- AC55: Given three register calls for Alice's address within an hour (three existing-account mails), when Alice requests a reset, then the reset mail is sent. Given three reset requests for Alice within an hour, a fourth sends no mail and writes no token, and the link from the third mail works.

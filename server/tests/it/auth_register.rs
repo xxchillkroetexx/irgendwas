@@ -213,11 +213,23 @@ async fn ac23_invalid_emails_are_rejected_without_mail(pool: MySqlPool) {
 
 #[sqlx::test(migrations = "../migrations")]
 async fn ac23_the_length_limit_is_255_characters(pool: MySqlPool) {
-    let app = router(&pool, &[], Opts::default());
+    let mailpit = Mailpit::from_env();
+    let app = router(&pool, &[], Opts::mail());
     let mut c = Client::new(&app);
-    let max = format!("{}@example.com", "a".repeat(243));
+    // A deliverable 255-character address: lettre refuses local parts over 64 characters,
+    // and an undeliverable registration mail removes its pending row again (AC54).
+    let max = format!(
+        "{}@{}.{}.{}.com",
+        "a".repeat(64),
+        "b".repeat(62),
+        "c".repeat(62),
+        "d".repeat(60)
+    );
     assert_eq!(max.len(), 255);
     c.register(&max, None).await.ok();
+    assert_eq!(pending_with(&pool, &max).await, 1);
+    settle().await;
+    assert_eq!(mailpit.messages_for(&max).await.len(), 1);
     assert_eq!(pending_with(&pool, &max).await, 1);
 
     let too_long = format!("{}@example.com", "a".repeat(244));

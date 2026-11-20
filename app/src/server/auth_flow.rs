@@ -9,9 +9,10 @@ use crate::auth_api::{AuthError, Field, PendingRegistration};
 use crate::flash::FlashMessage;
 use crate::i18n::{I18n, request_locale};
 use crate::paths::next_or_dashboard;
+use crate::server::auth_mail::{PendingRegistrationRow, Undo};
 use crate::server::rate_limit::{
     self, LOGIN_PER_EMAIL, LOGIN_PER_IP, MAIL_PER_EMAIL, login_email_key, login_ip_key,
-    mail_email_key, mail_ip_key,
+    mail_email_key, mail_ip_key, mail_reset_key,
 };
 use crate::server::{AppState, auth, auth_mail, client_ip, flash, i18n, password, respond, token};
 use crate::validation::{
@@ -251,10 +252,13 @@ pub async fn register(email: String, next: Option<String>) -> Result<(), AuthErr
     .map_err(db_error)?;
 
     // Over the per-address limit: no mail and no row (the last delivered link stays valid).
+    // Apart from the password-reset budget (#102): register calls for someone's address
+    // must not use up the reset mails that are the way back into an account.
     if !state
         .rate_limiter
         .try_acquire(&mail_email_key(&email), MAIL_PER_EMAIL)
     {
+        tracing::info!("register mail skipped: per-address limit reached");
         return Ok(());
     }
 
@@ -262,11 +266,26 @@ pub async fn register(email: String, next: Option<String>) -> Result<(), AuthErr
         Some((user_id, stored_email, locale)) => {
             let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
             let message = auth_mail::existing_account(&i18n, &state.config, &stored_email);
-            auth_mail::queue(&state, "existing_account", Some(user_id), message);
+            auth_mail::queue(
+                &state,
+                "existing_account",
+                Some(user_id),
+                message,
+                Undo::Nothing,
+            );
         }
         None => {
             let token = token::generate().map_err(|_| AuthError::Internal)?;
             let next_path = next.as_deref().and_then(crate::paths::safe_next);
+            // What the upsert replaces, put back if the new link's mail is not delivered.
+            let previous = sqlx::query_as::<_, PendingRegistrationRow>(
+                "SELECT token_hash, next_path, created_at, expires_at \
+                 FROM pending_registrations WHERE email = ?",
+            )
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(db_error)?;
             sqlx::query(
                 "INSERT INTO pending_registrations (email, token_hash, next_path, created_at, expires_at) \
                  VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL 24 HOUR) \
@@ -296,7 +315,11 @@ pub async fn register(email: String, next: Option<String>) -> Result<(), AuthErr
             let link =
                 auth_mail::app_link(&state.config, &format!("/auth/register/confirm/{token}"));
             let message = auth_mail::registration(&i18n, &stored_email, &link);
-            auth_mail::queue(&state, "registration", None, message);
+            let undo = Undo::Registration {
+                new_hash: token::hash(&token),
+                previous,
+            };
+            auth_mail::queue(&state, "registration", None, message, undo);
         }
     }
     Ok(())
@@ -402,6 +425,17 @@ pub async fn complete_registration(
 
 // --------------------------------------------------------------- password reset
 
+/// The account a reset is requested for, with the token a new one would replace.
+#[derive(FromRow)]
+struct ResetCandidate {
+    id: i32,
+    email: String,
+    name: String,
+    locale: Option<String>,
+    reset_token: Option<String>,
+    reset_token_expires: Option<DateTime<Utc>>,
+}
+
 pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
     let email = checked_email(&email)?;
     let state = state()?;
@@ -412,18 +446,40 @@ pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
         return Err(AuthError::TooManyRequests);
     }
 
-    let user = sqlx::query_as::<_, (i32, String, String, Option<String>)>(
-        "SELECT id, email, name, locale FROM users WHERE email = ?",
+    let user = sqlx::query_as::<_, ResetCandidate>(
+        "SELECT id, email, name, locale, reset_token, reset_token_expires \
+         FROM users WHERE email = ?",
     )
     .bind(&email)
     .fetch_optional(&state.pool)
     .await
     .map_err(db_error)?;
 
-    if let Some((user_id, stored_email, name, locale)) = user
-        && state
-            .rate_limiter
-            .try_acquire(&mail_email_key(&email), MAIL_PER_EMAIL)
+    // Its own per-address budget, apart from register calls and email changes (#102).
+    // Requests by someone else for Alice's address mail her working links; the newest
+    // stays valid for an hour.
+    let user = match user {
+        Some(user)
+            if !state
+                .rate_limiter
+                .try_acquire(&mail_reset_key(&email), MAIL_PER_EMAIL) =>
+        {
+            tracing::info!(
+                user_id = user.id,
+                "reset mail skipped: per-address limit reached"
+            );
+            None
+        }
+        user => user,
+    };
+    if let Some(ResetCandidate {
+        id: user_id,
+        email: stored_email,
+        name,
+        locale,
+        reset_token,
+        reset_token_expires,
+    }) = user
     {
         let token = token::generate().map_err(|_| AuthError::Internal)?;
         // Only while the account still has the address the link is mailed to: an email
@@ -450,7 +506,12 @@ pub async fn request_password_reset(email: String) -> Result<(), AuthError> {
             let i18n = i18n::mail_i18n(locale.as_deref(), &state.config);
             let link = auth_mail::app_link(&state.config, &format!("/auth/reset-password/{token}"));
             let message = auth_mail::password_reset(&i18n, &stored_email, &name, &link);
-            auth_mail::queue(&state, "password_reset", Some(user_id), message);
+            let undo = Undo::ResetToken {
+                user_id,
+                new_hash: token::hash(&token),
+                previous: reset_token.map(|hash| (hash, reset_token_expires)),
+            };
+            auth_mail::queue(&state, "password_reset", Some(user_id), message, undo);
         }
     }
 

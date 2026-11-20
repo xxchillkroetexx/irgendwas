@@ -9,6 +9,7 @@ mod account_profile;
 mod account_security;
 mod auth_limits;
 mod auth_login;
+mod auth_mail_delivery;
 mod auth_register;
 mod auth_reset;
 mod auth_security;

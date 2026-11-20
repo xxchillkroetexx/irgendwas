@@ -5,6 +5,7 @@
 
 use std::fmt;
 use std::path::Path;
+use std::time::Duration;
 
 use chrono_tz::Tz;
 use ipnet::IpNet;
@@ -68,6 +69,11 @@ pub enum MailEncryption {
     None,
 }
 
+/// Default [`MailConfig::auth_retry_delays`]: a second attempt after 15 s, a third after
+/// another minute, so an SMTP outage of about a minute loses no auth mail.
+pub const AUTH_MAIL_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_secs(15), Duration::from_secs(60)];
+
 #[derive(Clone)]
 pub struct MailConfig {
     pub host: String,
@@ -77,6 +83,10 @@ pub struct MailConfig {
     pub encryption: MailEncryption,
     pub from_address: String,
     pub from_name: String,
+    /// Waits before each further attempt at an auth mail (registration, existing account,
+    /// password reset) after a failure that may pass (#102). Not configurable by
+    /// environment; tests shorten it.
+    pub auth_retry_delays: Vec<Duration>,
 }
 
 impl Config {
@@ -193,6 +203,7 @@ impl Config {
             encryption,
             from_address: get("MAIL_FROM_ADDRESS").unwrap_or_else(|| "noreply@example.com".into()),
             from_name: get("MAIL_FROM_NAME").unwrap_or_else(|| "Secret Santa".into()),
+            auth_retry_delays: AUTH_MAIL_RETRY_DELAYS.to_vec(),
         };
 
         Ok(Config {
@@ -335,6 +346,7 @@ impl fmt::Debug for MailConfig {
             .field("encryption", &self.encryption)
             .field("from_address", &self.from_address)
             .field("from_name", &self.from_name)
+            .field("auth_retry_delays", &self.auth_retry_delays)
             .finish()
     }
 }

@@ -22,6 +22,7 @@ fn mail_clock(clock: &Arc<ManualClock>) -> Opts {
     Opts {
         mail: true,
         clock: Some(clock.clone()),
+        ..Opts::default()
     }
 }
 

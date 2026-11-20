@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use app::auth::SessionInfo;
 use app::auth_api::AuthError;
@@ -33,6 +34,8 @@ pub struct Opts {
     pub mail: bool,
     /// Replace the rate limiter's clock.
     pub clock: Option<Arc<ManualClock>>,
+    /// Replace the waits between auth mail attempts (`MailConfig::auth_retry_delays`).
+    pub mail_retry_delays: Option<Vec<Duration>>,
 }
 
 impl Opts {
@@ -65,7 +68,11 @@ pub fn router(pool: &MySqlPool, vars: &[(&str, &str)], opts: Opts) -> Router {
         );
     }
     let borrowed: Vec<(&str, &str)> = all.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    let mut st = state(pool.clone(), config_with(&borrowed));
+    let mut config = config_with(&borrowed);
+    if let Some(delays) = opts.mail_retry_delays {
+        config.mail.auth_retry_delays = delays;
+    }
+    let mut st = state(pool.clone(), config);
     if let Some(clock) = opts.clock {
         st.rate_limiter = Arc::new(RateLimiter::new(clock));
     }

@@ -1,11 +1,15 @@
 //! The three auth mails (spec: auth, "Mail sending"): registration link, existing-account
 //! notice, password reset. HTML with a plain-text alternative; every interpolated value is
-//! HTML-escaped; links are built from `APP_URL`. Sending is off the request path; failures
-//! are logged with the mail kind and user id only (never address, token or link).
+//! HTML-escaped; links are built from `APP_URL`. Sending is off the request path, with
+//! retries, and an undelivered mail puts the link it replaced back ([`queue`], #102);
+//! failures are logged with the mail kind and user id only (never address, token or link).
+
+use chrono::{DateTime, Utc};
+use sqlx::MySqlPool;
 
 use crate::i18n::I18n;
-use crate::server::mail::{Message, escape_html};
-use crate::server::{AppState, Config};
+use crate::server::mail::{MailError, Message, escape_html};
+use crate::server::{AppState, Config, db};
 use crate::t;
 
 /// Absolute URL of `path` under `APP_URL`.
@@ -139,13 +143,145 @@ pub fn password_reset(i18n: &I18n, to: &str, name: &str, link: &str) -> Message 
     }
 }
 
-/// Queues `message` and logs a failure with `kind` and `user_id` only.
-pub fn queue(state: &AppState, kind: &'static str, user_id: Option<i32>, message: Message) {
-    let handle = state.mailer.send(message);
-    let mail_id = handle.id();
+/// What an auth mail's link replaced, so it can be put back when the mail is not
+/// delivered (#102). The new link exists only in the undelivered mail; without the undo
+/// the link from the earlier request would be dead as well.
+#[derive(Debug)]
+pub enum Undo {
+    /// Nothing to put back (the existing-account notice carries no token).
+    Nothing,
+    /// The reset token this request replaced on `users` (`None`: there was none).
+    ResetToken {
+        user_id: i32,
+        new_hash: String,
+        previous: Option<(String, Option<DateTime<Utc>>)>,
+    },
+    /// The pending registration this request replaced (`None`: it inserted the row).
+    Registration {
+        new_hash: String,
+        previous: Option<PendingRegistrationRow>,
+    },
+}
+
+/// A `pending_registrations` row as an [`Undo`] restores it.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PendingRegistrationRow {
+    pub token_hash: String,
+    pub next_path: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Sends `message` off the request path. A failure that may pass (an SMTP connection
+/// error, a timeout, a 4xx reply) is retried after each of `auth_retry_delays`. When the
+/// mail is finally not delivered, `undo` puts the replaced link back, guarded by the new
+/// token's hash so a newer request or a used link is never overwritten. Logs carry
+/// `kind` and `user_id` only (never address, token or link).
+///
+/// The attempts live in this process: a restart during the waits ends them without the
+/// undo, which leaves the state of a lost mail before #102.
+pub fn queue(
+    state: &AppState,
+    kind: &'static str,
+    user_id: Option<i32>,
+    message: Message,
+    undo: Undo,
+) {
+    let mailer = state.mailer.clone();
+    let pool = state.pool.clone();
+    let delays = state.config.mail.auth_retry_delays.clone();
     tokio::spawn(async move {
-        if let Err(err) = handle.outcome().await {
-            tracing::warn!(kind, ?user_id, mail_id, error = %err, "auth mail not delivered");
+        let mut waits = delays.into_iter();
+        let mut attempt = 1;
+        let error = loop {
+            let handle = mailer.send(message.clone());
+            let mail_id = handle.id();
+            match handle.outcome().await {
+                Ok(()) => return,
+                Err(err) => match waits.next() {
+                    Some(wait) if may_pass(&err) => {
+                        tracing::info!(kind, ?user_id, mail_id, attempt, error = %err, "auth mail not delivered, retrying");
+                        tokio::time::sleep(wait).await;
+                        attempt += 1;
+                    }
+                    _ => break err,
+                },
+            }
+        };
+        tracing::warn!(kind, ?user_id, attempt, error = %error, "auth mail not delivered");
+        match apply_undo(&pool, &undo).await {
+            Ok(true) => tracing::warn!(
+                kind,
+                ?user_id,
+                "restored the link the undelivered mail replaced"
+            ),
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(kind, ?user_id, error = %db::redacted(&err), "could not restore the previous link")
+            }
         }
     });
+}
+
+/// Whether another attempt can succeed: not for a bad address or message, a permanent
+/// (5xx) SMTP reply, or a task that died.
+fn may_pass(err: &MailError) -> bool {
+    match err {
+        MailError::Smtp(detail) => !detail.starts_with("permanent"),
+        MailError::Address | MailError::Build(_) | MailError::Aborted => false,
+    }
+}
+
+/// Applies `undo`; `true` when a row was put back or removed.
+async fn apply_undo(pool: &MySqlPool, undo: &Undo) -> Result<bool, sqlx::Error> {
+    let result = match undo {
+        Undo::Nothing => return Ok(false),
+        Undo::ResetToken {
+            user_id,
+            new_hash,
+            previous,
+        } => {
+            let (token, expires) = match previous {
+                Some((token, expires)) => (Some(token.as_str()), *expires),
+                None => (None, None),
+            };
+            sqlx::query(
+                "UPDATE users SET reset_token = ?, reset_token_expires = ? \
+                 WHERE id = ? AND reset_token = ?",
+            )
+            .bind(token)
+            .bind(expires)
+            .bind(user_id)
+            .bind(new_hash)
+            .execute(pool)
+            .await?
+        }
+        Undo::Registration {
+            new_hash,
+            previous: Some(row),
+        } => {
+            sqlx::query(
+                "UPDATE pending_registrations \
+                 SET token_hash = ?, next_path = ?, created_at = ?, expires_at = ? \
+                 WHERE token_hash = ?",
+            )
+            .bind(&row.token_hash)
+            .bind(&row.next_path)
+            .bind(row.created_at)
+            .bind(row.expires_at)
+            .bind(new_hash)
+            .execute(pool)
+            .await?
+        }
+        Undo::Registration {
+            new_hash,
+            previous: None,
+        } => {
+            sqlx::query("DELETE FROM pending_registrations WHERE token_hash = ?")
+                .bind(new_hash)
+                .execute(pool)
+                .await?
+        }
+    };
+    Ok(result.rows_affected() > 0)
 }
